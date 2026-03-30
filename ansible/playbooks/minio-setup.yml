@@ -1,0 +1,6 @@
+---
+- name: Deploy MinIO on Proxmox LXC
+  hosts: minio
+  roles:
+    - common
+    - minio

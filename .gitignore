@@ -1,0 +1,55 @@
+# ============================================================
+# Secrets — never commit
+# ============================================================
+.envrc
+*.pem
+*.key
+id_rsa
+id_ed25519
+vault_pass
+.vault_pass
+*.secrets
+secrets.yml
+
+# ============================================================
+# Terraform
+# ============================================================
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.tfplan
+crash.log
+crash.*.log
+
+# terraform.tfvars contains secrets/IPs — use .tfvars.example instead
+*.tfvars
+!*.tfvars.example
+
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# ============================================================
+# Ansible
+# ============================================================
+*.retry
+ansible/.vault_pass
+ansible/inventory/*/group_vars/all/vault.yml
+
+# ============================================================
+# Dev tooling
+# ============================================================
+.direnv/
+.DS_Store
+.idea/
+.vscode/settings.json
+*.swp
+*.swo
+*~
+
+# ============================================================
+# OS
+# ============================================================
+Thumbs.db

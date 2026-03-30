@@ -1,0 +1,75 @@
+resource "proxmox_virtual_environment_vm" "this" {
+  name      = var.vm_name
+  vm_id     = var.vm_id
+  node_name = var.node_name
+  pool_id   = var.pool_id
+  tags      = var.tags
+  started   = var.started
+
+  # Clone from template if template ID is provided
+  dynamic "clone" {
+    for_each = var.clone_template_id != 0 ? [1] : []
+    content {
+      vm_id   = var.clone_template_id
+      full    = true
+      retries = 3
+    }
+  }
+
+  cpu {
+    cores = var.cores
+    type  = "x86-64-v2-AES"
+  }
+
+  memory {
+    dedicated = var.memory_mb
+  }
+
+  disk {
+    datastore_id = var.datastore_id
+    interface    = "scsi0"
+    size         = var.disk_size_gb
+    discard      = "on"
+    iothread     = true
+  }
+
+  network_device {
+    bridge  = var.bridge
+    model   = "virtio"
+    vlan_id = var.vlan_id
+  }
+
+  operating_system {
+    type = "l26"
+  }
+
+  initialization {
+    dynamic "ip_config" {
+      for_each = var.ipv4_address != "" ? [1] : []
+      content {
+        ipv4 {
+          address = var.ipv4_address
+          gateway = var.ipv4_gateway
+        }
+      }
+    }
+
+    dynamic "ip_config" {
+      for_each = var.ipv4_address == "" ? [1] : []
+      content {
+        ipv4 {
+          address = "dhcp"
+        }
+      }
+    }
+
+    dynamic "user_account" {
+      for_each = var.ssh_public_key != "" ? [1] : []
+      content {
+        keys = [var.ssh_public_key]
+      }
+    }
+  }
+
+  stop_on_destroy = true
+}

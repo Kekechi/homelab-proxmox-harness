@@ -1,0 +1,5 @@
+---
+- name: Apply common baseline to all hosts
+  hosts: all
+  roles:
+    - common

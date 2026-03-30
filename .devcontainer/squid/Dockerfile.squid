@@ -1,0 +1,18 @@
+# Squid proxy image with ACL config baked in.
+#
+# IMPORTANT: squid.conf and allowed-cidrs.conf are baked into this image
+# at build time — they are NOT mounted from the workspace. This means
+# Claude Code cannot modify the network policy at runtime.
+#
+# To update the allowed CIDR list or domains:
+#   1. Edit .devcontainer/squid/allowed-cidrs.conf
+#   2. Run: docker compose build squid-proxy
+#   3. Reopen the dev container
+
+FROM ubuntu/squid:5.7-23.04_beta
+
+COPY squid.conf /etc/squid/squid.conf
+COPY allowed-cidrs.conf /etc/squid/allowed-cidrs.conf
+
+# Validate config at build time — fails the build if squid.conf has errors
+RUN squid -k parse -f /etc/squid/squid.conf

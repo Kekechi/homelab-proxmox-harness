@@ -1,0 +1,46 @@
+{
+  "name": "homelab-proxmox-harness",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+
+  "postCreateCommand": "direnv allow /workspace",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "redhat.ansible",
+        "mkhl.direnv",
+        "tamasfe.even-better-toml",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions"
+      ],
+      "settings": {
+        "terraform.experimentalFeatures.validateOnSave": true,
+        "[terraform]": {
+          "editor.defaultFormatter": "hashicorp.terraform",
+          "editor.formatOnSave": true
+        },
+        "[terraform-vars]": {
+          "editor.defaultFormatter": "hashicorp.terraform",
+          "editor.formatOnSave": true
+        },
+        "ansible.python.interpreterPath": "/usr/bin/python3"
+      }
+    }
+  },
+
+  // remoteEnv injects host environment variables into the container.
+  // ONLY sandbox variables are listed here.
+  // Production variables (PROXMOX_VE_PROD_*, etc.) are intentionally absent —
+  // they cannot enter the container even if set on the host.
+  "remoteEnv": {
+    "PROXMOX_VE_ENDPOINT":  "${localEnv:PROXMOX_VE_ENDPOINT}",
+    "PROXMOX_VE_API_TOKEN": "${localEnv:PROXMOX_VE_API_TOKEN}",
+    "PROXMOX_VE_INSECURE":  "${localEnv:PROXMOX_VE_INSECURE}",
+    "MINIO_ENDPOINT":       "${localEnv:MINIO_ENDPOINT}",
+    "MINIO_ACCESS_KEY":     "${localEnv:MINIO_ACCESS_KEY}",
+    "MINIO_SECRET_KEY":     "${localEnv:MINIO_SECRET_KEY}"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/terraform-guard.sh",
+            "description": "Block bare terraform apply and production applies from dev container"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - git
+      - vim
+      - htop
+      - ca-certificates
+      - gnupg
+      - python3
+      - python3-pip
+    state: present
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
+
+- name: Disable root SSH password login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PermitRootLogin'
+    line: 'PermitRootLogin prohibit-password'
+    state: present
+  notify: restart sshd

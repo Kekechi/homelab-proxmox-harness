@@ -1,0 +1,53 @@
+# =============================================================================
+# .envrc.example — copy to .envrc and populate with real values
+# After editing: run `direnv allow` in the repo root
+# NEVER commit .envrc — it is gitignored
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Sandbox Proxmox (Claude Code may terraform apply to this environment)
+#
+# Token format: <user>@<realm>!<tokenid>=<uuid>
+# Token name:   terraform@pve!claude-sandbox
+# ACL scope:    /pool/sandbox only
+# Role:         TerraformSandbox (no Sys.Modify, no Permissions.Modify)
+# ---------------------------------------------------------------------------
+export PROXMOX_VE_ENDPOINT="https://192.168.X.X:8006/"
+export PROXMOX_VE_API_TOKEN="terraform@pve!claude-sandbox=REPLACE_ME"
+export PROXMOX_VE_INSECURE="true"   # set to false if you have a valid TLS cert
+
+# ---------------------------------------------------------------------------
+# MinIO Terraform state backend
+# Running as LXC on Proxmox. Accessible from internal network + VPN.
+#
+# Claude's access key is scoped to tfstate-sandbox bucket only (read/write).
+# The operator holds a separate full-admin key for tfstate-production.
+#
+# After bootstrap-minio.sh creates the sandbox-scoped policy, fill in:
+# ---------------------------------------------------------------------------
+export MINIO_ENDPOINT="http://192.168.X.X:9000"
+export MINIO_ACCESS_KEY="REPLACE_ME"    # sandbox-scoped key
+export MINIO_SECRET_KEY="REPLACE_ME"    # sandbox-scoped secret
+
+# ---------------------------------------------------------------------------
+# Squid proxy network policy
+#
+# allowed-cidrs.conf in .devcontainer/squid/ controls which CIDRs the
+# devcontainer can reach. Edit that file and rebuild:
+#   docker compose build squid-proxy
+#
+# The values below are for documentation/reference — they are not read
+# by Squid directly (Squid reads the baked-in allowed-cidrs.conf).
+# ---------------------------------------------------------------------------
+# SANDBOX_PROXMOX_CIDR="192.168.X.0/24"   # Sandbox VLAN
+# MINIO_IP="192.168.X.X"                   # MinIO LXC
+
+# ---------------------------------------------------------------------------
+# PRODUCTION PROXMOX — MUST NEVER BE SET IN THIS FILE
+#
+# Production credentials are held by the human operator only.
+# They are NEVER stored in the dev container or this repo.
+# Apply is performed manually from the operator's own workstation.
+# ---------------------------------------------------------------------------
+# export PROXMOX_VE_PROD_ENDPOINT="..."         # DO NOT SET HERE
+# export PROXMOX_VE_PROD_API_TOKEN="..."        # DO NOT SET HERE
