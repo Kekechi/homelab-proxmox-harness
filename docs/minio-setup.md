@@ -38,12 +38,21 @@ pct create 150 local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst \
 ## Step 2 — Install MinIO via Ansible
 
 ```bash
-# Add the MinIO LXC to ansible/inventory/sandbox/hosts.yml:
+# Add the MinIO LXC to config/sandbox.yml under the hosts.minio group:
+#
+# hosts:
 #   minio:
-#     ansible_host: 192.168.X.X
-#     ansible_user: root
+#     minio-server:
+#       ansible_host: 192.168.X.X
+#       ansible_user: root
+#
+# Then regenerate the inventory:
+make configure
 
-ansible-playbook -i ansible/inventory/sandbox/hosts.yml ansible/playbooks/minio-setup.yml
+# Set up ansible vault with MinIO root credentials before running the playbook.
+# See ansible/inventory/group_vars/all/vault.yml.example for required variables.
+
+ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
 ```
 
 Or manually inside the LXC:

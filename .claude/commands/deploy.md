@@ -54,12 +54,15 @@ Full sandbox deployment pipeline using the Planner-Generator-Evaluator (PGE) arc
 
 ## After Deployment
 
-- VM IPs from `terraform output -json`
-- Update `ansible/inventory/sandbox/hosts.yml`
+- Get VM IPs: `cd terraform && terraform output -json`
+- Add IPs to `config/sandbox.yml` under `hosts.sandbox.<name>.ansible_host`
+- Run `make configure` to regenerate the inventory
 - Run `make ansible-sandbox` for post-provision configuration
 
 ## Safety
 
 - This command only applies to sandbox — production applies are blocked
-- The sandbox-guard validates the apply command before execution
-- Any `terraform destroy` in the pipeline requires explicit confirmation
+- The terraform-guard hook validates apply and destroy commands before execution (hard block via `scripts/hooks/terraform-guard.sh`)
+- The protected-path-guard hook prevents modification of safety-critical files
+- The pre-commit-guard hook prevents committing sensitive files
+- For detailed verification steps and rollback procedures, see the sandbox-deploy skill

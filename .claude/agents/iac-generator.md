@@ -20,6 +20,9 @@ You translate approved infrastructure plans into working code. You do NOT plan â
 
 ## Code Generation Rules
 
+<!-- These conventions mirror .claude/rules/terraform-style.md (the canonical source).
+     Update both files when changing any convention. -->
+
 ### Terraform
 
 - All new module calls go in `terraform/main.tf`

@@ -1,6 +1,7 @@
 ---
 name: tf-plan-apply
 description: Terraform init, plan, and apply workflow for this homelab. Covers backend initialization, var-file usage, plan-file gate, and state locking caveats.
+version: "1.0"
 ---
 
 # Skill: Terraform Plan/Apply Workflow
@@ -8,7 +9,8 @@ description: Terraform init, plan, and apply workflow for this homelab. Covers b
 ## When to Activate
 
 - Running `terraform init`, `plan`, or `apply`
-- Switching between sandbox and production state backends
+- Running `make configure` to generate environment config files
+- Switching between sandbox and production environments
 - Troubleshooting backend connection failures
 - Explaining the two-step plan → apply workflow
 
@@ -39,7 +41,7 @@ terraform init \
 
 Use `-reconfigure` when switching from sandbox to production backend (or vice versa) — it discards the cached backend config without migrating state.
 
-Or simply: `make init` (sandbox) / `make plan-prod` (production reinits automatically).
+Or simply: `make init` (sandbox) / `make init ENV=production` (production — reinits automatically with `-reconfigure`).
 
 ## Plan Workflow (Sandbox)
 
@@ -82,13 +84,15 @@ If state becomes corrupt: `terraform state pull > backup.tfstate`, then restore 
 
 ## Var-File Setup
 
-Copy the example file and fill in real values:
+Var-files are generated from the centralized config — do NOT create them manually:
 ```bash
-cp terraform/sandbox.tfvars.example terraform/sandbox.tfvars
-# Edit sandbox.tfvars with your node, pool, datastore, bridge, VLAN, CIDR
+cp config/sandbox.yml.example config/sandbox.yml
+# Edit config/sandbox.yml with your node, network, storage settings
+make configure
+# This generates terraform/sandbox.tfvars (and inventory, allowed-cidrs, .envrc)
 ```
 
-`*.tfvars` is gitignored. Never commit it.
+`*.tfvars` and `config/*.yml` are both gitignored. Never commit either.
 
 ## GitLab Backend Migration
 

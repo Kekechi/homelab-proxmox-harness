@@ -12,21 +12,23 @@ Claude Code runs inside a dev container with a Squid forward proxy for network i
 
 ## Explicit Prohibitions
 
-- **NEVER** modify files under `.devcontainer/` — Squid config is baked into the image; changes only take effect after operator rebuilds
+- **NEVER** modify files under `.devcontainer/` — Squid config is baked into the image; changes only take effect after operator rebuilds. Exception: `make configure` may regenerate `allowed-cidrs.conf`.
 - **NEVER** run `terraform apply` without a plan file (`terraform plan -out=<file>` first)
 - **NEVER** apply Terraform for production — produce a plan file and hand it to the operator
-- **NEVER** commit `.envrc` or any file containing tokens, passwords, or secret keys
+- **NEVER** commit `.envrc`, `config/*.yml`, or any file containing tokens, passwords, or secret keys
 - **NEVER** bypass the proxy or modify network configuration
+- **NEVER** edit generated files directly (`terraform/*.tfvars`, `ansible/inventory/hosts.yml`, `.devcontainer/squid/allowed-cidrs.conf`) — regenerate via `make configure`
 
 ---
 
 ## Environment Model
 
-| Environment | Var-file | Claude may apply? | State bucket |
+| Environment | Config file | Claude may apply? | State bucket |
 |---|---|---|---|
-| **sandbox** | `sandbox.tfvars` | Yes — plan-file required | `tfstate-sandbox` |
-| **production** | `production.tfvars` | No — plan only | `tfstate-production` |
+| **sandbox** | `config/sandbox.yml` | Yes — plan-file required | `tfstate-sandbox` |
+| **production** | `config/production.yml` | No — plan only | `tfstate-production` |
 
+Switch environments with `ENV=`: `make plan ENV=production`
 Production token (`operator-production`) is not in the dev container — applies would fail at auth. This is intentional.
 
 ---
@@ -34,33 +36,38 @@ Production token (`operator-production`) is not in the dev container — applies
 ## Repository Structure
 
 ```
-.devcontainer/          Dev container + Squid proxy config (do not modify)
+config/
+  sandbox.yml.example     Centralized config template (copy → sandbox.yml, run make configure)
+  production.yml.example
+.devcontainer/            Dev container + Squid proxy config (do not modify directly)
 terraform/
-  main.tf               Provider block + module calls
-  versions.tf           Required version + provider pins
-  variables.tf          Unified variables (sandbox superset)
-  backend.tf            S3 backend — bucket passed at terraform init time
-  sandbox.tfvars.example
-  production.tfvars.example
+  main.tf                 Provider block + module calls
+  versions.tf             Required version + provider pins
+  variables.tf            Unified variables (sandbox superset)
+  backend.tf              S3 backend — bucket passed at terraform init time
   modules/
-    proxmox-vm/         proxmox_virtual_environment_vm
-    proxmox-lxc/        proxmox_virtual_environment_container
-    proxmox-network/    proxmox_virtual_environment_network_linux_bridge
+    proxmox-vm/           proxmox_virtual_environment_vm
+    proxmox-lxc/          proxmox_virtual_environment_container
+    proxmox-network/      proxmox_virtual_environment_network_linux_bridge
 ansible/
-  ansible.cfg           SSH ProxyCommand through Squid CONNECT
-  inventory/            Per-environment host inventories
-  roles/                common, minio
+  ansible.cfg             SSH ProxyCommand through Squid CONNECT
+  inventory/
+    hosts.yml             Generated — do not edit (run make configure)
+    group_vars/all/       vault.yml.example for ansible vault secrets
+  roles/                  common, minio
   playbooks/
 scripts/
-  bootstrap-minio.sh    One-time MinIO bucket + IAM setup
-  verify-isolation.sh   Network isolation verification
-docs/                   proxmox-iam.md, minio-setup.md, network-policy.md, threat-model.md
+  generate-configs.py     Generates tfvars/inventory/envrc/allowed-cidrs from config YAML
+  bootstrap-minio.sh      One-time MinIO bucket + IAM setup
+  verify-isolation.sh     Network isolation verification
+docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, threat-model.md
 .claude/
-  agents/               iac-planner, iac-generator, tf-reviewer, sandbox-guard
-  skills/               tf-plan-apply, proxmox-module, sandbox-deploy
-  commands/             /plan, /deploy, /review
-  rules/                sandbox-isolation, terraform-style, iam-model, network-policy, ansible-workflow
-Makefile                make help for all targets
+  agents/                 iac-planner, iac-generator, tf-reviewer
+  skills/                 tf-plan-apply, proxmox-module, sandbox-deploy, tf-troubleshoot, day2-ops
+  commands/               /plan, /generate, /deploy, /review, /handoff
+  rules/                  sandbox-isolation, terraform-style, iam-model, network-policy,
+                          ansible-workflow, config-management
+Makefile                  make help for all targets
 ```
 
 ---
@@ -68,13 +75,20 @@ Makefile                make help for all targets
 ## Terraform Workflow (Quick Reference)
 
 ```bash
+# First-time setup
+cp config/sandbox.yml.example config/sandbox.yml
+# Edit config/sandbox.yml with your values
+make configure               # generates tfvars, inventory, envrc, allowed-cidrs
+# Fill in secrets in .envrc (API token, MinIO keys)
+direnv allow
+
 # Sandbox — init once, then plan+apply
 make init                    # initializes with tfstate-sandbox bucket
 make plan                    # terraform plan -var-file=sandbox.tfvars -out=sandbox.tfplan
 make apply                   # terraform apply sandbox.tfplan
 
 # Production — plan only, operator applies
-make plan-prod               # reinits with tfstate-production, plans production.tfvars
+make plan ENV=production     # reinits with tfstate-production, plans production.tfvars
 ```
 
 Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
@@ -86,8 +100,10 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 | Command | Purpose |
 |---|---|
 | `/plan <description>` | Plan infrastructure change using iac-planner (Opus) |
+| `/generate` | Write code from an approved plan using iac-generator |
 | `/deploy <description>` | Full plan → generate → review → apply pipeline |
 | `/review [files]` | Review Terraform/Ansible code with tf-reviewer |
+| `/handoff` | Package production plan with context for operator handoff |
 
 ---
 
@@ -95,8 +111,9 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 
 Before any commit:
 - [ ] `.envrc` is not staged (`git status` shows it untracked/ignored)
+- [ ] `config/*.yml` (not `.example`) is not staged
 - [ ] No `*.tfstate`, `*.tfvars`, or `*.tfplan` files staged
 - [ ] No credentials or IPs hardcoded in any `.tf` file
-- [ ] `.devcontainer/` changes flagged for operator review
+- [ ] `.devcontainer/` changes flagged for operator review (except `allowed-cidrs.conf` from `make configure`)
 - [ ] `make lint` passes (tflint + ansible-lint)
 - [ ] Any `terraform apply` in this session targeted sandbox only

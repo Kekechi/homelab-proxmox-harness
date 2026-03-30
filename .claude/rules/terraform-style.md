@@ -2,9 +2,17 @@
 paths:
   - "terraform/**/*.tf"
   - "terraform/**/*.tfvars*"
+version: "1.0"
 ---
 
 # Terraform Style Rules
+
+<!-- Canonical source for bpg/proxmox conventions.
+     These rules are also referenced inline in:
+       .claude/agents/iac-generator.md
+       .claude/agents/tf-reviewer.md
+       .claude/skills/proxmox-module/SKILL.md
+     Update all four files when changing any convention here. -->
 
 ## Provider and Version Pinning
 

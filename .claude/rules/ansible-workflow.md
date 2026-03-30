@@ -15,7 +15,7 @@ paths:
 
 - Use FQCN (fully qualified collection names): `ansible.builtin.copy`, not `copy`
 - No hardcoded IPs in roles — use inventory variables or role defaults
-- Inventory files are per-environment: `inventory/sandbox/hosts.yml`, `inventory/production/hosts.yml`
+- Single inventory file `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` — NEVER edit directly
 - Always run `ansible-lint` before committing playbook changes
 
 ## Collections
@@ -29,4 +29,14 @@ Do not add collections to `requirements.yml` without pinning a version.
 
 ## Inventory
 
-Sandbox VM IPs come from `terraform output` after a successful apply. Update `inventory/sandbox/hosts.yml` with actual IPs — never hardcode in roles.
+A single `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` by `make configure`. NEVER edit it directly.
+
+To add a VM after `terraform apply`:
+1. Get its IP: `cd terraform && terraform output -json`
+2. Add it to `config/<env>.yml` under `hosts.<group>.<hostname>.ansible_host`
+3. Run `make configure` to regenerate the inventory
+
+Target specific environments with `--limit`:
+- `--limit sandbox` — only sandbox group hosts
+- `--limit minio` — only minio group hosts
+- BLOCK: never run without `--limit` when production hosts are present

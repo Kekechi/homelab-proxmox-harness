@@ -72,22 +72,22 @@ variable "vlan_id" {
 }
 
 variable "ipv4_address" {
-  description = "Static IPv4 address in CIDR notation (e.g. '192.168.20.50/24'). Leave empty for DHCP."
+  description = "Static IPv4 address in CIDR notation (e.g. '192.168.20.50/24'). Null = DHCP."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "ipv4_gateway" {
   description = "IPv4 default gateway. Required when ipv4_address is set."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "root_password" {
   description = "Root password for the container. Use SSH keys instead where possible."
   type        = string
   sensitive   = true
-  default     = ""
+  default     = null
 }
 
 variable "tags" {
@@ -108,8 +108,14 @@ variable "unprivileged" {
   default     = true
 }
 
+variable "started" {
+  description = "Whether the container should be started after creation"
+  type        = bool
+  default     = true
+}
+
 variable "description" {
   description = "Container description displayed in Proxmox UI"
   type        = string
-  default     = ""
+  default     = null
 }

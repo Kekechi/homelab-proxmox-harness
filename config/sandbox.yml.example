@@ -1,0 +1,44 @@
+# Sandbox environment configuration
+# Copy to config/sandbox.yml and fill in your values.
+# Run `make configure` after editing to regenerate all downstream config files.
+# Secrets (API tokens, MinIO keys, passwords) go in .envrc and ansible vault — NOT here.
+
+environment: sandbox
+
+proxmox:
+  node: pve                              # Proxmox node name (run: pvesh get /nodes)
+  endpoint: "https://192.168.1.100:8006" # Proxmox API URL (include trailing slash if needed)
+  insecure: true                         # true = accept self-signed TLS cert
+
+network:
+  bridge: vmbr0                          # Network bridge for VMs/LXCs
+  vlan_id: 20                            # VLAN tag for sandbox network (null = untagged)
+  cidr: "192.168.20.0/24"               # Sandbox VLAN subnet — MUST use CIDR notation
+
+storage:
+  datastore_id: local-lvm               # Proxmox storage ID for VM/LXC disks
+
+terraform:
+  pool_id: sandbox                       # Proxmox resource pool (operator creates this)
+  vm_id_range_start: 200                 # First VM/LXC ID to use in sandbox
+  clone_template_id: 0                   # Template VM ID to clone from (0 = create from scratch)
+  state_bucket: tfstate-sandbox          # MinIO bucket for Terraform state
+
+minio:
+  endpoint: "http://192.168.1.150:9000"  # MinIO API URL (must be reachable from dev container)
+  host_cidr: "192.168.1.150/32"          # MinIO host IP in CIDR notation (for Squid allowlist)
+
+ssh:
+  public_key: "ssh-ed25519 AAAAC3... your-key-comment"  # SSH public key injected via cloud-init
+  default_user: ubuntu                   # Default ansible_user for VMs
+
+# Hosts added here after `terraform apply`, then run `make configure` to regenerate inventory.
+# Each top-level key is an ansible group. Hosts within each group are ansible inventory entries.
+hosts:
+  sandbox:
+    # sandbox-vm-01:
+    #   ansible_host: 192.168.20.100
+  minio:
+    # minio-server:
+    #   ansible_host: 192.168.1.150
+    #   ansible_user: root

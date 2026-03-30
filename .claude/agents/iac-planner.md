@@ -70,4 +70,4 @@ Produce a structured plan with this format:
 - Always check if an existing module can be reused before proposing a new one
 - Flag any resource that requires `Sys.Modify` or other privileges not in the `TerraformSandbox` role
 - Plans for production environment must note: "Operator applies this plan manually from their workstation"
-- Terraform root is `terraform/` — var-files are `terraform/sandbox.tfvars` and `terraform/production.tfvars`
+- Terraform root is `terraform/` — var-files (`terraform/sandbox.tfvars`, `terraform/production.tfvars`) are generated from `config/<env>.yml`. In the Variables Required table, use `config YAML` as the Source for values the operator sets in the config file, `envrc` for secrets.

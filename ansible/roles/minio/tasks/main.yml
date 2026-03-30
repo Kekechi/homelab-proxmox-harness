@@ -1,4 +1,24 @@
 ---
+- name: Verify minio_checksum is set
+  ansible.builtin.assert:
+    that:
+      - minio_checksum is defined
+      - minio_checksum | length > 0
+    fail_msg: >
+      minio_checksum must be set before running this role.
+      Get the current SHA256 from: https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum
+      Set it in ansible/roles/minio/defaults/main.yml or as an extra variable.
+
+- name: Verify minio_root_user is set
+  ansible.builtin.assert:
+    that:
+      - minio_root_user is defined
+      - minio_root_user | length > 0
+    fail_msg: >
+      minio_root_user must be set before running this role.
+      Add it to ansible vault: ansible/inventory/group_vars/all/vault.yml
+      See ansible/inventory/group_vars/all/vault.yml.example for the expected variables.
+
 - name: Create minio group
   ansible.builtin.group:
     name: minio-user
@@ -26,6 +46,14 @@
     dest: /usr/local/bin/minio
     mode: "0755"
     checksum: "sha256:{{ minio_checksum }}"
+
+- name: Create MinIO config directory
+  ansible.builtin.file:
+    path: /etc/minio
+    state: directory
+    owner: minio-user
+    group: minio-user
+    mode: "0750"
 
 - name: Create MinIO environment file
   ansible.builtin.template:

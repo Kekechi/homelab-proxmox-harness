@@ -61,21 +61,21 @@ variable "vlan_id" {
 }
 
 variable "ipv4_address" {
-  description = "Static IPv4 address in CIDR notation (e.g. '192.168.20.100/24'). Leave empty for DHCP."
+  description = "Static IPv4 address in CIDR notation (e.g. '192.168.20.100/24'). Null = DHCP."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "ipv4_gateway" {
   description = "IPv4 default gateway. Required when ipv4_address is set."
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "ssh_public_key" {
   description = "SSH public key injected via cloud-init for the default user"
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "tags" {

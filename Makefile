@@ -1,12 +1,21 @@
 .DEFAULT_GOAL := help
 SHELL         := /bin/bash
 
-TF_DIR      := terraform
-TF_BUCKET   := tfstate-sandbox
-TF_VARFILE  := sandbox.tfvars
-TF_PLANFILE := sandbox.tfplan
+# ---------------------------------------------------------------------------
+# Environment selection — override with: make <target> ENV=production
+# ---------------------------------------------------------------------------
+ENV ?= sandbox
 
-.PHONY: help build verify-isolation init validate lint plan apply destroy plan-prod \
+# Load generated Makefile variables from config (TF_BUCKET, TF_VARFILE, TF_PLANFILE).
+# Falls back to ENV-derived defaults if .env.mk has not been generated yet.
+-include .env.mk
+TF_BUCKET   ?= tfstate-$(ENV)
+TF_VARFILE  ?= $(ENV).tfvars
+TF_PLANFILE ?= $(ENV).tfplan
+
+TF_DIR := terraform
+
+.PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
         ansible-lint ansible-sandbox ansible-check bootstrap-minio docs-gen
 
 help: ## Show this help
@@ -14,10 +23,17 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # ---------------------------------------------------------------------------
+# Configuration — single source of truth
+# ---------------------------------------------------------------------------
+
+configure: ## Generate tfvars, inventory, envrc, and allowed-cidrs from config/$(ENV).yml
+	python3 scripts/generate-configs.py $(ENV)
+
+# ---------------------------------------------------------------------------
 # Dev container
 # ---------------------------------------------------------------------------
 
-build: ## Rebuild dev container images (run after editing .devcontainer/squid/)
+build: ## Rebuild dev container images (run after make configure updates allowed-cidrs.conf)
 	docker compose -f .devcontainer/docker-compose.yml build
 
 # ---------------------------------------------------------------------------
@@ -28,11 +44,11 @@ verify-isolation: ## Run network isolation verification inside the container
 	bash scripts/verify-isolation.sh
 
 # ---------------------------------------------------------------------------
-# Terraform — sandbox (Claude may plan and apply)
+# Terraform
 # ---------------------------------------------------------------------------
 
-init: ## terraform init for sandbox (TF_BUCKET=tfstate-sandbox by default)
-	cd $(TF_DIR) && terraform init \
+init: ## Initialize Terraform backend for $(ENV) (use -reconfigure to switch environments)
+	cd $(TF_DIR) && terraform init -reconfigure \
 		-backend-config="bucket=$(TF_BUCKET)" \
 		-backend-config="access_key=$$MINIO_ACCESS_KEY" \
 		-backend-config="secret_key=$$MINIO_SECRET_KEY" \
@@ -41,38 +57,34 @@ init: ## terraform init for sandbox (TF_BUCKET=tfstate-sandbox by default)
 validate: ## terraform validate
 	cd $(TF_DIR) && terraform validate
 
-lint: ## tflint + ansible-lint
+fmt: ## terraform fmt (recursive)
+	cd $(TF_DIR) && terraform fmt -recursive
+
+lint: ## terraform fmt check + tflint + ansible-lint
+	cd $(TF_DIR) && terraform fmt -check -recursive
 	cd $(TF_DIR) && tflint
 	ansible-lint ansible/playbooks/
 
-plan: ## terraform plan for sandbox (saves sandbox.tfplan)
+plan: ## Terraform plan for $(ENV) — saves $(ENV).tfplan
 	cd $(TF_DIR) && terraform plan -var-file=$(TF_VARFILE) -out=$(TF_PLANFILE)
+	@if [ "$(ENV)" != "sandbox" ]; then \
+		echo ""; \
+		echo "=========================================================="; \
+		echo " PRODUCTION PLAN SAVED: $(TF_DIR)/$(TF_PLANFILE)"; \
+		echo " Hand this file to the operator for review and apply."; \
+		echo " DO NOT run 'terraform apply' from the dev container."; \
+		echo " Run 'make init' to switch back to sandbox when done."; \
+		echo "=========================================================="; \
+	fi
 
-apply: ## terraform apply sandbox.tfplan (plan-file required)
+apply: ## Terraform apply $(ENV).tfplan (plan file required)
 	@if [ ! -f $(TF_DIR)/$(TF_PLANFILE) ]; then \
-		echo "ERROR: No plan file found at $(TF_DIR)/$(TF_PLANFILE). Run 'make plan' first."; exit 1; \
+		echo "ERROR: No plan file at $(TF_DIR)/$(TF_PLANFILE). Run 'make plan' first."; exit 1; \
 	fi
 	cd $(TF_DIR) && terraform apply $(TF_PLANFILE)
 
-destroy: ## terraform destroy for sandbox (requires confirmation)
+destroy: ## Terraform destroy for $(ENV) (requires confirmation — blocked by hook for production)
 	cd $(TF_DIR) && terraform destroy -var-file=$(TF_VARFILE)
-
-# ---------------------------------------------------------------------------
-# Terraform — production (plan only — human operator applies)
-# ---------------------------------------------------------------------------
-
-plan-prod: ## terraform plan for production (saves production.tfplan — DO NOT apply from here)
-	cd $(TF_DIR) && terraform init \
-		-backend-config="bucket=tfstate-production" \
-		-backend-config="access_key=$$MINIO_ACCESS_KEY" \
-		-backend-config="secret_key=$$MINIO_SECRET_KEY" \
-		-backend-config="endpoints={s3=\"$$MINIO_ENDPOINT\"}" \
-		-reconfigure
-	cd $(TF_DIR) && terraform plan -var-file=production.tfvars -out=production.tfplan
-	@echo ""
-	@echo "Plan saved to $(TF_DIR)/production.tfplan"
-	@echo "Hand this file to the human operator for review and apply."
-	@echo "DO NOT run 'terraform apply' from the dev container for production."
 
 # ---------------------------------------------------------------------------
 # Ansible
@@ -81,11 +93,11 @@ plan-prod: ## terraform plan for production (saves production.tfplan — DO NOT 
 ansible-lint: ## Lint all playbooks
 	ansible-lint ansible/playbooks/
 
-ansible-sandbox: ## Run sandbox playbook
-	ansible-playbook -i ansible/inventory/sandbox/hosts.yml ansible/playbooks/sandbox.yml
+ansible-sandbox: ## Run sandbox playbook against generated inventory
+	ansible-playbook -i ansible/inventory/ ansible/playbooks/sandbox.yml --limit sandbox
 
-ansible-check: ## Dry-run site playbook against sandbox
-	ansible-playbook -i ansible/inventory/sandbox/hosts.yml ansible/playbooks/site.yml --check
+ansible-check: ## Dry-run site playbook against sandbox inventory
+	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit sandbox --check
 
 # ---------------------------------------------------------------------------
 # Bootstrap (one-time)

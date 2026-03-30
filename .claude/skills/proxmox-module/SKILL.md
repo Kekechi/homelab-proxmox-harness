@@ -1,6 +1,7 @@
 ---
 name: proxmox-module
 description: bpg/proxmox provider module authoring patterns for homelab VMs, LXCs, and networks. Covers resource names, required arguments, cloud-init, VLAN, pool scoping, and common pitfalls.
+version: "1.0"
 ---
 
 # Skill: Proxmox Module Authoring
@@ -11,6 +12,9 @@ description: bpg/proxmox provider module authoring patterns for homelab VMs, LXC
 - Adding a new VM, LXC, or network bridge resource
 - Debugging bpg/proxmox provider errors
 - Reviewing module outputs for Ansible inventory consumption
+
+<!-- bpg/proxmox conventions here mirror .claude/rules/terraform-style.md (the canonical source).
+     Update both files when changing any convention. -->
 
 ## Resource Name Reference
 

@@ -1,0 +1,45 @@
+# Production environment configuration
+# Copy to config/production.yml and fill in your values.
+# Run `make configure ENV=production` after editing.
+# WARNING: Production applies are blocked from the dev container.
+# `make plan ENV=production` generates production.tfplan for operator review.
+# The operator applies this plan manually from their workstation.
+
+environment: production
+
+proxmox:
+  node: pve
+  endpoint: "https://192.168.1.100:8006"
+  insecure: true
+
+network:
+  bridge: vmbr0
+  vlan_id: null                          # null = untagged (adjust for your production network)
+  cidr: "192.168.1.0/24"                # Production subnet
+
+storage:
+  datastore_id: local-lvm
+
+terraform:
+  pool_id: ""                            # Production resources are not pool-scoped
+  vm_id_range_start: 100                 # Production IDs start lower than sandbox (200)
+  clone_template_id: 0
+  state_bucket: tfstate-production       # Separate state bucket from sandbox
+
+minio:
+  endpoint: "http://192.168.1.150:9000"
+  host_cidr: "192.168.1.150/32"
+
+ssh:
+  public_key: "ssh-ed25519 AAAAC3... your-key-comment"
+  default_user: ubuntu
+
+hosts:
+  production:
+    # production-vm-01:
+    #   ansible_host: 192.168.1.100
+    #   ansible_user: ubuntu
+  minio:
+    # minio-server:
+    #   ansible_host: 192.168.1.150
+    #   ansible_user: root

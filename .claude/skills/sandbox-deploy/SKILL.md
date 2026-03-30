@@ -1,6 +1,7 @@
 ---
 name: sandbox-deploy
 description: End-to-end workflow for deploying a new VM or LXC to the sandbox using the Planner-Generator-Evaluator pipeline. Covers the full sequence from request to running VM.
+version: "1.0"
 ---
 
 # Skill: Sandbox Deployment Workflow
@@ -95,8 +96,9 @@ After apply, retrieve VM IPs from outputs:
 cd terraform && terraform output -json
 ```
 
-Update `ansible/inventory/sandbox/hosts.yml` with actual IPs, then run playbooks:
+Add the IPs to `config/sandbox.yml` under `hosts.sandbox.<hostname>.ansible_host`, then regenerate inventory and run playbooks:
 ```bash
+make configure
 make ansible-sandbox
 ```
 

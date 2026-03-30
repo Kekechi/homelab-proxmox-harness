@@ -1,0 +1,11 @@
+# Ansible vault file for secret role variables.
+# Copy to vault.yml, fill in real values, then encrypt:
+#   ansible-vault encrypt ansible/inventory/group_vars/all/vault.yml
+#
+# vault.yml is gitignored. NEVER commit the unencrypted file.
+
+# MinIO credentials — used by the minio role to configure the MinIO service.
+# These are the ROOT credentials for the MinIO instance itself (not the Terraform sandbox user).
+# Set these before running: ansible-playbook ansible/playbooks/minio-setup.yml
+minio_root_user: "CHANGE_ME"
+minio_root_password: "CHANGE_ME_STRONG_PASSWORD"

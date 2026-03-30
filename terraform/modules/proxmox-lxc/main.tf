@@ -1,17 +1,18 @@
 resource "proxmox_virtual_environment_container" "this" {
   node_name    = var.node_name
+  vm_id        = var.vm_id
   pool_id      = var.pool_id
   description  = var.description
   tags         = var.tags
   start_on_boot = var.start_on_boot
   unprivileged = var.unprivileged
-  started      = true
+  started      = var.started
 
   initialization {
     hostname = var.hostname
 
     dynamic "ip_config" {
-      for_each = var.ipv4_address != "" ? [1] : []
+      for_each = var.ipv4_address != null ? [1] : []
       content {
         ipv4 {
           address = var.ipv4_address
@@ -21,7 +22,7 @@ resource "proxmox_virtual_environment_container" "this" {
     }
 
     dynamic "ip_config" {
-      for_each = var.ipv4_address == "" ? [1] : []
+      for_each = var.ipv4_address == null ? [1] : []
       content {
         ipv4 {
           address = "dhcp"
@@ -30,7 +31,7 @@ resource "proxmox_virtual_environment_container" "this" {
     }
 
     user_account {
-      password = var.root_password != "" ? var.root_password : null
+      password = var.root_password
     }
   }
 

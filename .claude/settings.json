@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(**/.env*.example)",
+      "Write(**/.env*.example)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +14,33 @@
             "type": "command",
             "command": "bash scripts/hooks/terraform-guard.sh",
             "description": "Block bare terraform apply and production applies from dev container"
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-commit-guard.sh",
+            "description": "Block git commit if sensitive or generated files are staged"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/protected-path-guard.sh",
+            "description": "Block modifications to safety-critical files (.devcontainer, hooks, settings, isolation rules)"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/tf-validate-after-edit.sh",
+            "description": "Run terraform fmt check and validate after .tf file edits"
           }
         ]
       }

@@ -45,7 +45,7 @@ resource "proxmox_virtual_environment_vm" "this" {
 
   initialization {
     dynamic "ip_config" {
-      for_each = var.ipv4_address != "" ? [1] : []
+      for_each = var.ipv4_address != null ? [1] : []
       content {
         ipv4 {
           address = var.ipv4_address
@@ -55,7 +55,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     }
 
     dynamic "ip_config" {
-      for_each = var.ipv4_address == "" ? [1] : []
+      for_each = var.ipv4_address == null ? [1] : []
       content {
         ipv4 {
           address = "dhcp"
@@ -64,7 +64,7 @@ resource "proxmox_virtual_environment_vm" "this" {
     }
 
     dynamic "user_account" {
-      for_each = var.ssh_public_key != "" ? [1] : []
+      for_each = var.ssh_public_key != null ? [1] : []
       content {
         keys = [var.ssh_public_key]
       }
