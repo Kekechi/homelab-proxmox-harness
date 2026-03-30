@@ -9,13 +9,13 @@ environment: production
 
 proxmox:
   node: pve
-  endpoint: "https://192.168.1.100:8006"
+  endpoint: "https://192.168.X.X:8006"
   insecure: true
 
 network:
   bridge: vmbr0
   vlan_id: null                          # null = untagged (adjust for your production network)
-  cidr: "192.168.1.0/24"                # Production subnet
+  cidr: "192.168.X.0/24"                # Production subnet
 
 storage:
   datastore_id: local-lvm
@@ -27,8 +27,8 @@ terraform:
   state_bucket: tfstate-production       # Separate state bucket from sandbox
 
 minio:
-  endpoint: "http://192.168.1.150:9000"
-  host_cidr: "192.168.1.150/32"
+  endpoint: "http://192.168.X.X:9000"
+  host_cidr: "192.168.X.X/32"
 
 ssh:
   public_key: "ssh-ed25519 AAAAC3... your-key-comment"
@@ -37,9 +37,9 @@ ssh:
 hosts:
   production:
     # production-vm-01:
-    #   ansible_host: 192.168.1.100
+    #   ansible_host: 192.168.X.X
     #   ansible_user: ubuntu
   minio:
     # minio-server:
-    #   ansible_host: 192.168.1.150
+    #   ansible_host: 192.168.X.X
     #   ansible_user: root
