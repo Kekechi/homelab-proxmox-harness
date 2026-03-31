@@ -23,9 +23,11 @@ Claude's token physically cannot touch resources outside `/pool/sandbox`. Even i
 
 ## TerraformSandbox Role Privileges
 
-Allowed: `Datastore.AllocateSpace`, `Datastore.Audit`, `Pool.Audit`, `SDN.Use`, `VM.Allocate`, `VM.Audit`, `VM.Clone`, `VM.Config.*`, `VM.Console`, `VM.Migrate`, `VM.Monitor`, `VM.PowerMgmt`, `VM.Snapshot`, `VM.Snapshot.Rollback`
+Allowed: `Datastore.AllocateSpace`, `Datastore.AllocateTemplate`, `Datastore.Audit`, `Pool.Audit`, `SDN.Use`, `VM.Allocate`, `VM.Audit`, `VM.Clone`, `VM.Config.*`, `VM.Console`, `VM.Migrate`, `VM.Monitor`, `VM.PowerMgmt`, `VM.Snapshot`, `VM.Snapshot.Rollback`
 
-Excluded: `Sys.Modify`, `Sys.PowerMgmt`, `Permissions.Modify`, `User.Modify`, `Pool.Allocate`
+Excluded: `Sys.Modify`, `Sys.Audit`, `Sys.PowerMgmt`, `Permissions.Modify`, `User.Modify`, `Pool.Allocate`
+
+Network bridge creation (`proxmox_virtual_environment_network_linux_bridge`) requires `Sys.Modify` at `/nodes/<node>`, which is intentionally excluded. Bridges must be created by the operator token.
 
 ## MinIO Identities
 
