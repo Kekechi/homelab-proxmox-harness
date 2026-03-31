@@ -87,8 +87,8 @@ fi
 HTTP_CODE=$(curl --connect-timeout 5 --silent --output /dev/null \
     --write-out "%{http_code}" \
     --proxy "http://squid-proxy:3128" \
-    "https://google.com" 2>/dev/null || echo "000")
-if [[ "${HTTP_CODE}" == "403" ]] || [[ "${HTTP_CODE}" == "000" ]]; then
+    "https://google.com" 2>/dev/null; true)
+if [[ "${HTTP_CODE}" == "403" ]] || [[ "${HTTP_CODE}" =~ ^0+$ ]]; then
     pass "Squid correctly blocks google.com (HTTP ${HTTP_CODE})"
 else
     fail "Squid did NOT block google.com (HTTP ${HTTP_CODE}) — ACL may be misconfigured"
@@ -106,7 +106,7 @@ else
     HTTP_CODE=$(curl --connect-timeout 10 --silent --output /dev/null \
         --write-out "%{http_code}" \
         --proxy "http://squid-proxy:3128" \
-        "${MINIO_ENDPOINT}/minio/health/live" 2>/dev/null || echo "000")
+        "${MINIO_ENDPOINT%/}/minio/health/live" 2>/dev/null; true)
     if [[ "${HTTP_CODE}" =~ ^[23] ]]; then
         pass "MinIO reachable through Squid at ${MINIO_ENDPOINT} (HTTP ${HTTP_CODE})"
     else
@@ -125,7 +125,7 @@ else
         --write-out "%{http_code}" \
         --proxy "http://squid-proxy:3128" \
         --insecure \
-        "${PROXMOX_VE_ENDPOINT}api2/json" 2>/dev/null || echo "000")
+        "${PROXMOX_VE_ENDPOINT%/}/api2/json" 2>/dev/null; true)
     if [[ "${HTTP_CODE}" =~ ^[23] ]] || [[ "${HTTP_CODE}" == "401" ]]; then
         pass "Sandbox Proxmox reachable through Squid at ${PROXMOX_VE_ENDPOINT} (HTTP ${HTTP_CODE})"
     else

@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     software-properties-common \
     ncat \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Terraform
@@ -55,5 +57,8 @@ RUN echo 'eval "$(direnv hook bash)"' >> /etc/bash.bashrc
 # Terraform plugin cache directory
 RUN mkdir -p /home/vscode/.terraform.d/plugin-cache \
     && chown -R vscode:vscode /home/vscode/.terraform.d
+
+# Install Claude Code globally — runs as root so it lands in /usr/local/bin
+RUN npm install -g @anthropic-ai/claude-code
 
 USER vscode

@@ -21,7 +21,7 @@ NEVER edit generated files directly — they are overwritten on the next `make c
 |---|---|
 | `terraform/<env>.tfvars` | `proxmox`, `network`, `storage`, `terraform`, `ssh` sections |
 | `ansible/inventory/hosts.yml` | `hosts` section |
-| `.devcontainer/squid/allowed-cidrs.conf` | `network.cidr`, `minio.host_cidr` |
+| `.devcontainer/squid/allowed-cidrs.conf` | `network.cidr`, `minio.host_cidr`, `proxmox.host_cidr` |
 | `.envrc` (non-secret portion) | `proxmox.endpoint`, `proxmox.insecure`, `minio.endpoint` |
 | `.env.mk` | `terraform.state_bucket`, `environment` |
 
@@ -47,7 +47,7 @@ make configure ENV=production
 
 - NEVER put API tokens, passwords, or keys in `config/<env>.yml`
 - NEVER edit `terraform/<env>.tfvars`, `ansible/inventory/hosts.yml`, or `.devcontainer/squid/allowed-cidrs.conf` directly
-- CIDR fields (`network.cidr`, `minio.host_cidr`) MUST use CIDR notation with prefix length (`/24`, `/32`) — never bare IPs
+- CIDR fields (`network.cidr`, `minio.host_cidr`, `proxmox.host_cidr`) MUST use CIDR notation with prefix length (`/24`, `/32`) — never bare IPs
 - `config/<env>.yml` is gitignored. Only `*.yml.example` files are committed.
 
 ## Devcontainer Exception

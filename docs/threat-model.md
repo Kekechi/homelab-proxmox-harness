@@ -64,6 +64,8 @@ Claude Code has write access to the entire workspace mount, including
   before rebuilding.
 - CLAUDE.md explicitly prohibits modifying `.devcontainer/` files.
 - A pre-commit hook flags changes to `.devcontainer/` for operator review.
+- Both containers run with `cap_drop: ALL`, preventing a rogue process from adding
+  its own iptables rules or modifying network configuration from inside the container.
 
 **Residual risk:** If an operator rebuilds without reviewing the diff, modified Squid
 config could expand network access.

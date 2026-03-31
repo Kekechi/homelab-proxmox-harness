@@ -12,7 +12,7 @@ Claude Code runs inside a dev container with a Squid forward proxy for network i
 
 ## Explicit Prohibitions
 
-- **NEVER** modify files under `.devcontainer/` — Squid config is baked into the image; changes only take effect after operator rebuilds. Exception: `make configure` may regenerate `allowed-cidrs.conf`.
+- **NEVER** modify files under `.devcontainer/` autonomously — Squid config is baked into the image; changes only take effect after operator rebuilds. Exception: `make configure` may regenerate `allowed-cidrs.conf`. **Operator-directed edits are permitted when the operator explicitly requests them** (i.e. "edit this file", not inferred intent).
 - **NEVER** run `terraform apply` without a plan file (`terraform plan -out=<file>` first)
 - **NEVER** apply Terraform for production — produce a plan file and hand it to the operator
 - **NEVER** commit `.envrc`, `config/*.yml`, or any file containing tokens, passwords, or secret keys
@@ -114,6 +114,6 @@ Before any commit:
 - [ ] `config/*.yml` (not `.example`) is not staged
 - [ ] No `*.tfstate`, `*.tfvars`, or `*.tfplan` files staged
 - [ ] No credentials or IPs hardcoded in any `.tf` file
-- [ ] `.devcontainer/` changes flagged for operator review (except `allowed-cidrs.conf` from `make configure`)
+- [ ] `.devcontainer/` changes are operator-directed (not autonomous) and flagged for rebuild (except `allowed-cidrs.conf` from `make configure`)
 - [ ] `make lint` passes (tflint + ansible-lint)
 - [ ] Any `terraform apply` in this session targeted sandbox only

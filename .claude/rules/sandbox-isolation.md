@@ -12,8 +12,10 @@ These rules are always active. They enforce the safety boundary between Claude's
 
 ## File System Constraints
 
-- NEVER modify files under `.devcontainer/` — Squid config is baked into the image and changes have no effect until the operator rebuilds
-  - **Exception:** `make configure` may regenerate `.devcontainer/squid/allowed-cidrs.conf` as a downstream output of the centralized config system. This is the only permitted modification. The operator must still run `make build` + reopen the container for it to take effect.
+- NEVER modify files under `.devcontainer/` autonomously — Squid config is baked into the image and changes have no effect until the operator rebuilds
+  - **Exception 1:** `make configure` may regenerate `.devcontainer/squid/allowed-cidrs.conf` as a downstream output of the centralized config system.
+  - **Exception 2:** Operator-directed edits are permitted when the operator explicitly requests them (e.g. "edit this file") — not when intent is inferred.
+  - The operator must run `make build` + reopen the container for any change to take effect.
 - NEVER commit `.envrc`, `*.tfvars`, `*.tfstate`, or `*.tfplan` files
 - NEVER write credentials to any file
 

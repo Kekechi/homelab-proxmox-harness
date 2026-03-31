@@ -9,6 +9,7 @@ proxmox:
   node: pve                              # Proxmox node name (run: pvesh get /nodes)
   endpoint: "https://192.168.1.100:8006" # Proxmox API URL (include trailing slash if needed)
   insecure: true                         # true = accept self-signed TLS cert
+  host_cidr: "192.168.1.100/32"          # Proxmox host IP in CIDR notation (for Squid allowlist)
 
 network:
   bridge: vmbr0                          # Network bridge for VMs/LXCs

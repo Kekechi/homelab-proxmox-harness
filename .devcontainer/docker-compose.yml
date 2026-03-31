@@ -31,8 +31,12 @@ services:
     networks:
       - isolated
       - external
+    security_opt:
+      - no-new-privileges:true                                                                                                                         
+    cap_drop:                                                                                                                                          
+      - ALL    
     healthcheck:
-      test: ["CMD-SHELL", "squidclient -h 127.0.0.1 mgr:info 2>/dev/null | grep -q 'Squid Object Cache'"]
+      test: ["CMD-SHELL", "squid -k check 2>/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,6 +56,9 @@ services:
       - ..:/workspace:cached
       # Persist Terraform provider cache across rebuilds
       - terraform-plugin-cache:/home/vscode/.terraform.d/plugin-cache
+      # Host ~/.claude mount — persists Claude Code session, memory, and settings
+      # across container rebuilds without re-authentication
+      - ~/.claude:/home/vscode/.claude:cached
     environment:
       # Proxy — ALL HTTP/HTTPS goes through Squid
       - http_proxy=http://squid-proxy:3128
@@ -64,11 +71,17 @@ services:
       - no_proxy=localhost,127.0.0.1
       # Terraform provider cache
       - TF_PLUGIN_CACHE_DIR=/home/vscode/.terraform.d/plugin-cache
+      # Claude Code config directory (matches the volume mount above)
+      - CLAUDE_CONFIG_DIR=/home/vscode/.claude
     depends_on:
       squid-proxy:
         condition: service_healthy
     networks:
       - isolated
+    security_opt:
+      - no-new-privileges:true                                                                                                                         
+    cap_drop:                                                                                                                                          
+      - ALL    
     command: sleep infinity
     user: vscode
 
