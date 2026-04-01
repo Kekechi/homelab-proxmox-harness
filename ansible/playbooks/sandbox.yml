@@ -1,5 +1,0 @@
----
-- name: Configure sandbox VMs
-  hosts: sandbox
-  roles:
-    - common

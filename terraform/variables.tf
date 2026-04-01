@@ -29,7 +29,7 @@ variable "vlan_id" {
 variable "network_cidr" {
   description = "CIDR of the target network (informational — used in docs and Squid ACL reference)"
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "vm_id_range_start" {
@@ -47,5 +47,5 @@ variable "clone_template_id" {
 variable "ssh_public_key" {
   description = "SSH public key to inject via cloud-init into provisioned VMs/LXCs"
   type        = string
-  default     = ""
+  default     = null
 }

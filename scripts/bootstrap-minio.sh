@@ -1,57 +1,80 @@
 #!/usr/bin/env bash
 # =============================================================================
-# bootstrap-minio.sh — One-time MinIO state backend setup
+# bootstrap-minio.sh — One-time MinIO state backend setup (per environment)
 #
-# Creates:
-#   - tfstate-sandbox bucket  (Claude's scoped key: read/write sandbox bucket only)
-#   - tfstate-production bucket (operator's full-admin key)
-#   - Versioning enabled on both (state file recovery)
-#   - IAM policy + user for sandbox-scoped access key
+# Creates (for the given environment):
+#   - tfstate-<env> bucket       (versioning enabled)
+#   - terraform-<env> IAM policy (read/write tfstate-<env> bucket only)
+#   - terraform-<env> IAM user   (bound to the above policy)
+#
+# Run once per environment, against that environment's MinIO instance.
+#
+# Usage:
+#   bash scripts/bootstrap-minio.sh [ENV]
+#   ENV defaults to the value in .env.mk (or "sandbox" if not found).
 #
 # Requirements:
 #   - mcli (MinIO Client) installed in the dev container
 #   - MinIO must be running and reachable at MINIO_ENDPOINT
 #   - MINIO_ROOT_USER and MINIO_ROOT_PASSWORD must be set in .envrc
 #
-# Run from the dev container. This script is idempotent.
+# This script is idempotent — safe to re-run.
 # =============================================================================
 
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Resolve ENV: argument > .env.mk > default "sandbox"
+# ---------------------------------------------------------------------------
+if [[ "${1:-}" != "" ]]; then
+    ENV="${1}"
+else
+    ENVMK_FILE="$(dirname "$0")/../.env.mk"
+    if [[ -f "${ENVMK_FILE}" ]]; then
+        ENV=$(grep -E '^ENV\s*:?=' "${ENVMK_FILE}" | head -1 | sed 's/.*:*=\s*//' | tr -d '[:space:]')
+        ENV="${ENV:-sandbox}"
+    else
+        ENV="sandbox"
+    fi
+fi
 
 : "${MINIO_ENDPOINT:?Set MINIO_ENDPOINT in .envrc}"
 : "${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .envrc (MinIO admin username)}"
 : "${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .envrc (MinIO admin password)}"
 
-ALIAS="homelab-minio"
-SANDBOX_BUCKET="tfstate-sandbox"
-PRODUCTION_BUCKET="tfstate-production"
-SANDBOX_USER="terraform-sandbox"
+ALIAS="homelab-minio-${ENV}"
+BUCKET="tfstate-${ENV}"
+IAM_USER="terraform-${ENV}"
+POLICY_NAME="terraform-${ENV}-policy"
+
+echo "==> Bootstrapping MinIO for environment: ${ENV}"
+echo "    Endpoint : ${MINIO_ENDPOINT}"
+echo "    Bucket   : ${BUCKET}"
+echo "    IAM user : ${IAM_USER}"
+echo ""
 
 echo "==> Configuring mcli alias..."
 mcli alias set "${ALIAS}" "${MINIO_ENDPOINT}" \
     "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
 
 # ---------------------------------------------------------------------------
-# Create buckets
+# Create bucket
 # ---------------------------------------------------------------------------
-echo "==> Creating buckets..."
-mcli mb --ignore-existing "${ALIAS}/${SANDBOX_BUCKET}"
-mcli mb --ignore-existing "${ALIAS}/${PRODUCTION_BUCKET}"
+echo "==> Creating bucket ${BUCKET}..."
+mcli mb --ignore-existing "${ALIAS}/${BUCKET}"
 
 # ---------------------------------------------------------------------------
 # Enable versioning (allows state file recovery)
 # ---------------------------------------------------------------------------
-echo "==> Enabling versioning..."
-mcli version enable "${ALIAS}/${SANDBOX_BUCKET}"
-mcli version enable "${ALIAS}/${PRODUCTION_BUCKET}"
+echo "==> Enabling versioning on ${BUCKET}..."
+mcli version enable "${ALIAS}/${BUCKET}"
 
 # ---------------------------------------------------------------------------
-# Create sandbox-scoped IAM policy
-# Policy: read/write tfstate-sandbox bucket only
-# Claude Code uses a key bound to this policy.
+# Create environment-scoped IAM policy
+# Policy: read/write tfstate-<env> bucket only
 # ---------------------------------------------------------------------------
-echo "==> Creating sandbox IAM policy..."
-SANDBOX_POLICY=$(cat <<'EOF'
+echo "==> Creating IAM policy ${POLICY_NAME}..."
+POLICY=$(cat <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -65,8 +88,8 @@ SANDBOX_POLICY=$(cat <<'EOF'
         "s3:GetBucketLocation"
       ],
       "Resource": [
-        "arn:aws:s3:::tfstate-sandbox",
-        "arn:aws:s3:::tfstate-sandbox/*"
+        "arn:aws:s3:::${BUCKET}",
+        "arn:aws:s3:::${BUCKET}/*"
       ]
     }
   ]
@@ -74,42 +97,40 @@ SANDBOX_POLICY=$(cat <<'EOF'
 EOF
 )
 
-echo "${SANDBOX_POLICY}" | mcli admin policy create \
-    "${ALIAS}" "terraform-sandbox-policy" /dev/stdin || \
+echo "${POLICY}" | mcli admin policy create \
+    "${ALIAS}" "${POLICY_NAME}" /dev/stdin 2>/dev/null || \
     echo "  Policy already exists — updating..."
-echo "${SANDBOX_POLICY}" | mcli admin policy create \
-    "${ALIAS}" "terraform-sandbox-policy" /dev/stdin 2>/dev/null || true
+echo "${POLICY}" | mcli admin policy create \
+    "${ALIAS}" "${POLICY_NAME}" /dev/stdin 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Create sandbox IAM user
+# Create IAM user
 # ---------------------------------------------------------------------------
-echo "==> Creating sandbox IAM user (${SANDBOX_USER})..."
-SANDBOX_ACCESS_KEY="${SANDBOX_USER}-$(openssl rand -hex 8)"
-SANDBOX_SECRET_KEY="$(openssl rand -base64 32)"
+echo "==> Creating IAM user (${IAM_USER})..."
+ACCESS_KEY="${IAM_USER}-$(openssl rand -hex 8)"
+SECRET_KEY="$(openssl rand -base64 32)"
 
-mcli admin user add "${ALIAS}" "${SANDBOX_ACCESS_KEY}" "${SANDBOX_SECRET_KEY}" || \
+mcli admin user add "${ALIAS}" "${ACCESS_KEY}" "${SECRET_KEY}" || \
     echo "  User already exists"
 
-mcli admin policy attach "${ALIAS}" "terraform-sandbox-policy" \
-    --user "${SANDBOX_ACCESS_KEY}" || true
+mcli admin policy attach "${ALIAS}" "${POLICY_NAME}" \
+    --user "${ACCESS_KEY}" || true
 
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " MinIO bootstrap complete"
+echo " MinIO bootstrap complete (${ENV})"
 echo "============================================================"
 echo ""
-echo " Buckets created:"
+echo " Bucket created:"
 mcli ls "${ALIAS}"
 echo ""
-echo " Sandbox-scoped IAM credentials — add to .envrc:"
-echo "   export MINIO_ACCESS_KEY=\"${SANDBOX_ACCESS_KEY}\""
-echo "   export MINIO_SECRET_KEY=\"${SANDBOX_SECRET_KEY}\""
+echo " Scoped IAM credentials — add to .envrc:"
+echo "   export MINIO_ACCESS_KEY=\"${ACCESS_KEY}\""
+echo "   export MINIO_SECRET_KEY=\"${SECRET_KEY}\""
 echo ""
 echo " NOTE: Store these values securely. They will not be shown again."
 echo " The MINIO_ROOT_* credentials in .envrc retain full admin access."
-echo ""
-echo " Production state bucket (${PRODUCTION_BUCKET}) requires the admin key."
-echo " Claude's sandbox key CANNOT access ${PRODUCTION_BUCKET}."
+echo " This key can ONLY access ${BUCKET}."

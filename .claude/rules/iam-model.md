@@ -31,10 +31,19 @@ Network bridge creation (`proxmox_virtual_environment_network_linux_bridge`) req
 
 ## MinIO Identities
 
-| | Claude's key | Operator's key |
+Each environment has its own MinIO instance. The dev container is configured for one
+environment at a time (Squid allowlist is built from a single `config/<env>.yml`).
+
+| | Claude's key (sandbox) | Operator's key |
 |---|---|---|
-| **Bucket access** | `tfstate-sandbox` only | All buckets |
+| **MinIO instance** | Sandbox MinIO only | Per-environment MinIO |
+| **Bucket access** | `tfstate-sandbox` only | `tfstate-<env>` on that instance |
 | **Operations** | GetObject, PutObject, ListBucket | Full admin |
 | **In dev container** | Yes (`MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`) | No |
 
-Claude cannot read or write `tfstate-production`. The MinIO IAM policy enforces this at the bucket level. See `scripts/bootstrap-minio.sh` for the policy definition.
+The scoped IAM key is created by `scripts/bootstrap-minio.sh <env>` — one key per
+environment, bound to a policy that allows access to `tfstate-<env>` only. Claude's key
+physically cannot reach the production MinIO instance (different VNet, not in Squid allowlist).
+
+To switch the dev container to a different environment: `make configure ENV=<env>` +
+`make build` + reopen container.

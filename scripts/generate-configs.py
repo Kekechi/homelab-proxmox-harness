@@ -218,16 +218,16 @@ def gen_envrc(cfg: dict, env: str) -> str:
         # Proxmox — endpoint auto-populated from config, token is a secret
         export PROXMOX_VE_ENDPOINT="{endpoint}"
         export PROXMOX_VE_INSECURE="{insecure}"
-        export PROXMOX_VE_API_TOKEN="{CHANGE_ME}"  # e.g. lab-sandbox-admin@pve!claude-sandbox=<uuid>
+        export PROXMOX_VE_API_TOKEN="{CHANGE_ME}"  # e.g. terraform@pve!claude-{env}=<uuid>
 
         # MinIO root credentials — used by Ansible (minio role) and bootstrap-minio.sh
         export MINIO_ROOT_USER="{CHANGE_ME}"      # MinIO root/admin username
         export MINIO_ROOT_PASSWORD="{CHANGE_ME}"  # MinIO root/admin password
 
-        # MinIO scoped key — endpoint auto-populated; keys from: bash scripts/bootstrap-minio.sh
+        # MinIO scoped key — endpoint auto-populated; keys from: bash scripts/bootstrap-minio.sh {env}
         export MINIO_ENDPOINT="{minio_endpoint}"
-        export MINIO_ACCESS_KEY="{CHANGE_ME}"  # terraform-sandbox scoped key (read/write tfstate-sandbox only)
-        export MINIO_SECRET_KEY="{CHANGE_ME}"  # terraform-sandbox scoped secret
+        export MINIO_ACCESS_KEY="{CHANGE_ME}"  # terraform-{env} scoped key (read/write tfstate-{env} only)
+        export MINIO_SECRET_KEY="{CHANGE_ME}"  # terraform-{env} scoped secret
 
     """)
 

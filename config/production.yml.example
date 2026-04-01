@@ -11,6 +11,7 @@ proxmox:
   node: pve
   endpoint: "https://192.168.X.X:8006"
   insecure: true
+  host_cidr: "192.168.X.X/32"          # Proxmox host IP in CIDR notation (for Squid allowlist)
 
 network:
   bridge: vmbr0

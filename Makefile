@@ -16,7 +16,7 @@ TF_PLANFILE ?= $(ENV).tfplan
 TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
-        ansible-lint ansible-sandbox ansible-check bootstrap-minio docs-gen
+        ansible-lint ansible-env ansible-check ansible-minio bootstrap-minio docs-gen
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -93,11 +93,11 @@ destroy: ## Terraform destroy for $(ENV) (requires confirmation — blocked by h
 ansible-lint: ## Lint all playbooks
 	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
-ansible-sandbox: ## Run sandbox playbook against generated inventory
-	ansible-playbook -i ansible/inventory/ ansible/playbooks/sandbox.yml --limit sandbox
+ansible-env: ## Run site playbook against $(ENV) inventory group
+	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit $(ENV)
 
-ansible-check: ## Dry-run site playbook against sandbox inventory
-	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit sandbox --check
+ansible-check: ## Dry-run site playbook against $(ENV) inventory group
+	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit $(ENV) --check
 
 ansible-minio: ## Deploy MinIO via Ansible (runs minio-setup.yml against minio group)
 	ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
@@ -106,8 +106,8 @@ ansible-minio: ## Deploy MinIO via Ansible (runs minio-setup.yml against minio g
 # Bootstrap (one-time)
 # ---------------------------------------------------------------------------
 
-bootstrap-minio: ## Bootstrap MinIO buckets and sandbox-scoped IAM (one-time)
-	bash scripts/bootstrap-minio.sh
+bootstrap-minio: ## Bootstrap MinIO bucket and scoped IAM for $(ENV) (one-time per environment)
+	bash scripts/bootstrap-minio.sh $(ENV)
 
 # ---------------------------------------------------------------------------
 # Documentation
