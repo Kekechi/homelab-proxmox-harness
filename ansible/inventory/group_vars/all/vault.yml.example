@@ -1,11 +1,16 @@
-# Ansible vault file for secret role variables.
-# Copy to vault.yml, fill in real values, then encrypt:
-#   ansible-vault encrypt ansible/inventory/group_vars/all/vault.yml
+# Ansible vault file — for project secrets that cannot live in .envrc.
 #
-# vault.yml is gitignored. NEVER commit the unencrypted file.
-
-# MinIO credentials — used by the minio role to configure the MinIO service.
-# These are the ROOT credentials for the MinIO instance itself (not the Terraform sandbox user).
-# Set these before running: ansible-playbook ansible/playbooks/minio-setup.yml
-minio_root_user: "CHANGE_ME"
-minio_root_password: "CHANGE_ME_STRONG_PASSWORD"
+# MinIO credentials (minio_root_user / minio_root_password) have moved to .envrc.
+# The minio role reads them via lookup('env', 'MINIO_ROOT_USER') at runtime.
+#
+# Use this file for future secrets that Ansible roles need encrypted at rest
+# (e.g. external API keys, TLS certificates, SMTP passwords).
+#
+# To create:
+#   cp vault.yml.example vault.yml
+#   # fill in values
+#   ansible-vault encrypt vault.yml
+#
+# The vault password lives in ANSIBLE_VAULT_PASSWORD in .envrc,
+# read at runtime by ansible/vault-pass.sh.
+# vault.yml is gitignored — never commit the unencrypted file.

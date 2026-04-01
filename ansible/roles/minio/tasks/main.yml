@@ -9,15 +9,19 @@
       Get the current SHA256 from: https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum
       Set it in ansible/roles/minio/defaults/main.yml or as an extra variable.
 
-- name: Verify minio_root_user is set
+- name: Verify MINIO_ROOT_USER env var is set
   ansible.builtin.assert:
     that:
-      - minio_root_user is defined
-      - minio_root_user | length > 0
+      - lookup('env', 'MINIO_ROOT_USER') | length > 0
     fail_msg: >
-      minio_root_user must be set before running this role.
-      Add it to ansible vault: ansible/inventory/group_vars/all/vault.yml
-      See ansible/inventory/group_vars/all/vault.yml.example for the expected variables.
+      MINIO_ROOT_USER is not set. Add it to .envrc and run: source .envrc
+
+- name: Verify MINIO_ROOT_PASSWORD env var is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'MINIO_ROOT_PASSWORD') | length > 0
+    fail_msg: >
+      MINIO_ROOT_PASSWORD is not set. Add it to .envrc and run: source .envrc
 
 - name: Create minio group
   ansible.builtin.group:
@@ -62,7 +66,7 @@
     owner: minio-user
     group: minio-user
     mode: "0600"
-  notify: restart minio
+  notify: Restart minio
 
 - name: Install MinIO systemd service
   ansible.builtin.template:
@@ -70,8 +74,8 @@
     dest: /etc/systemd/system/minio.service
     mode: "0644"
   notify:
-    - reload systemd
-    - restart minio
+    - Reload systemd
+    - Restart minio
 
 - name: Enable and start MinIO
   ansible.builtin.systemd:

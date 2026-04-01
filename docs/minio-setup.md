@@ -13,91 +13,123 @@ It is accessible from any device on the internal network (and via VPN).
 
 ---
 
-## Step 1 — Create the LXC on Proxmox
+## Step 0 — Generate SSH keypair (dev container, one-time)
 
-In the Proxmox UI or via CLI:
+The dev container cannot `pct exec` into LXCs (PVE 9 removed this API endpoint). Instead,
+generate an SSH keypair in the dev container and inject the public key via the Proxmox GUI shell.
 
 ```bash
-# Download Ubuntu 24.04 LXC template (if not already present)
-pveam download local ubuntu-24.04-standard_24.04-2_amd64.tar.zst
+# From the dev container workspace root
+mkdir -p .ssh
+ssh-keygen -t ed25519 -C "claude-sandbox" -f .ssh/id_ed25519 -N ""
+cat .ssh/id_ed25519.pub  # Copy this for Step 1
+```
 
-# Create LXC (adjust VMID, storage, and IP to your environment)
-pct create 150 local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst \
-  --hostname minio \
-  --cores 1 \
-  --memory 1024 \
-  --swap 512 \
-  --rootfs local-lvm:8 \
-  --net0 name=eth0,bridge=vmbr0,ip=192.168.X.X/24,gw=192.168.X.1 \
-  --unprivileged 1 \
-  --start 1
+The key lives at `.ssh/id_ed25519` (gitignored). It is accessible inside the container at
+`/workspace/.ssh/id_ed25519` via the existing workspace bind mount — no extra volume needed.
+
+Update `config/sandbox.yml` with the public key and regenerate:
+```bash
+# Set ssh.public_key in config/sandbox.yml, then:
+make configure
+```
+
+**Host access (optional):** Symlink into host `~/.ssh` for manual SSH:
+```bash
+ln -s /path/to/project/.ssh/id_ed25519 ~/.ssh/id_ed25519_sandbox
+# Then: ssh -i ~/.ssh/id_ed25519_sandbox root@10.10.40.100
+```
+
+---
+
+## Step 1 — Bootstrap SSH on the LXC (operator, Proxmox GUI shell)
+
+The LXC (VM ID 100, IP 10.10.40.100) starts blank — no sshd, no keys. Run these commands
+in the **Proxmox node shell** (not the LXC console) to prepare it:
+
+```bash
+# Install openssh-server
+pct exec 100 -- apt-get update
+pct exec 100 -- apt-get install -y openssh-server
+
+# Inject SSH public key for root
+pct exec 100 -- mkdir -p /root/.ssh
+pct exec 100 -- chmod 700 /root/.ssh
+pct exec 100 -- bash -c 'echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIORd3TLyUldIEIJfsOe75l+r6/QIUa1GYbB5f56AhwIo claude-sandbox" > /root/.ssh/authorized_keys'
+pct exec 100 -- chmod 600 /root/.ssh/authorized_keys
+
+# Start sshd
+pct exec 100 -- systemctl enable ssh
+pct exec 100 -- systemctl start ssh
+```
+
+Verify from the dev container:
+```bash
+ssh -i /workspace/.ssh/id_ed25519 \
+    -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+    -o StrictHostKeyChecking=accept-new \
+    root@10.10.40.100 hostname
 ```
 
 ---
 
 ## Step 2 — Install MinIO via Ansible
 
+Set up vault credentials before running the playbook:
+
 ```bash
-# Add the MinIO LXC to config/sandbox.yml under the hosts.minio group:
-#
-# hosts:
-#   minio:
-#     minio-server:
-#       ansible_host: 192.168.X.X
-#       ansible_user: root
-#
-# Then regenerate the inventory:
-make configure
+# Fill in MinIO root credentials
+vim ansible/inventory/group_vars/all/vault.yml
+# Set minio_root_user and minio_root_password, then encrypt:
+ansible-vault encrypt ansible/inventory/group_vars/all/vault.yml
 
-# Set up ansible vault with MinIO root credentials before running the playbook.
-# See ansible/inventory/group_vars/all/vault.yml.example for required variables.
+# Fetch MinIO binary checksum from the LXC (which has direct internet access)
+ssh root@10.10.40.100 \
+  "curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum" \
+  | awk '{print $1}'
+# Set the result in ansible/roles/minio/defaults/main.yml -> minio_checksum
+```
 
+Run the playbook:
+```bash
+make ansible-minio
+# or manually:
 ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
 ```
 
-Or manually inside the LXC:
-
+Verify:
 ```bash
-curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
-  -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio
-
-# Create data directory and user
-useradd -r -s /sbin/nologin minio-user
-mkdir -p /var/lib/minio/data
-chown -R minio-user:minio-user /var/lib/minio
-
-# Create environment file
-cat > /etc/minio/minio.env <<EOF
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=CHANGE_ME_SECURE_PASSWORD
-MINIO_VOLUMES=/var/lib/minio/data
-MINIO_OPTS="--console-address :9001"
-EOF
-
-# Install and start systemd service (see Ansible role for service template)
-systemctl enable --now minio
+curl -s http://10.10.40.100:9000/minio/health/live
+# Expected: HTTP 200
 ```
 
 ---
 
 ## Step 3 — Bootstrap Buckets and IAM
 
-Run from host or dev container (MinIO must be reachable):
-
+The `mc` (MinIO Client) binary must be installed in the dev container. It is included in the
+Dockerfile — rebuild the container if not already present:
 ```bash
-# Set admin credentials
-export MINIO_ENDPOINT="http://192.168.X.X:9000"
-export MINIO_ADMIN_ACCESS_KEY="minioadmin"
-export MINIO_ADMIN_SECRET_KEY="CHANGE_ME_SECURE_PASSWORD"
+make build  # then reopen dev container
+```
 
-# Run bootstrap script — creates buckets, versioning, sandbox IAM policy + user
+Run the bootstrap script with the MinIO admin credentials from your vault:
+```bash
+export MINIO_ENDPOINT="http://10.10.40.100:9000"
+export MINIO_ADMIN_ACCESS_KEY="<minio_root_user from vault>"
+export MINIO_ADMIN_SECRET_KEY="<minio_root_password from vault>"
 bash scripts/bootstrap-minio.sh
 ```
 
-The script outputs the sandbox-scoped access key and secret. Add them to `.envrc`:
+The script outputs sandbox-scoped credentials. Add them to `.envrc`:
 ```bash
 export MINIO_ACCESS_KEY="terraform-sandbox-<generated>"
 export MINIO_SECRET_KEY="<generated>"
+```
+
+Then initialize Terraform:
+```bash
+make init && make plan
 ```
 
 ---

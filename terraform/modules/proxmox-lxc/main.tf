@@ -1,12 +1,12 @@
 resource "proxmox_virtual_environment_container" "this" {
-  node_name    = var.node_name
-  vm_id        = var.vm_id
-  pool_id      = var.pool_id
-  description  = var.description
-  tags         = var.tags
+  node_name     = var.node_name
+  vm_id         = var.vm_id
+  pool_id       = var.pool_id
+  description   = var.description
+  tags          = var.tags
   start_on_boot = var.start_on_boot
-  unprivileged = var.unprivileged
-  started      = var.started
+  unprivileged  = var.unprivileged
+  started       = var.started
 
   initialization {
     hostname = var.hostname

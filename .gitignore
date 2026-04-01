@@ -13,8 +13,7 @@ config/*.yml
 *.key
 id_rsa
 id_ed25519
-vault_pass
-.vault_pass
+.ssh/
 *.secrets
 secrets.yml
 

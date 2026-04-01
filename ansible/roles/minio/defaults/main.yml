@@ -2,4 +2,4 @@
 minio_data_dir: /var/lib/minio/data
 minio_port: 9000
 minio_console_port: 9001
-minio_checksum: ""  # Fill in from https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum
+minio_checksum: "7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f"  # From https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum

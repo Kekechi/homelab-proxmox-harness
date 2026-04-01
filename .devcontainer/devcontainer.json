@@ -26,7 +26,14 @@
           "editor.defaultFormatter": "hashicorp.terraform",
           "editor.formatOnSave": true
         },
-        "ansible.python.interpreterPath": "/usr/bin/python3"
+        "ansible.python.interpreterPath": "/usr/bin/python3",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "path": "bash",
+            "args": ["-l"]
+          }
+        }
       }
     }
   },

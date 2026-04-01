@@ -19,7 +19,7 @@
 
 - name: Set timezone
   community.general.timezone:
-    name: "{{ timezone | default('UTC') }}"
+    name: "{{ common_timezone | default('UTC') }}"
 
 - name: Disable root SSH password login
   ansible.builtin.lineinfile:
@@ -27,4 +27,4 @@
     regexp: '^PermitRootLogin'
     line: 'PermitRootLogin prohibit-password'
     state: present
-  notify: restart sshd
+  notify: Restart sshd

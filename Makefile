@@ -63,7 +63,7 @@ fmt: ## terraform fmt (recursive)
 lint: ## terraform fmt check + tflint + ansible-lint
 	cd $(TF_DIR) && terraform fmt -check -recursive
 	cd $(TF_DIR) && tflint
-	ansible-lint ansible/playbooks/
+	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
 plan: ## Terraform plan for $(ENV) — saves $(ENV).tfplan
 	cd $(TF_DIR) && terraform plan -var-file=$(TF_VARFILE) -out=$(TF_PLANFILE)
@@ -91,13 +91,16 @@ destroy: ## Terraform destroy for $(ENV) (requires confirmation — blocked by h
 # ---------------------------------------------------------------------------
 
 ansible-lint: ## Lint all playbooks
-	ansible-lint ansible/playbooks/
+	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
 ansible-sandbox: ## Run sandbox playbook against generated inventory
 	ansible-playbook -i ansible/inventory/ ansible/playbooks/sandbox.yml --limit sandbox
 
 ansible-check: ## Dry-run site playbook against sandbox inventory
 	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit sandbox --check
+
+ansible-minio: ## Deploy MinIO via Ansible (runs minio-setup.yml against minio group)
+	ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
 
 # ---------------------------------------------------------------------------
 # Bootstrap (one-time)

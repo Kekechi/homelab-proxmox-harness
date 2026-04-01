@@ -23,6 +23,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
+# Sandbox only command alias for claude
+RUN echo "alias sandbox-ssh='ssh' \
+    sandbox-scp='scp' \
+    sandbox-claude='claude --allow-dangerously-skip-permissions'" > /etc/profile.d/aliases.sh
+RUN chmod +x /etc/profile.d/aliases.sh
+
 # Terraform
 RUN curl -fsSL \
     "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" \
@@ -50,6 +56,11 @@ RUN pip3 install --no-cache-dir --break-system-packages \
     ansible==${ANSIBLE_VERSION} \
     ansible-lint \
     && ansible --version
+
+# MinIO
+RUN wget https://dl.min.io/aistor/mc/release/linux-amd64/mcli_20260327155712.0.0_amd64.deb \
+    && dpkg -i mcli_20260327155712.0.0_amd64.deb \
+    && mcli --version
 
 # direnv shell hook
 RUN echo 'eval "$(direnv hook bash)"' >> /etc/bash.bashrc

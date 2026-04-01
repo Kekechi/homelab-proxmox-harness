@@ -1,8 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Read(**/.env*.example)",
-      "Write(**/.env*.example)"
+      "Read(**/.env*.example)"
+    ],
+    "deny":[
+      "Bash(ssh *)",
+      "Bash(scp *)"
     ]
   },
   "hooks": {

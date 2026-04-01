@@ -38,8 +38,8 @@ make configure ENV=production
 | Proxmox API token | `.envrc` (manual) | config YAML |
 | MinIO access key | `.envrc` (manual) | config YAML |
 | MinIO secret key | `.envrc` (manual) | config YAML |
-| MinIO root password | ansible vault (`group_vars/all/vault.yml`) | config YAML or role defaults |
-| MinIO root user | ansible vault | config YAML or role defaults |
+| MinIO root password | `.envrc` as `MINIO_ROOT_PASSWORD` (Ansible reads via `lookup('env', ...)`) | config YAML or role defaults |
+| MinIO root user | `.envrc` as `MINIO_ROOT_USER` (Ansible reads via `lookup('env', ...)`) | config YAML or role defaults |
 | SSH public key | `config/<env>.yml` | `.tf` files |
 | All other infra config | `config/<env>.yml` | hardcoded in `.tf` or playbooks |
 
