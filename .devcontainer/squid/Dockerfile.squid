@@ -15,7 +15,6 @@ FROM ubuntu/squid:latest
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-cidrs.conf /etc/squid/allowed-cidrs.conf
 COPY squid.conf.local     /etc/squid/squid.conf.local
-RUN squid -k parse -f /etc/squid/squid.conf
 
 # Validate config at build time — fails the build if squid.conf has errors
 RUN squid -k parse -f /etc/squid/squid.conf

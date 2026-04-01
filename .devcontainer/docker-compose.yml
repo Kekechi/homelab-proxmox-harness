@@ -32,9 +32,13 @@ services:
       - isolated
       - external
     security_opt:
-      - no-new-privileges:true                                                                                                                         
-    cap_drop:                                                                                                                                          
-      - ALL    
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
     healthcheck:
       test: ["CMD-SHELL", "squid -k check 2>/dev/null"]
       interval: 10s
@@ -79,8 +83,8 @@ services:
     networks:
       - isolated
     security_opt:
-      - no-new-privileges:true                                                                                                                         
-    cap_drop:                                                                                                                                          
+      - no-new-privileges:true
+    cap_drop:
       - ALL    
     command: sleep infinity
     user: vscode
