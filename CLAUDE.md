@@ -63,8 +63,17 @@ scripts/
 docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, threat-model.md
 .claude/
   agents/                 iac-planner, iac-generator, tf-reviewer
-  skills/                 tf-plan-apply, proxmox-module, sandbox-deploy, tf-troubleshoot, day2-ops
-  commands/               /plan, /generate, /deploy, /review, /handoff
+  skills/
+    infra-plan/           Plan infrastructure changes (iac-planner, Opus)
+    generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
+    review/               Review code for security and correctness (tf-reviewer, Sonnet)
+    deploy/               Full PGE pipeline: plan → generate → review → apply
+    handoff/              Package production plan for operator handoff
+    assess/               Structured project assessment with discussion
+    day2-ops/             Day-2 operations: resize, snapshots, network, cloud-init
+    proxmox-module/       bpg/proxmox module authoring patterns (reference)
+    tf-plan-apply/        Terraform init/plan/apply workflow (reference)
+    tf-troubleshoot/      Diagnostic runbooks for failed Terraform operations (reference)
   rules/                  sandbox-isolation, terraform-style, iam-model, network-policy,
                           ansible-workflow, config-management
 Makefile                  make help for all targets
@@ -95,15 +104,17 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 
 ---
 
-## Available Commands
+## Available Skills
 
-| Command | Purpose |
+| Skill | Purpose |
 |---|---|
-| `/plan <description>` | Plan infrastructure change using iac-planner (Opus) |
+| `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
 | `/generate` | Write code from an approved plan using iac-generator |
-| `/deploy <description>` | Full plan → generate → review → apply pipeline |
 | `/review [files]` | Review Terraform/Ansible code with tf-reviewer |
+| `/deploy <description>` | Full plan → generate → review → apply pipeline |
 | `/handoff` | Package production plan with context for operator handoff |
+| `/assess <scope + concerns>` | Structured project assessment with discussion |
+| `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs |
 
 ---
 

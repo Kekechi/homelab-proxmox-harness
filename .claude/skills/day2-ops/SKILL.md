@@ -1,6 +1,7 @@
 ---
 name: day2-ops
 description: Day-2 operations for existing Proxmox VMs and LXCs. Covers resize (disk, memory, CPU), snapshots, network changes, cloud-init reconfiguration, and bpg/proxmox modify constraints.
+disable-model-invocation: true
 ---
 
 # Skill: Day-2 Operations
