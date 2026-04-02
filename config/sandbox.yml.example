@@ -7,14 +7,14 @@ environment: sandbox
 
 proxmox:
   node: pve                              # Proxmox node name (run: pvesh get /nodes)
-  endpoint: "https://192.168.1.100:8006" # Proxmox API URL (include trailing slash if needed)
+  endpoint: "https://192.168.X.X:8006"  # Proxmox API URL
   insecure: true                         # true = accept self-signed TLS cert
-  host_cidr: "192.168.1.100/32"          # Proxmox host IP in CIDR notation (for Squid allowlist)
+  host_cidr: "192.168.X.X/32"           # Proxmox host IP in CIDR notation (for Squid allowlist)
 
 network:
   bridge: vmbr0                          # Network bridge for VMs/LXCs
-  vlan_id: 20                            # VLAN tag for sandbox network (null = untagged)
-  cidr: "192.168.20.0/24"               # Sandbox VLAN subnet — MUST use CIDR notation
+  vlan_id: 50                            # VLAN tag for sandbox network (null = untagged)
+  cidr: "192.168.X.0/24"                # Sandbox VLAN subnet — MUST use CIDR notation
 
 storage:
   datastore_id: local-lvm               # Proxmox storage ID for VM/LXC disks
@@ -26,8 +26,8 @@ terraform:
   state_bucket: tfstate-sandbox          # MinIO bucket for Terraform state
 
 minio:
-  endpoint: "http://192.168.1.150:9000"  # MinIO API URL (must be reachable from dev container)
-  host_cidr: "192.168.1.150/32"          # MinIO host IP in CIDR notation (for Squid allowlist)
+  endpoint: "http://192.168.X.X:9000"   # MinIO API URL (must be reachable from dev container)
+  host_cidr: "192.168.X.X/32"           # MinIO host IP in CIDR notation (for Squid allowlist)
 
 ssh:
   public_key: "ssh-ed25519 AAAAC3... your-key-comment"  # SSH public key injected via cloud-init
@@ -35,11 +35,32 @@ ssh:
 
 # Hosts added here after `terraform apply`, then run `make configure` to regenerate inventory.
 # Each top-level key is an ansible group. Hosts within each group are ansible inventory entries.
+domain_name: "sandbox.example.com"          # used in Terraform DNS output hints only
+
+pki:
+  root_ca_vm_id: 201
+  root_ca_ipv4_address: "192.168.X.X/24"
+  root_ca_ipv4_gateway: "192.168.X.1"
+  issuing_ca_ct_id: 202
+  issuing_ca_ipv4_address: "192.168.X.X/24"
+  issuing_ca_ipv4_gateway: "192.168.X.1"
+  cloud_init_template_id: 9000                                              # created by scripts/setup-vm-template.sh
+  lxc_template_file_id: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+  lxc_ssh_public_keys: []                                                   # e.g. ["ssh-ed25519 AAAA..."]
+
 hosts:
   sandbox:
     # sandbox-vm-01:
-    #   ansible_host: 192.168.20.100
+    #   ansible_host: 192.168.X.X
   minio:
     # minio-server:
-    #   ansible_host: 192.168.1.150
+    #   ansible_host: 192.168.X.X
+    #   ansible_user: root
+  pki_root_ca:
+    # root-ca:
+    #   ansible_host: 192.168.X.X   # fill in after terraform apply
+    #   ansible_user: debian
+  pki_issuing_ca:
+    # issuing-ca:
+    #   ansible_host: 192.168.X.X   # fill in after terraform apply
     #   ansible_user: root

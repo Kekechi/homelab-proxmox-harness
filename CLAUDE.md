@@ -64,6 +64,8 @@ docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, thr
 .claude/
   agents/                 iac-planner, iac-generator, tf-reviewer
   skills/
+    design/               Design exploration for net-new infrastructure (pre-planning)
+    retro/                Session retrospective — prompting lessons and skill lifecycle
     infra-plan/           Plan infrastructure changes (iac-planner, Opus)
     generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
     review/               Review code for security and correctness (tf-reviewer, Sonnet)
@@ -108,6 +110,8 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 
 | Skill | Purpose |
 |---|---|
+| `/design <rough idea>` | Explore and decide on a design before planning — one decision at a time |
+| `/retro` | Retrospective on a completed session — surfaces prompting lessons, recommends no action / memory / skill update / new skill |
 | `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
 | `/generate` | Write code from an approved plan using iac-generator |
 | `/review [files]` | Review Terraform/Ansible code with tf-reviewer |

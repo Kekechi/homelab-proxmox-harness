@@ -89,3 +89,9 @@ variable "started" {
   type        = bool
   default     = true
 }
+
+variable "start_on_boot" {
+  description = "Whether to start the VM automatically on Proxmox boot"
+  type        = bool
+  default     = true
+}

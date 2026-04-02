@@ -1,0 +1,117 @@
+---
+name: design
+description: Design exploration for net-new infrastructure. Facilitates one-decision-at-a-time discussion to reach a clear design record before any planning or implementation begins.
+disable-model-invocation: false
+---
+
+# Skill: Design Exploration
+
+Facilitate a structured design discussion for net-new infrastructure. The goal is a clear, agreed design record — not a plan, not code.
+
+## When to Activate
+
+- User has a rough idea but hasn't decided what to build yet
+- User wants to think through architecture before committing to an approach
+- User says "brainstorm", "design exploration", "not implementing yet", or similar
+- The idea is too vague to hand to `/infra-plan` without design decisions first
+
+## When NOT to Activate
+
+- User already knows what they want to build → use `/infra-plan` directly
+- User wants to evaluate existing infrastructure → use `/assess`
+
+## Phase 1: Orient
+
+Before asking anything, do three things:
+
+1. **Check if the goal is clear enough** — if the technology and rough purpose are stated, that's enough to start. Don't demand a fully-formed spec.
+2. **Identify the key decision axes** — what are the 3-5 design dimensions that will shape this infrastructure? (e.g., topology, network placement, operations, security, extensibility)
+3. **Flag any false constraints** — if the user has stated a blocker, ask yourself: is it real? Name it early if it isn't.
+
+State the decision axes to the user upfront so the session feels structured, not open-ended.
+
+## Phase 2: Explore decisions one layer at a time
+
+Work through decision axes in dependency order — don't discuss sizing before topology, don't discuss DNS before network placement.
+
+**For each decision:**
+1. State what you know and what you're assuming
+2. Present the relevant options with honest tradeoffs
+3. Include the industry reference point when it's meaningfully different from homelab practice
+4. Make a recommendation if you have one — say why
+5. Wait for the user to decide before moving on
+
+**Rules:**
+- One decision at a time. Do not bundle multiple open questions in a single turn.
+- When the user pushes back, go deeper — present tradeoffs not yet mentioned. Don't rush to converge.
+- When the user corrects an assumption, accept it and update the design. Don't defend the assumption.
+- Surface extensibility paths without over-engineering: "this doesn't require infra changes, just a config update later" is a valid and useful answer.
+
+**Patterns to watch for:**
+
+| Pattern | What to do |
+|---|---|
+| False constraint | Name it and dissolve it before it blocks the design |
+| Chicken-and-egg | Identify the actual dependency order — often it's not circular |
+| Environment asymmetry | Note when sandbox and production designs diverge and whether that's intentional |
+| Operational debt | Flag complexity that feels clever now but will hurt during incidents |
+| Premature extensibility | Call it out — design for what's needed, note the extension path |
+
+## Phase 3: Audit
+
+Before declaring the design ready, run an explicit audit. Present these to the user:
+
+**Unvalidated assumptions** — things you assumed that the user hasn't confirmed (network topology, software capabilities, existing services)
+
+**Missing decisions** — anything that needs to be decided before planning can start (sizing, OS, naming conventions, secret management)
+
+**Likely fine, worth confirming** — lower-stakes items the user can nod at or correct quickly
+
+Don't skip this phase. It's where the most useful corrections happen.
+
+## Phase 4: Design Record
+
+Once the user confirms the design is ready, produce a concise design record:
+
+```markdown
+# Design: [Topic]
+
+## Goal
+One paragraph: what this infrastructure does and why.
+
+## Design Decisions
+| Decision | Choice | Rationale |
+|---|---|---|
+| ... | ... | ... |
+
+## Component Summary
+[Table or diagram of components, types, placement, always-on vs. normally-off]
+
+## Open Items (deferred, not forgotten)
+[Things intentionally deferred with a note on when/how to revisit]
+
+## Ready for planning
+[Explicit statement that design is complete and what to hand to /infra-plan]
+```
+
+## Handoff
+
+When the user is ready, say:
+> "Run `/infra-plan` with this design as the input."
+
+Do not launch `/infra-plan` automatically. The user decides when to cross from design to planning.
+
+## Tone and Pacing
+
+- Lead with concerns and constraints, not enthusiasm
+- Keep individual turns short — one question or one recommendation at a time
+- When you don't know something (software capability, industry practice), say so rather than guessing
+- The session is successful when the user has made decisions, not when you have produced output
+
+## How to prompt this skill
+
+If the user asks how to start a design session in the future:
+
+> "I want to explore [technology/system] for [rough goal]. I haven't decided what to build yet. Help me think through the design — challenge my assumptions, surface what I haven't considered, and ask focused questions one at a time. Don't plan or implement until I say I'm ready."
+
+Key signals: *"challenge my assumptions"*, *"one at a time"*, *"don't plan until I say ready"*

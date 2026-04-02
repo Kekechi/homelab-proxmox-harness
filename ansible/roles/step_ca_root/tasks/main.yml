@@ -1,0 +1,135 @@
+---
+# step_ca_root — initialize the offline Root CA
+#
+# This role generates a self-signed root certificate and key using
+# `step certificate create`. The Root CA does NOT run a server — it only
+# signs the intermediate CSR produced by the step_ca_issuing role.
+#
+# Prerequisites:
+#   - step_ca_common role has been applied (step-cli binary is installed)
+#   - STEP_CA_ROOT_PASSWORD env var is set in .envrc on the Ansible controller
+#
+# Variables (define in group_vars/pki_root_ca/ or pass as extra vars):
+#   pki_root_ca_name     — CN for the root certificate, e.g. "Homelab Root CA"
+#   pki_root_ca_hostname — hostname/SAN for the CA, e.g. "root-ca.homelab.example.com"
+
+- name: Assert required variables are defined
+  ansible.builtin.assert:
+    that:
+      - pki_root_ca_name is defined and pki_root_ca_name | length > 0
+    fail_msg: "pki_root_ca_name must be defined (e.g. in group_vars/pki_root_ca/vars.yml)"
+
+- name: Assert STEP_CA_ROOT_PASSWORD env var is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'STEP_CA_ROOT_PASSWORD') | length > 0
+    fail_msg: >
+      STEP_CA_ROOT_PASSWORD is not set.
+      Add it to .envrc and run: direnv allow
+
+- name: Check if root CA certificate already exists
+  ansible.builtin.stat:
+    path: "{{ step_ca_common_home }}/certs/root_ca.crt"
+  register: step_ca_root_cert_stat
+
+- name: Write root CA password to temp file
+  ansible.builtin.copy:
+    content: "{{ lookup('env', 'STEP_CA_ROOT_PASSWORD') }}"
+    dest: /tmp/root-ca-password
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0600"
+  when: not step_ca_root_cert_stat.stat.exists
+  no_log: true
+
+- name: Generate root CA certificate and key
+  ansible.builtin.command:
+    cmd: >
+      {{ step_ca_common_cli_install_path }} certificate create
+      "{{ pki_root_ca_name }}"
+      {{ step_ca_common_home }}/certs/root_ca.crt
+      {{ step_ca_common_home }}/secrets/root_ca_key
+      --profile root-ca
+      --kty EC
+      --curve P-256
+      --not-after 87600h
+      --password-file /tmp/root-ca-password
+    creates: "{{ step_ca_common_home }}/certs/root_ca.crt"
+  become: true
+  become_user: "{{ step_ca_common_user }}"
+  when: not step_ca_root_cert_stat.stat.exists
+
+- name: Remove root CA password temp file
+  ansible.builtin.file:
+    path: /tmp/root-ca-password
+    state: absent
+
+- name: Set strict permissions on root CA key
+  ansible.builtin.file:
+    path: "{{ step_ca_common_home }}/secrets/root_ca_key"
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0400"
+
+- name: Fetch root CA certificate to Ansible controller
+  ansible.builtin.fetch:
+    src: "{{ step_ca_common_home }}/certs/root_ca.crt"
+    dest: "/tmp/ansible-pki/root_ca.crt"
+    flat: true
+
+# ---------------------------------------------------------------------------
+# Sign intermediate CSR (produced by step_ca_issuing role)
+# This block is a no-op if the CSR has not yet been fetched to the controller.
+# Run the full pki-setup.yml playbook to coordinate both steps.
+# ---------------------------------------------------------------------------
+- name: Check if intermediate CSR exists on controller
+  ansible.builtin.stat:
+    path: /tmp/ansible-pki/intermediate_ca.csr
+  delegate_to: localhost
+  register: step_ca_root_intermediate_csr_stat
+  become: false
+
+- name: Copy intermediate CSR to root CA host
+  ansible.builtin.copy:
+    src: /tmp/ansible-pki/intermediate_ca.csr
+    dest: /tmp/intermediate_ca.csr
+    mode: "0644"
+  when: step_ca_root_intermediate_csr_stat.stat.exists
+
+- name: Write root CA password to temp file (for signing)
+  ansible.builtin.copy:
+    content: "{{ lookup('env', 'STEP_CA_ROOT_PASSWORD') }}"
+    dest: /tmp/root-ca-password
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0600"
+  when: step_ca_root_intermediate_csr_stat.stat.exists
+  no_log: true
+
+- name: Sign intermediate CSR with root CA
+  ansible.builtin.command:
+    cmd: >
+      {{ step_ca_common_cli_install_path }} certificate sign
+      /tmp/intermediate_ca.csr
+      {{ step_ca_common_home }}/certs/root_ca.crt
+      {{ step_ca_common_home }}/secrets/root_ca_key
+      --profile intermediate-ca
+      --not-after 43800h
+      --password-file /tmp/root-ca-password
+    creates: /tmp/intermediate_ca.crt
+  become: true
+  become_user: "{{ step_ca_common_user }}"
+  when: step_ca_root_intermediate_csr_stat.stat.exists
+
+- name: Remove signing password temp file
+  ansible.builtin.file:
+    path: /tmp/root-ca-password
+    state: absent
+  when: step_ca_root_intermediate_csr_stat.stat.exists
+
+- name: Fetch signed intermediate certificate to controller
+  ansible.builtin.fetch:
+    src: /tmp/intermediate_ca.crt
+    dest: /tmp/ansible-pki/intermediate_ca.crt
+    flat: true
+  when: step_ca_root_intermediate_csr_stat.stat.exists

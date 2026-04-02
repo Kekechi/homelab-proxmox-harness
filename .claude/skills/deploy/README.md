@@ -9,7 +9,7 @@ Full sandbox deployment pipeline using the Planner-Generator-Evaluator (PGE) arc
 ```
 
 **Examples:**
-- `/deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.20.50`
+- `/deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.X.X`
 - `/deploy an LXC container running nginx as a reverse proxy`
 
 ## Pipeline

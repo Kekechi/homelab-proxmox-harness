@@ -12,6 +12,13 @@ Launch the **iac-planner** agent to plan an infrastructure change before any cod
 
 Think hard about whether the request is well-specified enough to plan. If the description is ambiguous (missing resource type, size, network, or environment), ask clarifying questions before launching the agent.
 
+**Pre-flight check — new software deployments:** If the request involves deploying new software onto Proxmox infrastructure (not just creating VMs/LXCs/networks), research that software's operational requirements *before* launching the agent. The iac-planner verifies Proxmox/Terraform fit; it does not research external software behavior. Gaps here produce post-plan open questions that should have been decisions. Specifically check:
+- Port binding constraints (e.g. can it bind 443 in an unprivileged LXC?)
+- Bootstrap or template prerequisites (e.g. cloud-init image setup, one-time host-shell steps)
+- Any operations that bypass the Proxmox API and require host shell access
+
+Resolve these in conversation first, then hand a complete brief to the agent.
+
 1. Receive the user's infrastructure request
 2. Launch the `iac-planner` agent (defined in `.claude/agents/iac-planner.md`) with the full request description
 3. The agent will explore existing modules, check IAM constraints, optionally research bpg/proxmox provider docs, and produce a structured plan

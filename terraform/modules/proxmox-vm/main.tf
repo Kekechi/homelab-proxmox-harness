@@ -5,6 +5,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   pool_id   = var.pool_id
   tags      = var.tags
   started   = var.started
+  on_boot   = var.start_on_boot
 
   # Clone from template if template ID is provided
   dynamic "clone" {

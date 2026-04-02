@@ -45,8 +45,8 @@ as writable files from the workspace. To update them:
 
 One CIDR or IP per line. Controls which LAN addresses the devcontainer can reach:
 ```
-192.168.20.0/24   # Sandbox Proxmox VLAN
-192.168.20.5/32   # MinIO LXC
+192.168.X.0/24   # Sandbox VLAN subnet (set in config/sandbox.yml → network.cidr)
+192.168.X.X/32   # MinIO LXC IP (set in config/sandbox.yml → minio.host_cidr)
 ```
 
 ### `squid.conf`

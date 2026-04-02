@@ -119,3 +119,9 @@ variable "description" {
   type        = string
   default     = null
 }
+
+variable "ssh_public_keys" {
+  description = "List of SSH public keys to inject into the container's root account"
+  type        = list(string)
+  default     = []
+}

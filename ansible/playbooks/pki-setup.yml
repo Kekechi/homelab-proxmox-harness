@@ -1,0 +1,46 @@
+---
+# pki-setup.yml — Deploy two-tier internal PKI (step-ca)
+#
+# Run order:
+#   1. Install step binaries on both hosts
+#   2. Initialize Root CA (generates root cert, signs intermediate CSR if available)
+#   3. Configure Issuing CA (generates intermediate CSR, deploys config + services)
+#
+# First-run workflow (two-pass):
+#   Pass 1: Run this playbook — Root CA cert and intermediate CSR are generated.
+#           The root CA will sign the CSR if it finds one at /tmp/ansible-pki/intermediate_ca.csr.
+#           On the very first run the CSR is generated in pass 1 of the issuing CA play,
+#           then the root CA signs it in a second run.
+#
+#   Pass 2: Run this playbook again — intermediate_ca.crt is now on the controller,
+#           the issuing CA role deploys it and starts step-ca.
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/pki-setup.yml \
+#     --limit pki_root_ca:pki_issuing_ca \
+#     -e pki_root_ca_name="Homelab Root CA" \
+#     -e pki_issuing_ca_name="Homelab Issuing CA" \
+#     -e pki_issuing_ca_hostname="ca.sandbox.example.com"
+#
+# Secrets must be set in .envrc before running:
+#   STEP_CA_ROOT_PASSWORD
+#   STEP_CA_ISSUING_PASSWORD
+#   STEP_CA_LXC_ROOT_PASSWORD
+
+- name: Install step-ca tooling on all PKI hosts
+  hosts: pki_root_ca:pki_issuing_ca
+  become: true
+  roles:
+    - step_ca_common
+
+- name: Initialize Root CA
+  hosts: pki_root_ca
+  become: true
+  roles:
+    - step_ca_root
+
+- name: Configure Issuing CA
+  hosts: pki_issuing_ca
+  become: true
+  roles:
+    - step_ca_issuing

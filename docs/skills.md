@@ -27,7 +27,7 @@ Skills marked **no** require explicit invocation and will not be triggered autom
 Use `/deploy` when you want Claude to handle everything end-to-end with checkpoints at each step:
 
 ```
-/deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.20.50
+/deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.X.X
 ```
 
 Pipeline: **plan** → *(your approval)* → **generate** → **review** → *(your approval)* → `terraform plan` → *(your approval)* → `terraform apply`

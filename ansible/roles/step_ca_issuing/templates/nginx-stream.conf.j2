@@ -1,0 +1,13 @@
+# nginx TCP stream proxy for step-ca
+# Forwards port 443 → step-ca listening on 127.0.0.1:9000.
+# This file is included from /etc/nginx/nginx.conf via the `include` directive
+# added during role setup (stream block must be at the top level, not inside http).
+
+stream {
+    server {
+        listen 443;
+        proxy_pass 127.0.0.1:9000;
+        proxy_timeout {{ nginx_stream_proxy_timeout | default('10s') }};
+        proxy_connect_timeout {{ nginx_stream_connect_timeout | default('5s') }};
+    }
+}

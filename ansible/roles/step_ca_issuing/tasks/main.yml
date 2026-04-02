@@ -1,0 +1,221 @@
+---
+# step_ca_issuing — configure the always-on Issuing CA LXC
+#
+# This role:
+#   1. Generates an intermediate key and CSR
+#   2. Fetches the CSR to the Ansible controller (for the root CA to sign)
+#   3. Deploys the signed intermediate certificate (once available)
+#   4. Writes ca.json configuration
+#   5. Deploys the step-ca systemd service
+#   6. Configures nginx as a TCP stream proxy (443 → step-ca:9000)
+#   7. Serves the root cert at /var/www/html/root.crt
+#
+# Prerequisites:
+#   - step_ca_common role has been applied
+#   - STEP_CA_ISSUING_PASSWORD and STEP_CA_LXC_ROOT_PASSWORD are set in .envrc
+#
+# Variables (define in group_vars/pki_issuing_ca/):
+#   pki_issuing_ca_name     — CN for the intermediate cert, e.g. "Homelab Issuing CA"
+#   pki_issuing_ca_hostname — hostname/SAN for step-ca, e.g. "ca.homelab.example.com"
+
+- name: Assert required variables are defined
+  ansible.builtin.assert:
+    that:
+      - pki_issuing_ca_name is defined and pki_issuing_ca_name | length > 0
+      - pki_issuing_ca_hostname is defined and pki_issuing_ca_hostname | length > 0
+    fail_msg: "pki_issuing_ca_name and pki_issuing_ca_hostname must be defined"
+
+- name: Assert STEP_CA_ISSUING_PASSWORD env var is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'STEP_CA_ISSUING_PASSWORD') | length > 0
+    fail_msg: >
+      STEP_CA_ISSUING_PASSWORD is not set.
+      Add it to .envrc and run: direnv allow
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+
+# ---------------------------------------------------------------------------
+# Intermediate CSR generation (idempotent)
+# ---------------------------------------------------------------------------
+- name: Check if intermediate key already exists
+  ansible.builtin.stat:
+    path: "{{ step_ca_common_home }}/secrets/intermediate_ca_key"
+  register: step_ca_issuing_intermediate_key_stat
+
+- name: Write issuing CA password to temp file
+  ansible.builtin.copy:
+    content: "{{ lookup('env', 'STEP_CA_ISSUING_PASSWORD') }}"
+    dest: /tmp/issuing-ca-password
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0600"
+  when: not step_ca_issuing_intermediate_key_stat.stat.exists
+  no_log: true
+
+- name: Generate intermediate key and CSR
+  ansible.builtin.command:
+    cmd: >
+      {{ step_ca_common_cli_install_path }} certificate create
+      "{{ pki_issuing_ca_name }}"
+      {{ step_ca_common_home }}/certs/intermediate_ca.csr
+      {{ step_ca_common_home }}/secrets/intermediate_ca_key
+      --profile intermediate-ca
+      --kty EC
+      --curve P-256
+      --password-file /tmp/issuing-ca-password
+      --csr
+    creates: "{{ step_ca_common_home }}/secrets/intermediate_ca_key"
+  become: true
+  become_user: "{{ step_ca_common_user }}"
+  when: not step_ca_issuing_intermediate_key_stat.stat.exists
+
+- name: Remove issuing CA password temp file
+  ansible.builtin.file:
+    path: /tmp/issuing-ca-password
+    state: absent
+
+- name: Create local PKI staging directory on controller
+  ansible.builtin.file:
+    path: /tmp/ansible-pki
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Fetch intermediate CSR to controller
+  ansible.builtin.fetch:
+    src: "{{ step_ca_common_home }}/certs/intermediate_ca.csr"
+    dest: /tmp/ansible-pki/intermediate_ca.csr
+    flat: true
+
+# ---------------------------------------------------------------------------
+# Deploy signed intermediate certificate (available after root CA signing)
+# ---------------------------------------------------------------------------
+- name: Check if signed intermediate cert exists on controller
+  ansible.builtin.stat:
+    path: /tmp/ansible-pki/intermediate_ca.crt
+  delegate_to: localhost
+  register: step_ca_issuing_signed_cert_stat
+  become: false
+
+- name: Deploy signed intermediate certificate
+  ansible.builtin.copy:
+    src: /tmp/ansible-pki/intermediate_ca.crt
+    dest: "{{ step_ca_common_home }}/certs/intermediate_ca.crt"
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0644"
+  when: step_ca_issuing_signed_cert_stat.stat.exists
+  notify: Restart step-ca
+
+- name: Deploy root CA certificate to step-ca certs directory
+  ansible.builtin.copy:
+    src: /tmp/ansible-pki/root_ca.crt
+    dest: "{{ step_ca_common_home }}/certs/root_ca.crt"
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0644"
+  when: step_ca_issuing_signed_cert_stat.stat.exists
+
+# ---------------------------------------------------------------------------
+# step-ca configuration
+# ---------------------------------------------------------------------------
+- name: Write issuing CA password for step-ca service
+  ansible.builtin.copy:
+    content: "{{ lookup('env', 'STEP_CA_ISSUING_PASSWORD') }}"
+    dest: "{{ step_ca_common_home }}/secrets/ca-password"
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0400"
+  no_log: true
+  notify: Restart step-ca
+
+- name: Deploy ca.json configuration
+  ansible.builtin.template:
+    src: ca.json.j2
+    dest: "{{ step_ca_common_home }}/config/ca.json"
+    owner: "{{ step_ca_common_user }}"
+    group: "{{ step_ca_common_group }}"
+    mode: "0640"
+  when: step_ca_issuing_signed_cert_stat.stat.exists
+  notify: Restart step-ca
+
+# ---------------------------------------------------------------------------
+# systemd service for step-ca
+# ---------------------------------------------------------------------------
+- name: Deploy step-ca systemd unit
+  ansible.builtin.template:
+    src: step-ca.service.j2
+    dest: /etc/systemd/system/step-ca.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart step-ca
+
+- name: Enable and start step-ca
+  ansible.builtin.systemd:
+    name: step-ca
+    enabled: true
+    state: "{{ 'started' if step_ca_issuing_signed_cert_stat.stat.exists else 'stopped' }}"
+    daemon_reload: true
+
+# ---------------------------------------------------------------------------
+# nginx TCP stream proxy (443 → step-ca:9000)
+# ---------------------------------------------------------------------------
+- name: Ensure nginx stream config directory exists
+  ansible.builtin.file:
+    path: /etc/nginx/stream.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Add stream include directive to nginx.conf
+  ansible.builtin.blockinfile:
+    path: /etc/nginx/nginx.conf
+    marker: "# {mark} ANSIBLE MANAGED BLOCK — step-ca stream proxy"
+    block: "include /etc/nginx/stream.d/*.conf;"
+    insertafter: EOF
+  notify: Restart nginx
+
+- name: Deploy nginx stream proxy configuration
+  ansible.builtin.template:
+    src: nginx-stream.conf.j2
+    dest: /etc/nginx/stream.d/step-ca-stream.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Enable and start nginx
+  ansible.builtin.systemd:
+    name: nginx
+    enabled: true
+    state: started
+
+# ---------------------------------------------------------------------------
+# Serve root certificate over HTTP for easy trust distribution
+# ---------------------------------------------------------------------------
+- name: Ensure /var/www/html exists
+  ansible.builtin.file:
+    path: /var/www/html
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy root CA cert to nginx default site
+  ansible.builtin.copy:
+    src: /tmp/ansible-pki/root_ca.crt
+    dest: /var/www/html/root.crt
+    owner: root
+    group: root
+    mode: "0644"
+  when: step_ca_issuing_signed_cert_stat.stat.exists

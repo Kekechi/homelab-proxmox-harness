@@ -46,3 +46,61 @@ provider "proxmox" {
 #   ssh_public_key    = var.ssh_public_key
 #   tags              = ["terraform", "managed"]
 # }
+
+# ---------------------------------------------------------------------------
+# PKI — two-tier internal certificate authority
+#
+# Root CA:    offline VM (started = false, start_on_boot = false).
+#             Boot only when signing the intermediate CSR or rotating certs.
+#             Bootstrap: scripts/setup-vm-template.sh must be run once on the
+#             Proxmox host before Terraform apply to create the template VM.
+#
+# Issuing CA: always-on LXC serving ACME + JWK on port 9000 behind an nginx
+#             TCP stream proxy on port 443.
+# ---------------------------------------------------------------------------
+
+module "root_ca" {
+  source = "./modules/proxmox-vm"
+
+  node_name          = var.proxmox_node
+  pool_id            = var.pool_id
+  vm_name            = "root-ca"
+  vm_id              = var.root_ca_vm_id
+  clone_template_id  = var.cloud_init_template_id
+  started            = false
+  start_on_boot      = false
+  cores              = 1
+  memory_mb          = 512
+  disk_size_gb       = 8
+  datastore_id       = var.datastore_id
+  bridge             = var.bridge
+  vlan_id            = var.vlan_id
+  ipv4_address       = var.root_ca_ipv4_address
+  ipv4_gateway       = var.root_ca_ipv4_gateway
+  ssh_public_key     = var.ssh_public_key
+  tags               = ["terraform", "pki", "root-ca"]
+}
+
+module "issuing_ca" {
+  source = "./modules/proxmox-lxc"
+
+  node_name        = var.proxmox_node
+  pool_id          = var.pool_id
+  hostname         = "issuing-ca"
+  vm_id            = var.issuing_ca_ct_id
+  template_file_id = var.lxc_template_file_id
+  os_type          = "debian"
+  unprivileged     = true
+  started          = true
+  start_on_boot    = true
+  cores            = 1
+  memory_mb        = 512
+  disk_size_gb     = 8
+  datastore_id     = var.datastore_id
+  bridge           = var.bridge
+  vlan_id          = var.vlan_id
+  ipv4_address     = var.issuing_ca_ipv4_address
+  ipv4_gateway     = var.issuing_ca_ipv4_gateway
+  ssh_public_keys  = var.lxc_ssh_public_keys
+  tags             = ["terraform", "pki", "issuing-ca"]
+}

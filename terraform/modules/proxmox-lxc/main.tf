@@ -7,6 +7,8 @@ resource "proxmox_virtual_environment_container" "this" {
   start_on_boot = var.start_on_boot
   unprivileged  = var.unprivileged
   started       = var.started
+  # Note: proxmox_virtual_environment_container does not support stop_on_destroy.
+  # The bpg/proxmox provider stops the container automatically before destroy.
 
   initialization {
     hostname = var.hostname
@@ -32,6 +34,7 @@ resource "proxmox_virtual_environment_container" "this" {
 
     user_account {
       password = var.root_password
+      keys     = length(var.ssh_public_keys) > 0 ? var.ssh_public_keys : null
     }
   }
 

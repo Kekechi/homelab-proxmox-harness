@@ -35,6 +35,19 @@ ssh:
   public_key: "ssh-ed25519 AAAAC3... your-key-comment"
   default_user: ubuntu
 
+domain_name: "lab.example.com"              # used in Terraform DNS output hints only
+
+pki:
+  root_ca_vm_id: 101
+  root_ca_ipv4_address: "192.168.X.X/24"
+  root_ca_ipv4_gateway: "192.168.X.1"
+  issuing_ca_ct_id: 102
+  issuing_ca_ipv4_address: "192.168.X.X/24"
+  issuing_ca_ipv4_gateway: "192.168.X.1"
+  cloud_init_template_id: 9000                                              # created by scripts/setup-vm-template.sh
+  lxc_template_file_id: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+  lxc_ssh_public_keys: []                                                   # e.g. ["ssh-ed25519 AAAA..."]
+
 hosts:
   production:
     # production-vm-01:
@@ -43,4 +56,12 @@ hosts:
   minio:
     # minio-server:
     #   ansible_host: 192.168.X.X
+    #   ansible_user: root
+  pki_root_ca:
+    # root-ca:
+    #   ansible_host: 192.168.X.X  # fill in after terraform apply
+    #   ansible_user: debian
+  pki_issuing_ca:
+    # issuing-ca:
+    #   ansible_host: 192.168.X.X  # fill in after terraform apply
     #   ansible_user: root

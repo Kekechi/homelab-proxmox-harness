@@ -168,8 +168,8 @@ network_device {
 initialization {
   ip_config {
     ipv4 {
-      address = "192.168.20.60/24"  # was .50
-      gateway = "192.168.20.1"
+      address = "192.168.X.Y/24"  # updated address
+      gateway = "192.168.X.1"
     }
   }
 }

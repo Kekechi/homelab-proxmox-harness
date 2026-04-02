@@ -1,0 +1,32 @@
+{
+  "root": "{{ step_ca_common_home }}/certs/root_ca.crt",
+  "federatedRoots": [],
+  "crt": "{{ step_ca_common_home }}/certs/intermediate_ca.crt",
+  "key": "{{ step_ca_common_home }}/secrets/intermediate_ca_key",
+  "address": ":9000",
+  "dnsNames": ["{{ pki_issuing_ca_hostname }}"],
+  "logger": { "format": "text" },
+  "db": {
+    "type": "badgerV2",
+    "dataSource": "{{ step_ca_common_home }}/db"
+  },
+  "authority": {
+    "provisioners": [
+      {
+        "type": "ACME",
+        "name": "acme",
+        "claims": {
+          "maxTLSCertDuration": "2160h",
+          "defaultTLSCertDuration": "2160h"
+        }
+      }
+      {{ step_ca_extra_provisioners | default('') }}
+    ]
+  },
+  "tls": {
+    "cipherSuites": ["TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"],
+    "minVersion": 1.2,
+    "maxVersion": 1.3,
+    "renegotiation": false
+  }
+}
