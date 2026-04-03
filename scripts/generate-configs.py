@@ -56,6 +56,11 @@ def validate_cidr(value: str, field: str):
         sys.exit(1)
 
 
+def _strip_prefix(addr: str) -> str:
+    """Strip CIDR prefix: '10.0.0.1/24' → '10.0.0.1'."""
+    return addr.split("/")[0] if addr else addr
+
+
 def is_inside_container() -> bool:
     """Detect if we're running inside the dev container."""
     if os.path.exists("/.dockerenv"):
@@ -117,12 +122,14 @@ def _hcl_str(val: str) -> str:
 
 
 def gen_tfvars(cfg: dict, env: str) -> str:
-    p = cfg.get("proxmox", {})
-    n = cfg.get("network", {})
-    s = cfg.get("storage", {})
+    infra = cfg.get("infrastructure", {})
+    p = infra.get("proxmox", {})
+    n = infra.get("network", {})
+    s = infra.get("storage", {})
     t = cfg.get("terraform", {})
     ssh = cfg.get("ssh", {})
-    pki = cfg.get("pki", {})
+    svcs = cfg.get("services", {})
+    pki = svcs.get("pki", {})
 
     vlan = n.get("vlan_id")
     vlan_line = f'vlan_id            = {vlan}' if vlan is not None else 'vlan_id            = null'
@@ -154,24 +161,27 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'domain_name        = {_hcl_str(domain_name)}',
     ]
 
-    # PKI section — only emitted when pki: key is present in config
+    # PKI section — only emitted when services.pki is present in config
     if pki:
-        root_addr = pki.get("root_ca_ipv4_address", "")
-        root_gw   = pki.get("root_ca_ipv4_gateway", "")
-        iss_addr  = pki.get("issuing_ca_ipv4_address", "")
-        iss_gw    = pki.get("issuing_ca_ipv4_gateway", "")
-        lxc_tmpl  = pki.get("lxc_template_file_id", "")
+        root_ca  = pki.get("root_ca", {})
+        iss_ca   = pki.get("issuing_ca", {})
+
+        root_addr = root_ca.get("ip", "")
+        root_gw   = root_ca.get("gateway", "")
+        iss_addr  = iss_ca.get("ip", "")
+        iss_gw    = iss_ca.get("gateway", "")
+        lxc_tmpl  = iss_ca.get("lxc_template_file_id", "")
 
         lines += [
             f"",
             f"# PKI",
-            f'root_ca_vm_id           = {pki.get("root_ca_vm_id", 201)}',
+            f'root_ca_vm_id           = {root_ca.get("vm_id", 201)}',
             f'root_ca_ipv4_address    = {_hcl_str(root_addr)}',
             f'root_ca_ipv4_gateway    = {_hcl_str(root_gw)}',
-            f'issuing_ca_ct_id        = {pki.get("issuing_ca_ct_id", 202)}',
+            f'issuing_ca_ct_id        = {iss_ca.get("ct_id", 202)}',
             f'issuing_ca_ipv4_address = {_hcl_str(iss_addr)}',
             f'issuing_ca_ipv4_gateway = {_hcl_str(iss_gw)}',
-            f'cloud_init_template_id  = {pki.get("cloud_init_template_id", 9000)}',
+            f'cloud_init_template_id  = {root_ca.get("cloud_init_template_id", 9000)}',
             f'lxc_template_file_id    = {_hcl_str(lxc_tmpl)}',
         ]
 
@@ -181,6 +191,7 @@ def gen_tfvars(cfg: dict, env: str) -> str:
 def gen_inventory(cfg: dict, env: str) -> str:
     hosts_cfg = cfg.get("hosts", {}) or {}
     ssh = cfg.get("ssh", {})
+    svcs = cfg.get("services", {}) or {}
     default_user = ssh.get("default_user", "ubuntu")
 
     lines = [
@@ -193,10 +204,44 @@ def gen_inventory(cfg: dict, env: str) -> str:
         f"  children:",
     ]
 
-    if not hosts_cfg:
+    has_content = bool(svcs) or any(v for v in hosts_cfg.values())
+
+    if not has_content:
         lines.append(f"    {env}:")
         lines.append(f"      hosts: {{}}")
     else:
+        # Auto-derive inventory groups from services:
+        # - Flat service (has top-level 'ip'): one group, one host
+        # - Nested service (sub-dicts each with 'ip'): one group per sub-host
+        for svc_name, svc in svcs.items():
+            if not isinstance(svc, dict):
+                continue
+            if "ip" in svc:
+                # Flat service (e.g. minio)
+                hostname = svc.get("hostname", f"{svc_name}-server")
+                host_ip  = _strip_prefix(svc["ip"])
+                lines.append(f"    {svc_name}:")
+                lines.append(f"      hosts:")
+                lines.append(f"        {hostname}:")
+                lines.append(f"          ansible_host: {host_ip}")
+                if "ansible_user" in svc:
+                    lines.append(f"          ansible_user: {svc['ansible_user']}")
+            else:
+                # Nested service (e.g. pki with root_ca / issuing_ca sub-hosts)
+                for subkey, sub in svc.items():
+                    if not isinstance(sub, dict) or "ip" not in sub:
+                        continue
+                    group    = f"{svc_name}_{subkey}"
+                    hostname = sub.get("hostname", subkey)
+                    host_ip  = _strip_prefix(sub["ip"])
+                    lines.append(f"    {group}:")
+                    lines.append(f"      hosts:")
+                    lines.append(f"        {hostname}:")
+                    lines.append(f"          ansible_host: {host_ip}")
+                    if "ansible_user" in sub:
+                        lines.append(f"          ansible_user: {sub['ansible_user']}")
+
+        # Manual/ad-hoc hosts
         for group, members in hosts_cfg.items():
             lines.append(f"    {group}:")
             if not members:
@@ -212,16 +257,17 @@ def gen_inventory(cfg: dict, env: str) -> str:
 
 
 def gen_allowed_cidrs(cfg: dict, env: str) -> str:
-    n = cfg.get("network", {})
-    m = cfg.get("minio", {})
-    p = cfg.get("proxmox", {})
-    cidr = n.get("cidr", "")
-    minio_cidr = m.get("host_cidr", "")
-    proxmox_cidr = p.get("host_cidr", "")
+    infra = cfg.get("infrastructure", {})
+    n = infra.get("network", {})
+    p = infra.get("proxmox", {})
+    svcs = cfg.get("services", {}) or {}
+    minio = svcs.get("minio", {})
 
-    validate_cidr(cidr, "network.cidr")
-    validate_cidr(minio_cidr, "minio.host_cidr")
-    validate_cidr(proxmox_cidr, "proxmox.host_cidr")
+    cidr = n.get("cidr", "")
+    proxmox_cidr = f'{p.get("ip", "")}/32' if p.get("ip") else ""
+    minio_cidr   = f'{_strip_prefix(minio.get("ip", ""))}/32' if minio.get("ip") else ""
+
+    validate_cidr(cidr, "infrastructure.network.cidr")
 
     lines = [
         f"# Generated by scripts/generate-configs.py from config/{env}.yml",
@@ -238,12 +284,20 @@ def gen_allowed_cidrs(cfg: dict, env: str) -> str:
 
 
 def gen_envrc(cfg: dict, env: str) -> str:
-    p = cfg.get("proxmox", {})
-    m = cfg.get("minio", {})
+    infra = cfg.get("infrastructure", {})
+    p = infra.get("proxmox", {})
+    svcs = cfg.get("services", {}) or {}
+    m = svcs.get("minio", {})
 
-    endpoint = p.get("endpoint", CHANGE_ME)
+    endpoint = (
+        f'https://{p["ip"]}:{p.get("port", 8006)}'
+        if p.get("ip") else CHANGE_ME
+    )
     insecure = str(p.get("insecure", "true")).lower()
-    minio_endpoint = m.get("endpoint", CHANGE_ME)
+    minio_endpoint = (
+        f'http://{_strip_prefix(m["ip"])}:{m.get("port", 9000)}'
+        if m.get("ip") else CHANGE_ME
+    )
 
     return textwrap.dedent(f"""\
         # Generated by scripts/generate-configs.py from config/{env}.yml

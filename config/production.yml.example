@@ -6,62 +6,56 @@
 # The operator applies this plan manually from their workstation.
 
 environment: production
-
-proxmox:
-  node: pve
-  endpoint: "https://192.168.X.X:8006"
-  insecure: true
-  host_cidr: "192.168.X.X/32"          # Proxmox host IP in CIDR notation (for Squid allowlist)
-
-network:
-  bridge: vmbr0
-  vlan_id: null                          # null = untagged (adjust for your production network)
-  cidr: "192.168.X.0/24"                # Production subnet
-
-storage:
-  datastore_id: local-lvm
-  cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
-
-terraform:
-  pool_id: ""                            # Production resources are not pool-scoped
-  vm_id_range_start: 100                 # Production IDs start lower than sandbox (200)
-  clone_template_id: 0
-  state_bucket: tfstate-production       # Separate state bucket from sandbox
-
-minio:
-  endpoint: "http://192.168.X.X:9000"
-  host_cidr: "192.168.X.X/32"
+domain_name: "lab.example.com"              # used in Terraform DNS output hints only
 
 ssh:
   public_key: "ssh-ed25519 AAAAC3... your-key-comment"
   default_user: ubuntu
 
-domain_name: "lab.example.com"              # used in Terraform DNS output hints only
+infrastructure:
+  proxmox:
+    ip: "192.168.X.X"
+    port: 8006
+    node: pve
+    insecure: true
+  network:
+    bridge: vmbr0
+    vlan_id: null                          # null = untagged (adjust for your production network)
+    cidr: "192.168.X.0/24"                # Production subnet — MUST use CIDR notation
+  storage:
+    datastore_id: local-lvm
+    cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
 
-pki:
-  root_ca_vm_id: 101
-  root_ca_ipv4_address: "192.168.X.X/24"
-  root_ca_ipv4_gateway: "192.168.X.1"
-  issuing_ca_ct_id: 102
-  issuing_ca_ipv4_address: "192.168.X.X/24"
-  issuing_ca_ipv4_gateway: "192.168.X.1"
-  cloud_init_template_id: 9000                                              # created by scripts/setup-vm-template.sh
-  lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+terraform:
+  pool_id: ""                              # Production resources are not pool-scoped
+  vm_id_range_start: 100                   # Production IDs start lower than sandbox (200)
+  clone_template_id: 0
+  state_bucket: tfstate-production         # Separate state bucket from sandbox
+
+services:
+  minio:
+    ip: "192.168.X.X"
+    port: 9000
+    ansible_user: root
+    hostname: minio-server
+  pki:
+    root_ca:
+      ip: "192.168.X.X/24"               # CIDR notation required — Terraform uses prefix for cloud-init
+      gateway: "192.168.X.1"
+      vm_id: 101
+      ansible_user: debian
+      hostname: root-ca
+      cloud_init_template_id: 9000        # created by scripts/setup-vm-template.sh
+    issuing_ca:
+      ip: "192.168.X.X/24"
+      gateway: "192.168.X.1"
+      ct_id: 102
+      ansible_user: root
+      hostname: issuing-ca
+      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
 
 hosts:
   production:
     # production-vm-01:
     #   ansible_host: 192.168.X.X
     #   ansible_user: ubuntu
-  minio:
-    # minio-server:
-    #   ansible_host: 192.168.X.X
-    #   ansible_user: root
-  pki_root_ca:
-    # root-ca:
-    #   ansible_host: 192.168.X.X  # fill in after terraform apply
-    #   ansible_user: debian
-  pki_issuing_ca:
-    # issuing-ca:
-    #   ansible_host: 192.168.X.X  # fill in after terraform apply
-    #   ansible_user: root

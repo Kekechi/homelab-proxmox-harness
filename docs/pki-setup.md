@@ -97,22 +97,29 @@ Verify it is marked as a template (gold icon).
 cp config/sandbox.yml.example config/sandbox.yml
 ```
 
-Edit `config/sandbox.yml` and fill in the `pki:` section with your network values.
+Edit `config/sandbox.yml` and fill in the `services.pki` section with your network values.
 The SSH key for both PKI hosts is inherited from the top-level `ssh.public_key` — no
 separate key needed.
 
 ```yaml
 domain_name: "sandbox.example.com"     # used in Terraform DNS output hints
 
-pki:
-  root_ca_vm_id: 201                    # must not conflict with existing VMs
-  root_ca_ipv4_address: "192.168.X.X/24"
-  root_ca_ipv4_gateway: "192.168.X.1"
-  issuing_ca_ct_id: 202
-  issuing_ca_ipv4_address: "192.168.X.X/24"
-  issuing_ca_ipv4_gateway: "192.168.X.1"
-  cloud_init_template_id: 9000          # VMID from Step 1
-  lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+services:
+  pki:
+    root_ca:
+      ip: "192.168.X.X/24"             # CIDR notation required for cloud-init static IP
+      gateway: "192.168.X.1"
+      vm_id: 201                        # must not conflict with existing VMs
+      ansible_user: debian
+      hostname: root-ca
+      cloud_init_template_id: 9000      # VMID from Step 1
+    issuing_ca:
+      ip: "192.168.X.X/24"
+      gateway: "192.168.X.1"
+      ct_id: 202
+      ansible_user: root
+      hostname: issuing-ca
+      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 ```
 
 Regenerate config files:
@@ -150,7 +157,10 @@ pveam download local debian-13-standard_13.0-1_amd64.tar.zst
 
 Verify the template file ID matches what is set in `config/sandbox.yml`:
 ```yaml
-lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+services:
+  pki:
+    issuing_ca:
+      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 ```
 
 If your template storage is not `local`, update `lxc_template_file_id` accordingly.
@@ -177,31 +187,9 @@ pki_dns_records = {
 **Add these A records to your internal DNS resolver** (strip the CIDR prefix — use the IP only).
 In OPNsense Unbound: Services → Unbound DNS → Host Overrides → Add.
 
----
-
-## Step 5 — Update Ansible Inventory
-
-Edit `config/sandbox.yml` to add the new hosts (use IPs from your tfvars):
-
-```yaml
-hosts:
-  pki_root_ca:
-    root-ca:
-      ansible_host: 192.168.X.X      # IP from root_ca_ipv4_address (no /prefix)
-      ansible_user: debian
-  pki_issuing_ca:
-    issuing-ca:
-      ansible_host: 192.168.X.X      # IP from issuing_ca_ipv4_address (no /prefix)
-      ansible_user: root
-```
-
-Regenerate inventory:
-
-```bash
-make configure
-```
-
-Verify Ansible can reach both hosts:
+The `pki_root_ca` and `pki_issuing_ca` Ansible inventory groups are auto-derived from the
+`pki:` IPs in `config/sandbox.yml` — no manual inventory edit needed. Verify Ansible can
+reach both hosts:
 
 ```bash
 ansible -i ansible/inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
@@ -209,7 +197,7 @@ ansible -i ansible/inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
 
 ---
 
-## Step 6 — Ansible: Bootstrap the PKI
+## Step 5 — Ansible: Bootstrap the PKI
 
 The PKI setup playbook must be run in two passes because the Root CA must be online
 to sign the Issuing CA's intermediate CSR.
@@ -244,7 +232,7 @@ and start step-ca and nginx on the Issuing CA.
 
 ---
 
-## Step 7 — Verify the Issuing CA
+## Step 6 — Verify the Issuing CA
 
 From any host on the sandbox VLAN:
 
@@ -267,7 +255,7 @@ https://ca.<your-domain>/root.crt
 
 ---
 
-## Step 8 — Distribute the Root Certificate
+## Step 7 — Distribute the Root Certificate
 
 Push the root cert to all managed hosts so that curl, apt, and other tools trust the CA:
 
