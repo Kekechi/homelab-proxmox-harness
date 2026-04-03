@@ -18,6 +18,7 @@ network:
 
 storage:
   datastore_id: local-lvm               # Proxmox storage ID for VM/LXC disks
+  cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
 
 terraform:
   pool_id: sandbox                       # Proxmox resource pool (operator creates this)
@@ -45,8 +46,7 @@ pki:
   issuing_ca_ipv4_address: "192.168.X.X/24"
   issuing_ca_ipv4_gateway: "192.168.X.1"
   cloud_init_template_id: 9000                                              # created by scripts/setup-vm-template.sh
-  lxc_template_file_id: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
-  lxc_ssh_public_keys: []                                                   # e.g. ["ssh-ed25519 AAAA..."]
+  lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
 
 hosts:
   sandbox:

@@ -35,6 +35,23 @@ version: "1.0"
 - Disk interface: `scsi0` with `iothread = true`
 - Network model: `virtio`
 
+## Tags — Do Not Use
+
+**Never set `tags` on any VM or LXC resource (`proxmox_virtual_environment_vm` or
+`proxmox_virtual_environment_container`).**
+
+Policy rationale: pool membership and resource naming provide sufficient organisation for
+an IaC-managed homelab. Partial tagging (VMs only, not LXC) creates UI inconsistency
+without adding value.
+
+Technical background (LXC): Proxmox requires `VM.Config.Options` at `/vms/<id>` for
+tags. During fresh LXC creation, this check fires before pool membership is established,
+so pool ACL propagation cannot satisfy it — the entire creation POST is rejected with 403.
+`onboot` and `description` do not share this restriction; only `tags` does.
+
+If tags are ever needed: add them manually in the Proxmox UI after creation. Do not add
+a `tags` variable to either module.
+
 ## Module Conventions
 
 - Module source paths from root: `./modules/proxmox-vm`

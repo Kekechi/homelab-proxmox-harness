@@ -52,7 +52,7 @@ Before starting, ensure the following are in place:
 
 ---
 
-## Step 1 — Create the Debian 12 Cloud-Init VM Template
+## Step 1 — Create the Debian 13 Cloud-Init VM Template
 
 **Run once on the Proxmox host (as root).** This creates the VM template that Terraform
 clones when provisioning the Root CA VM.
@@ -64,7 +64,7 @@ ssh root@<proxmox-host> bash /tmp/setup-vm-template.sh
 ```
 
 The script will:
-1. Download the Debian 12 genericcloud image
+1. Download the Debian 13 genericcloud image
 2. Create VM with VMID 9000 (configurable via `TEMPLATE_VMID` env var)
 3. Import and attach the disk (`local-lvm` storage by default — override with `STORAGE=`)
 4. Add cloud-init drive, configure boot order, serial console
@@ -78,14 +78,14 @@ STORAGE=local-zfs TEMPLATE_VMID=9001 bash /tmp/setup-vm-template.sh
 **Reproducibility note:** The script uses the `latest` Debian cloud image by default.
 To pin to a specific snapshot, override the URL:
 ```bash
-IMAGE_URL="https://cloud.debian.org/images/cloud/bookworm/<snapshot>/debian-12-genericcloud-amd64.qcow2" \
+IMAGE_URL="https://cloud.debian.org/images/cloud/trixie/<snapshot>/debian-13-genericcloud-amd64.qcow2" \
   bash /tmp/setup-vm-template.sh
 ```
-Snapshot dates are listed at `https://cloud.debian.org/images/cloud/bookworm/`.
+Snapshot dates are listed at `https://cloud.debian.org/images/cloud/trixie/`.
 For checksum verification, set `IMAGE_CHECKSUM="sha512:<hash>"` (hash from the
 `SHA512SUMS` file on the same page).
 
-After the script completes, the template will appear in the Proxmox UI as `debian-12-cloudinit`.
+After the script completes, the template will appear in the Proxmox UI as `debian-13-cloudinit`.
 Verify it is marked as a template (gold icon).
 
 ---
@@ -97,7 +97,9 @@ Verify it is marked as a template (gold icon).
 cp config/sandbox.yml.example config/sandbox.yml
 ```
 
-Edit `config/sandbox.yml` and fill in the `pki:` section with your network values:
+Edit `config/sandbox.yml` and fill in the `pki:` section with your network values.
+The SSH key for both PKI hosts is inherited from the top-level `ssh.public_key` — no
+separate key needed.
 
 ```yaml
 domain_name: "sandbox.example.com"     # used in Terraform DNS output hints
@@ -110,9 +112,7 @@ pki:
   issuing_ca_ipv4_address: "192.168.X.X/24"
   issuing_ca_ipv4_gateway: "192.168.X.1"
   cloud_init_template_id: 9000          # VMID from Step 1
-  lxc_template_file_id: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
-  lxc_ssh_public_keys:
-    - "ssh-ed25519 AAAA..."             # your SSH public key for Ansible access
+  lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 ```
 
 Regenerate config files:
@@ -136,21 +136,21 @@ direnv allow
 
 ## Step 3 — Download the LXC Template
 
-The Issuing CA LXC needs a Debian 12 LXC template on Proxmox storage.
+The Issuing CA LXC needs a Debian 13 LXC template on Proxmox storage.
 Download it via the Proxmox UI:
 
-> Datacenter → \<node\> → local → CT Templates → Templates → `debian-12-standard`
+> Datacenter → \<node\> → local → CT Templates → Templates → `debian-13-standard`
 
 Or via shell on the Proxmox host:
 
 ```bash
 pveam update
-pveam download local debian-12-standard_12.7-1_amd64.tar.zst
+pveam download local debian-13-standard_13.0-1_amd64.tar.zst
 ```
 
 Verify the template file ID matches what is set in `config/sandbox.yml`:
 ```yaml
-lxc_template_file_id: "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 ```
 
 If your template storage is not `local`, update `lxc_template_file_id` accordingly.

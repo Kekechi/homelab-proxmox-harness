@@ -48,6 +48,11 @@ variable "datastore_id" {
   default     = "local-lvm"
 }
 
+variable "cloudinit_datastore_id" {
+  description = "Proxmox storage ID for cloud-init snippets. Must be a directory storage with Snippets content type enabled."
+  type        = string
+}
+
 variable "bridge" {
   description = "Network bridge to attach the primary NIC to (e.g. 'vmbr0')"
   type        = string
@@ -78,11 +83,6 @@ variable "ssh_public_key" {
   default     = null
 }
 
-variable "tags" {
-  description = "List of Proxmox tags to apply to the VM"
-  type        = list(string)
-  default     = []
-}
 
 variable "started" {
   description = "Whether the VM should be started after creation"

@@ -3,7 +3,6 @@ resource "proxmox_virtual_environment_vm" "this" {
   vm_id     = var.vm_id
   node_name = var.node_name
   pool_id   = var.pool_id
-  tags      = var.tags
   started   = var.started
   on_boot   = var.start_on_boot
 
@@ -11,9 +10,10 @@ resource "proxmox_virtual_environment_vm" "this" {
   dynamic "clone" {
     for_each = var.clone_template_id != 0 ? [1] : []
     content {
-      vm_id   = var.clone_template_id
-      full    = true
-      retries = 3
+      vm_id        = var.clone_template_id
+      full         = true
+      retries      = 3
+      datastore_id = var.datastore_id
     }
   }
 
@@ -45,6 +45,7 @@ resource "proxmox_virtual_environment_vm" "this" {
   }
 
   initialization {
+    datastore_id = var.cloudinit_datastore_id
     dynamic "ip_config" {
       for_each = var.ipv4_address != null ? [1] : []
       content {

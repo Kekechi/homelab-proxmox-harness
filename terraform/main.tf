@@ -66,8 +66,9 @@ module "root_ca" {
   pool_id            = var.pool_id
   vm_name            = "root-ca"
   vm_id              = var.root_ca_vm_id
-  clone_template_id  = var.cloud_init_template_id
-  started            = false
+  clone_template_id      = var.cloud_init_template_id
+  cloudinit_datastore_id = var.cloudinit_datastore_id
+  started                = false
   start_on_boot      = false
   cores              = 1
   memory_mb          = 512
@@ -78,7 +79,6 @@ module "root_ca" {
   ipv4_address       = var.root_ca_ipv4_address
   ipv4_gateway       = var.root_ca_ipv4_gateway
   ssh_public_key     = var.ssh_public_key
-  tags               = ["terraform", "pki", "root-ca"]
 }
 
 module "issuing_ca" {
@@ -101,6 +101,5 @@ module "issuing_ca" {
   vlan_id          = var.vlan_id
   ipv4_address     = var.issuing_ca_ipv4_address
   ipv4_gateway     = var.issuing_ca_ipv4_gateway
-  ssh_public_keys  = var.lxc_ssh_public_keys
-  tags             = ["terraform", "pki", "issuing-ca"]
+  ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
 }

@@ -14,6 +14,11 @@ variable "datastore_id" {
   type        = string
 }
 
+variable "cloudinit_datastore_id" {
+  description = "Proxmox storage ID for cloud-init snippets. Must be a directory storage with Snippets content type enabled."
+  type        = string
+}
+
 variable "bridge" {
   description = "Linux bridge to attach VMs/LXCs to"
   type        = string
@@ -91,15 +96,15 @@ variable "issuing_ca_ipv4_gateway" {
 }
 
 variable "cloud_init_template_id" {
-  description = "VM ID of the Debian 12 cloud-init template to clone from (created by scripts/setup-vm-template.sh)"
+  description = "VM ID of the Debian 13 cloud-init template to clone from (created by scripts/setup-vm-template.sh)"
   type        = number
   default     = 9000
 }
 
 variable "lxc_template_file_id" {
-  description = "LXC template file ID for the Issuing CA container. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'."
+  description = "LXC template file ID for the Issuing CA container. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'. Verify exact filename with: pveam available --section system | grep debian"
   type        = string
-  default     = "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
+  default     = "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 }
 
 variable "domain_name" {
@@ -108,8 +113,3 @@ variable "domain_name" {
   default     = "lab.example.com"
 }
 
-variable "lxc_ssh_public_keys" {
-  description = "SSH public keys to inject into the Issuing CA LXC root account"
-  type        = list(string)
-  default     = []
-}

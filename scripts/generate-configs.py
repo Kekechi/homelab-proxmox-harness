@@ -143,7 +143,8 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f"",
         f'proxmox_node       = "{p.get("node", "")}"',
         pool_line,
-        f'datastore_id       = "{s.get("datastore_id", "local-lvm")}"',
+        f'datastore_id           = "{s.get("datastore_id", "local-lvm")}"',
+        f'cloudinit_datastore_id = "{s.get("cloudinit_datastore_id", "local")}"',
         f'bridge             = "{n.get("bridge", "vmbr0")}"',
         vlan_line,
         cidr_line,
@@ -155,13 +156,6 @@ def gen_tfvars(cfg: dict, env: str) -> str:
 
     # PKI section — only emitted when pki: key is present in config
     if pki:
-        lxc_keys = pki.get("lxc_ssh_public_keys", []) or []
-        # Format as HCL list literal
-        if lxc_keys:
-            keys_hcl = '["' + '", "'.join(lxc_keys) + '"]'
-        else:
-            keys_hcl = "[]"
-
         root_addr = pki.get("root_ca_ipv4_address", "")
         root_gw   = pki.get("root_ca_ipv4_gateway", "")
         iss_addr  = pki.get("issuing_ca_ipv4_address", "")
@@ -179,7 +173,6 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'issuing_ca_ipv4_gateway = {_hcl_str(iss_gw)}',
             f'cloud_init_template_id  = {pki.get("cloud_init_template_id", 9000)}',
             f'lxc_template_file_id    = {_hcl_str(lxc_tmpl)}',
-            f'lxc_ssh_public_keys     = {keys_hcl}',
         ]
 
     return "\n".join(lines) + "\n"

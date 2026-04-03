@@ -90,11 +90,6 @@ variable "root_password" {
   default     = null
 }
 
-variable "tags" {
-  description = "List of Proxmox tags to apply to the container"
-  type        = list(string)
-  default     = []
-}
 
 variable "start_on_boot" {
   description = "Whether to start the container automatically on Proxmox boot"

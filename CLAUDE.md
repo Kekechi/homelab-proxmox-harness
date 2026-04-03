@@ -134,6 +134,19 @@ deny rules in `.claude/settings.json`, which restrict arbitrary SSH from Bash to
 
 ---
 
+## Debugging and Investigation
+
+When diagnosing a problem, distinguish confidence level explicitly:
+
+- **Known** — directly observed: a code line, API response, error message, or test result
+- **Hypothesised** — inferred from general knowledge, not yet verified on this system
+
+If a root cause explanation has no direct evidence citation, flag it as a hypothesis and propose verification before acting. In this repo, verification almost always means hitting the Proxmox API directly, reading a specific config, or checking a log — not reasoning from general knowledge about how Proxmox or bpg/proxmox typically behaves.
+
+> Signal to shift into investigation mode: "Can we verify that directly?"
+
+---
+
 ## Key Constraints Checklist
 
 Before any commit:

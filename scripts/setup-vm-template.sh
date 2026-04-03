@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup-vm-template.sh — Create a Debian 12 cloud-init VM template on Proxmox
+# setup-vm-template.sh — Create a Debian 13 cloud-init VM template on Proxmox
 #
 # Run this script ONCE on the Proxmox host (as root) before running Terraform.
 # Terraform clones from this template when provisioning the Root CA VM.
@@ -10,7 +10,14 @@
 # Environment variables (optional):
 #   TEMPLATE_VMID   VM ID for the template (default: 9000)
 #   STORAGE         Proxmox storage ID for the disk (default: local-lvm)
-#   BRIDGE          Network bridge (default: vmbr0)
+#   TEMPLATE_POOL   Proxmox pool to assign the template VM to after creation.
+#                   Required when a scoped API token (e.g. terraform@pve!claude-sandbox)
+#                   needs to clone the template — the token can only see VMs in pools
+#                   it has ACL access to. Leave unset to skip pool assignment.
+#
+# The template is created with NO network interface. Terraform adds the correct
+# bridge (net0) after cloning, keeping the template environment-agnostic and
+# avoiding the need for bridge-level IAM permissions to clone it.
 #
 # After the script completes the template will appear in the Proxmox UI.
 # It is safe to re-run if the VM ID is not already in use (the script will
@@ -23,18 +30,18 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 TEMPLATE_VMID="${TEMPLATE_VMID:-9000}"
 STORAGE="${STORAGE:-local-lvm}"
-BRIDGE="${BRIDGE:-vmbr0}"
+TEMPLATE_POOL="${TEMPLATE_POOL:-}"
 # NOTE: Using the `latest` URL means the downloaded image may change on re-runs,
 # producing a different template than the first run. For reproducible environments,
 # pin to a specific snapshot:
-#   https://cloud.debian.org/images/cloud/bookworm/<snapshot>/debian-12-genericcloud-amd64.qcow2
-# Snapshot dates are listed at: https://cloud.debian.org/images/cloud/bookworm/
+#   https://cloud.debian.org/images/cloud/trixie/<snapshot>/debian-13-genericcloud-amd64.qcow2
+# Snapshot dates are listed at: https://cloud.debian.org/images/cloud/trixie/
 #
 # To verify the downloaded image set IMAGE_CHECKSUM to the SHA512 from:
-#   https://cloud.debian.org/images/cloud/bookworm/latest/SHA512SUMS
+#   https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS
 # Example: IMAGE_CHECKSUM="sha512:abc123..."
-IMAGE_URL="${IMAGE_URL:-https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2}"
-IMAGE_FILE="/tmp/debian-12-genericcloud-amd64.qcow2"
+IMAGE_URL="${IMAGE_URL:-https://cloud.debian.org/images/cloud/trixie/latest/debian-13-genericcloud-amd64.qcow2}"
+IMAGE_FILE="/tmp/debian-13-genericcloud-amd64.qcow2"
 IMAGE_CHECKSUM="${IMAGE_CHECKSUM:-}"  # optional — set to "sha512:<hash>" to verify after download
 DISK_SIZE="8G"
 
@@ -57,10 +64,10 @@ if qm status "${TEMPLATE_VMID}" &>/dev/null; then
   exit 1
 fi
 
-echo "=== Debian 12 cloud-init template setup ==="
+echo "=== Debian 13 cloud-init template setup ==="
 echo "  VMID   : ${TEMPLATE_VMID}"
 echo "  Storage: ${STORAGE}"
-echo "  Bridge : ${BRIDGE}"
+echo "  Network: none (NIC added by Terraform after clone)"
 echo ""
 
 # ---------------------------------------------------------------------------
@@ -69,7 +76,7 @@ echo ""
 if [[ -f "${IMAGE_FILE}" ]]; then
   echo "[1/7] Image already present at ${IMAGE_FILE}, skipping download."
 else
-  echo "[1/7] Downloading Debian 12 genericcloud image..."
+  echo "[1/7] Downloading Debian 13 genericcloud image..."
   wget -q --show-progress -O "${IMAGE_FILE}" "${IMAGE_URL}"
 fi
 
@@ -78,10 +85,9 @@ fi
 # ---------------------------------------------------------------------------
 echo "[2/7] Creating VM ${TEMPLATE_VMID}..."
 qm create "${TEMPLATE_VMID}" \
-  --name "debian-12-cloudinit" \
+  --name "debian-13-cloudinit" \
   --memory 2048 \
   --cores 1 \
-  --net0 "virtio,bridge=${BRIDGE}" \
   --serial0 socket \
   --vga serial0 \
   --agent enabled=1 \
@@ -94,9 +100,14 @@ echo "[3/7] Importing disk image into ${STORAGE}..."
 qm importdisk "${TEMPLATE_VMID}" "${IMAGE_FILE}" "${STORAGE}"
 
 echo "[4/7] Attaching disk as scsi0..."
+DISK_REF=$(qm config "${TEMPLATE_VMID}" | awk -F': ' '/^unused0:/{print $2}')
+if [[ -z "${DISK_REF}" ]]; then
+  echo "ERROR: Could not find imported disk in VM ${TEMPLATE_VMID} config." >&2
+  exit 1
+fi
 qm set "${TEMPLATE_VMID}" \
   --scsihw virtio-scsi-single \
-  --scsi0 "${STORAGE}:vm-${TEMPLATE_VMID}-disk-0,discard=on,iothread=1"
+  --scsi0 "${DISK_REF},discard=on,iothread=1"
 
 # NOTE: If you want UEFI boot instead of BIOS, replace --ide2 with --scsi1 for
 # the cloud-init drive and add --bios ovmf --efidisk0 ${STORAGE}:0,size=4M
@@ -125,15 +136,25 @@ echo "[7/7] Converting to template..."
 qm template "${TEMPLATE_VMID}"
 
 # ---------------------------------------------------------------------------
+# Pool assignment (optional)
+# ---------------------------------------------------------------------------
+if [[ -n "${TEMPLATE_POOL}" ]]; then
+  echo "[+] Assigning VM ${TEMPLATE_VMID} to pool '${TEMPLATE_POOL}'..."
+  pvesh set "/pools/${TEMPLATE_POOL}" --vms "${TEMPLATE_VMID}"
+  echo "    Done. Scoped API tokens with ACL access to /pool/${TEMPLATE_POOL} can now clone this template."
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Template created successfully ==="
 echo "  VM ID   : ${TEMPLATE_VMID}"
-echo "  Name    : debian-12-cloudinit"
+echo "  Name    : debian-13-cloudinit"
 echo "  Disk    : ${STORAGE} / ${DISK_SIZE} (scsi0, discard=on, iothread=1)"
 echo "  CI drive: ide2"
-echo "  Bridge  : ${BRIDGE}"
+echo "  Network : none — Terraform adds net0 with the correct bridge after clone"
+echo "  Pool    : ${TEMPLATE_POOL:-"(none — set TEMPLATE_POOL=<pool> if needed for IAM)"}"
 echo ""
 echo "Next step: run 'make plan' in the dev container to provision the PKI VMs."
 echo "  Terraform will clone VMID ${TEMPLATE_VMID} for the Root CA VM."
