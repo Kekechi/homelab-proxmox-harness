@@ -1,0 +1,18 @@
+---
+# Shared step-ca variables — used by both root CA and issuing CA plays
+step_ca_user: step
+step_ca_group: step
+step_ca_home: /etc/step-ca
+
+step_ca_root_cert_duration: "87600h"        # 10 years
+step_ca_intermediate_cert_duration: "43800h" # 5 years
+step_ca_default_cert_duration: "24h"
+
+step_ca_controller_staging_dir: "/workspace/.pki"
+
+step_ca_acme_provisioner_name: "acme"
+step_ca_admin_subject: "step"
+
+# step ca init --context name — determines the authorities/<name>/ subdirectory path.
+# Must be consistent across all roles (root CA play checks issuing CA state via delegate_to).
+step_ca_issuing_context: "issuing-ca"

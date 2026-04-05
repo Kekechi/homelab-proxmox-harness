@@ -1,45 +1,36 @@
 ---
 # pki-setup.yml — Deploy two-tier internal PKI (step-ca)
 #
-# Run order:
-#   1. Install step binaries on both hosts
-#   2. Initialize Root CA (generates root cert, signs intermediate CSR if available)
-#   3. Configure Issuing CA (generates intermediate CSR, deploys config + services)
+# IMPORTANT: The root CA VM must be POWERED ON before running this playbook.
+# After the playbook completes successfully, shut down the root CA VM to keep
+# the root key offline. The issuing CA LXC runs continuously.
 #
-# First-run workflow (two-pass):
-#   Pass 1: Run this playbook — Root CA cert and intermediate CSR are generated.
-#           The root CA will sign the CSR if it finds one at /tmp/ansible-pki/intermediate_ca.csr.
-#           On the very first run the CSR is generated in pass 1 of the issuing CA play,
-#           then the root CA signs it in a second run.
+# Required env vars (set in .envrc, then run: direnv allow):
+#   STEP_CA_ROOT_PASSWORD        — encrypts/decrypts the root CA private key
+#   STEP_CA_ISSUING_PASSWORD     — encrypts the new intermediate CA private key
+#   STEP_CA_PROVISIONER_PASSWORD — encrypts the JWK ACME provisioner key
 #
-#   Pass 2: Run this playbook again — intermediate_ca.crt is now on the controller,
-#           the issuing CA role deploys it and starts step-ca.
+# Required group_vars:
+#   group_vars/pki_root_ca/vars.yml   — step_ca_root_ca_name
+#   group_vars/pki_issuing_ca/vars.yml — step_ca_issuing_ca_name, step_ca_issuing_ca_dns,
+#                                        step_ca_issuing_ca_address
 #
 # Usage:
-#   ansible-playbook ansible/playbooks/pki-setup.yml \
-#     --limit pki_root_ca:pki_issuing_ca \
-#     -e pki_root_ca_name="Homelab Root CA" \
-#     -e pki_issuing_ca_name="Homelab Issuing CA" \
-#     -e pki_issuing_ca_hostname="ca.sandbox.example.com"
-#
-# Secrets must be set in .envrc before running:
-#   STEP_CA_ROOT_PASSWORD
-#   STEP_CA_ISSUING_PASSWORD
-#   STEP_CA_LXC_ROOT_PASSWORD
+#   ansible-playbook ansible/playbooks/pki-setup.yml
 
-- name: Install step-ca tooling on all PKI hosts
+- name: Common setup — install step packages and create step user
   hosts: pki_root_ca:pki_issuing_ca
   become: true
   roles:
     - step_ca_common
 
-- name: Initialize Root CA
+- name: Root CA — generate root certificate and key
   hosts: pki_root_ca
   become: true
   roles:
     - step_ca_root
 
-- name: Configure Issuing CA
+- name: Issuing CA — initialize step-ca and start service
   hosts: pki_issuing_ca
   become: true
   roles:

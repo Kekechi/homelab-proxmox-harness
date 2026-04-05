@@ -1,0 +1,5 @@
+---
+- name: Run setcap on step-ca
+  ansible.builtin.command:
+    cmd: setcap cap_net_bind_service=ep /usr/bin/step-ca
+  changed_when: true

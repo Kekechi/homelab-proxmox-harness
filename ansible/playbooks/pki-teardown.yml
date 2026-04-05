@@ -1,0 +1,63 @@
+---
+# pki-teardown.yml — Wipe step-ca from all PKI hosts for a clean re-run.
+#
+# WARNING: This is destructive. All PKI material (certs, keys, config, DB)
+# will be deleted. After teardown, re-run pki-setup.yml to reinitialize.
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/pki-teardown.yml
+
+- name: Teardown PKI — wipe step-ca from issuing CA
+  hosts: pki_issuing_ca
+  become: true
+  tasks:
+    - name: Stop and disable step-ca service
+      ansible.builtin.systemd:
+        name: step-ca
+        state: stopped
+        enabled: false
+      ignore_errors: true
+
+    - name: Remove systemd unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/step-ca.service
+        state: absent
+      notify: Reload systemd
+
+    - name: Wipe step-ca data directory
+      ansible.builtin.file:
+        path: /etc/step-ca
+        state: absent
+
+    - name: Uninstall step-ca package
+      ansible.builtin.apt:
+        name: step-ca
+        state: absent
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+- name: Teardown PKI — wipe step-ca from root CA
+  hosts: pki_root_ca
+  become: true
+  tasks:
+    - name: Wipe step-ca data directory
+      ansible.builtin.file:
+        path: /etc/step-ca
+        state: absent
+
+    - name: Uninstall step-cli package
+      ansible.builtin.apt:
+        name: step-cli
+        state: absent
+
+- name: Teardown PKI — clean controller staging
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Remove controller staging directory
+      ansible.builtin.file:
+        path: "{{ step_ca_controller_staging_dir }}"
+        state: absent

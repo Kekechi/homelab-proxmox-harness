@@ -12,7 +12,7 @@
 # Example: --limit sandbox   (restrict to sandbox group)
 #          --limit minio      (only the MinIO server)
 #
-# The root CA cert must already be present at /tmp/ansible-pki/root_ca.crt on
+# The root CA cert must already be present at {{ step_ca_controller_staging_dir }}/root_ca.crt on
 # the Ansible controller (it is placed there by the step_ca_root role).
 
 - name: Distribute internal Root CA certificate to all managed hosts
@@ -22,7 +22,7 @@
   tasks:
     - name: Check that root CA cert is present on controller
       ansible.builtin.stat:
-        path: /tmp/ansible-pki/root_ca.crt
+        path: "{{ step_ca_controller_staging_dir }}/root_ca.crt"
       delegate_to: localhost
       register: _root_ca_cert
       become: false
@@ -30,13 +30,13 @@
     - name: Fail if root CA cert is not available on controller
       ansible.builtin.fail:
         msg: >
-          /tmp/ansible-pki/root_ca.crt not found on the Ansible controller.
+          {{ step_ca_controller_staging_dir }}/root_ca.crt not found on the Ansible controller.
           Run pki-setup.yml first to generate and fetch the root CA certificate.
       when: not _root_ca_cert.stat.exists
 
     - name: Copy internal Root CA certificate to system trust store
       ansible.builtin.copy:
-        src: /tmp/ansible-pki/root_ca.crt
+        src: "{{ step_ca_controller_staging_dir }}/root_ca.crt"
         dest: /usr/local/share/ca-certificates/internal-root-ca.crt
         owner: root
         group: root

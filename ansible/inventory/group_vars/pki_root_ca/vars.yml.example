@@ -1,0 +1,3 @@
+---
+# Copy to vars.yml (gitignored) and fill in values
+step_ca_root_ca_name: "Homelab Root CA"

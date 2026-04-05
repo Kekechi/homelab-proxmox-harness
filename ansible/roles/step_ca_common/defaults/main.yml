@@ -1,29 +1,8 @@
 ---
-# step-ca binary versions — update these when new releases are available.
-# Find releases at:
-#   https://github.com/smallstep/cli/releases
-#   https://github.com/smallstep/certificates/releases
-step_ca_common_cli_version: "0.27.0"
-step_ca_common_version: "0.27.0"
+# Shared variables (step_ca_user, step_ca_group, step_ca_home) are defined in
+# group_vars/all/step_ca.yml and are authoritative for all PKI roles.
 
-# OPERATOR ACTION — checksum verification
-# Before deploying to production, set these values by downloading the .sha256 file
-# from each release page and populating the variables below.
-# Then uncomment the `checksum:` lines in tasks/main.yml.
-#
-# step-cli SHA256:
-#   https://github.com/smallstep/cli/releases/download/v{{ step_ca_common_cli_version }}/step_linux_{{ step_ca_common_cli_version }}_amd64.tar.gz.sha256
-# step-ca SHA256:
-#   https://github.com/smallstep/certificates/releases/download/v{{ step_ca_common_version }}/step-ca_linux_{{ step_ca_common_version }}_amd64.tar.gz.sha256
-#
-# step_ca_common_cli_checksum: "sha256:REPLACE_WITH_CHECKSUM"
-# step_ca_common_checksum: "sha256:REPLACE_WITH_CHECKSUM"
-
-# Install paths
-step_ca_common_cli_install_path: /usr/local/bin/step
-step_ca_common_install_path: /usr/local/bin/step-ca
-
-# step service account
-step_ca_common_user: step
-step_ca_common_group: step
-step_ca_common_home: /etc/step-ca
+# step ca init --context creates files under $STEPPATH/authorities/<context>/.
+# This default is used across all PKI roles so that the root CA play can check
+# the issuing CA init state via delegate_to without needing pki_issuing_ca vars.
+step_ca_issuing_context: issuing-ca

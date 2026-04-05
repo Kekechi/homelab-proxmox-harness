@@ -1,20 +1,17 @@
 [Unit]
 Description=step-ca Certificate Authority
-Documentation=https://smallstep.com/docs/step-ca
-After=network.target
-Wants=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User={{ step_ca_common_user }}
-Group={{ step_ca_common_group }}
-WorkingDirectory={{ step_ca_common_home }}
-ExecStart={{ step_ca_common_install_path }} {{ step_ca_common_home }}/config/ca.json --password-file {{ step_ca_common_home }}/secrets/ca-password
+User={{ step_ca_user }}
+Group={{ step_ca_group }}
+WorkingDirectory={{ step_ca_home }}
+Environment=STEPPATH={{ step_ca_home }}/authorities/{{ step_ca_issuing_context }}
+ExecStart=/usr/bin/step-ca --password-file {{ step_ca_home }}/authorities/{{ step_ca_issuing_context }}/secrets/ca-password
 Restart=on-failure
-RestartSec=10
-# Restrict file system access
-ReadWritePaths={{ step_ca_common_home }}
-NoNewPrivileges=true
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

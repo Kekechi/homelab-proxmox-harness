@@ -185,15 +185,20 @@ pki_dns_records = {
 ```
 
 **Add these A records to your internal DNS resolver** (strip the CIDR prefix — use the IP only).
-In OPNsense Unbound: Services → Unbound DNS → Host Overrides → Add.
 
 The `pki_root_ca` and `pki_issuing_ca` Ansible inventory groups are auto-derived from the
 `pki:` IPs in `config/sandbox.yml` — no manual inventory edit needed. Verify Ansible can
 reach both hosts:
 
 ```bash
-ansible -i ansible/inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
+# ansible.cfg is in ansible/ — run from that directory, or set ANSIBLE_CONFIG
+cd ansible
+ansible -i inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
 ```
+
+> **Note:** All Ansible commands in this doc must be run from `/workspace/ansible/` (where
+> `ansible.cfg` lives), or with `ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg` set.
+> Without this, the SSH ProxyCommand is not applied and hosts will be unreachable.
 
 ---
 
@@ -205,7 +210,9 @@ to sign the Issuing CA's intermediate CSR.
 **Pass 1 — Common setup and CSR generation:**
 
 ```bash
-ansible-playbook ansible/playbooks/pki-setup.yml
+# Run from /workspace/ansible (or set ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg)
+cd ansible
+ansible-playbook playbooks/pki-setup.yml
 ```
 
 This will:
@@ -224,7 +231,7 @@ After the root CA has signed the intermediate CSR, re-run the playbook to deploy
 the signed cert and start the Issuing CA service:
 
 ```bash
-ansible-playbook ansible/playbooks/pki-setup.yml
+ansible-playbook playbooks/pki-setup.yml
 ```
 
 The playbook is idempotent — it detects the signed cert and proceeds to configure
@@ -249,8 +256,12 @@ step ca provisioner list \
 
 The root cert is also available for download at:
 
-```
-https://ca.<your-domain>/root.crt
+```bash
+# Via step-ca's built-in API (HTTPS — requires trusting the root CA first):
+curl https://ca.<your-domain>/roots.pem --cacert /tmp/ansible-pki/root_ca.crt
+
+# Via nginx on HTTP (no trust required — safe for initial bootstrap):
+curl http://ca.<your-domain>/root.crt -o root_ca.crt
 ```
 
 ---
@@ -260,13 +271,18 @@ https://ca.<your-domain>/root.crt
 Push the root cert to all managed hosts so that curl, apt, and other tools trust the CA:
 
 ```bash
-ansible-playbook ansible/playbooks/distribute-root-cert.yml --limit sandbox
-ansible-playbook ansible/playbooks/distribute-root-cert.yml --limit minio
+# Run from /workspace/ansible (or set ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg)
+cd ansible
+ansible-playbook playbooks/distribute-root-cert.yml --limit minio
 ```
+
+> **Note:** The `sandbox` inventory group is intentionally empty — PKI hosts already have
+> the root cert deployed by `pki-setup.yml`. Use `--limit <group_or_host>` for any
+> additional hosts added later.
 
 For personal devices and browsers, download and install manually from:
 ```
-https://ca.<your-domain>/root.crt
+http://ca.<your-domain>/root.crt
 ```
 
 Installation guides:

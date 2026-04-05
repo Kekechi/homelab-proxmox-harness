@@ -1,3 +1,0 @@
----
-# No persistent services run on the Root CA (it is an offline VM).
-# Handlers file is intentionally minimal.
