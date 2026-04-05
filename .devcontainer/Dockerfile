@@ -69,6 +69,15 @@ RUN echo 'eval "$(direnv hook bash)"' >> /etc/bash.bashrc
 RUN mkdir -p /home/vscode/.terraform.d/plugin-cache \
     && chown -R vscode:vscode /home/vscode/.terraform.d
 
+ARG GITLEAKS_VERSION=8.27.2
+RUN wget -qO /tmp/gitleaks.tar.gz \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \  
+    && tar -xz -C /usr/local/bin gitleaks -f /tmp/gitleaks.tar.gz \
+    && rm /tmp/gitleaks.tar.gz \
+    && gitleaks version 
+
+RUN pip3 install --no-cache-dir --break-system-packages pre-commit
+
 USER vscode
 
 # Install Claude Code

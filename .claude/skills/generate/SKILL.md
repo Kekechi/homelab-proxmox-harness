@@ -12,8 +12,11 @@ Launch the **iac-generator** agent to translate an approved infrastructure plan 
 
 1. Check that an approved plan exists in the conversation context. If no plan is present, ask the user to run `/infra-plan` first or provide the plan directly.
 2. Launch the `iac-generator` agent (defined in `.claude/agents/iac-generator.md`) with the approved plan as context
-3. The agent will write code to the appropriate files, run `terraform validate` and `tflint`, and report results
-4. Present validation results to the user
+3. The agent will write code to the appropriate files
+4. Run `make lint` after generation completes — this catches mechanical issues
+   (naming conventions, key ordering, deprecated patterns) before review.
+   Fix any lint violations before proceeding.
+5. Present lint results to the user
 
 ## What Gets Written
 

@@ -1,0 +1,14 @@
+# pre-commit hook configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+#
+# Requires gitleaks in PATH. In the dev container it is installed via Dockerfile.
+# To add the Squid allowlist entry needed to install it, see .devcontainer/README.md.
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+        name: Detect hardcoded secrets
+        description: Scan staged content for credentials, tokens, and high-entropy strings

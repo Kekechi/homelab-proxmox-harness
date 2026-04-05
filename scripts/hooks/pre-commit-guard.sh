@@ -52,6 +52,9 @@ while IFS= read -r file; do
         .env.mk)
             blocked="${blocked}\n  - ${file} (generated Makefile fragment)"
             ;;
+        ansible/inventory/group_vars/*/vars.yml|ansible/inventory/group_vars/*/*/vars.yml)
+            blocked="${blocked}\n  - ${file} (group_vars with env-specific hostnames/IPs — use vars.yml.example)"
+            ;;
     esac
 done <<< "$staged"
 

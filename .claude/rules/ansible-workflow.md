@@ -18,6 +18,22 @@ paths:
 - Single inventory file `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` — NEVER edit directly
 - Always run `ansible-lint` before committing playbook changes
 
+## Package Installation — Prefer OS Package Manager
+
+When a tool offers multiple installation methods, prefer the OS package manager (APT on Debian) over downloading GitHub release tarballs, unless there is a specific reason not to.
+
+**Default choice: APT**
+- Use `ansible.builtin.apt` with an official vendor APT repo (DEB822 format, key in `/etc/apt/keyrings/`)
+- Simpler tasks, automatic dependency resolution, `apt upgrade` handles future updates
+- No URL format fragility across releases
+
+**Use GitHub release tarball only when:**
+- The tool has no APT repo or the APT repo lags significantly behind (check the GitHub issues)
+- A specific version must be pinned that is not available via APT
+- The target host has no internet access and binaries must be copied from the controller
+
+**Do not use `apt_key` (deprecated)** — use `get_url` to `/etc/apt/keyrings/<tool>.asc` + DEB822 sources file.
+
 ## Collections
 
 Collections are pinned in `requirements.yml`. Install with:

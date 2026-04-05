@@ -31,7 +31,25 @@ Follow the `review` skill on all files modified in Step 2.
 - WARN — present warnings and ask the user whether to proceed.
 - APPROVE — continue.
 
-### Step 4: Terraform Plan
+### Step 4: Pre-flight (Ansible deployments with CLI tools only)
+
+**Skip this step for Terraform-only changes.**
+
+Before running any Ansible playbook that calls CLI tools (step-ca, consul, vault, etc.) for the **first time**, verify every non-trivial flag used in tasks actually exists in the installed binary version on the target host:
+
+```bash
+ansible <host> -m command -a "<tool> <subcommand> --help" 2>&1 | grep "<flag>"
+```
+
+Check each flag that is:
+- Not a universal flag (`--help`, `--version`)
+- Version-gated (release notes mention it) or tool-specific (not in man page training data)
+
+**If a flag is missing:** fix the task before running, not after the first failure.
+
+**Why this matters:** Static review (Step 3) cannot catch version-specific CLI behavior. A 30-second `--help` grep prevents fix-and-retry cycles that otherwise only surface at runtime.
+
+### Step 5: Terraform Plan
 
 ```bash
 make plan
@@ -40,7 +58,7 @@ make plan
 
 **Checkpoint:** Present the plan diff output. Explicitly ask the user to confirm before applying. Watch for unexpected `destroy` or `replace` operations — flag them clearly.
 
-### Step 5: Terraform Apply
+### Step 6: Terraform Apply
 
 ```bash
 make apply

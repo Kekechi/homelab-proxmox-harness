@@ -30,6 +30,8 @@ Before asking anything, do three things:
 
 State the decision axes to the user upfront so the session feels structured, not open-ended.
 
+4. **Establish scope boundaries** — identify what is adjacent to this design and explicitly defer it. Design one layer at a time: if this session is about infrastructure, defer software deployment decisions; if it's about software deployment, defer consumer-side integration. The order isn't fixed — sometimes software architecture must be sketched first to know what infrastructure to provision (e.g., "one-tier or two-tier?" determines "one host or two?"). What matters is not mixing both layers mid-session. Name the deferred layer explicitly so the user knows it's deferred, not forgotten.
+
 ## Phase 2: Explore decisions one layer at a time
 
 Work through decision axes in dependency order — don't discuss sizing before topology, don't discuss DNS before network placement.
@@ -38,8 +40,10 @@ Work through decision axes in dependency order — don't discuss sizing before t
 1. State what you know and what you're assuming
 2. Present the relevant options with honest tradeoffs
 3. Include the industry reference point when it's meaningfully different from homelab practice
-4. Make a recommendation if you have one — say why
-5. Wait for the user to decide before moving on
+4. **Verify against official documentation** — if the recommendation depends on how a specific tool behaves or what a vendor recommends, check the official docs before presenting it. Distinguish "this is from training knowledge" from "this is what the docs say." If docs are unreachable, say so explicitly rather than presenting training knowledge as authoritative.
+5. **Test against a live instance if one is available** — if the user has a running (even broken) sandbox with the target software, test CLI flags and initialization paths live during design. Don't carry forward an assumption about how a command behaves when it can be verified directly. Catching a wrong flag mapping or initialization flow during design is far cheaper than debugging it after code is written. If the user hasn't mentioned whether a sandbox exists, ask.
+6. Make a recommendation if you have one — say why
+7. Wait for the user to decide before moving on
 
 **Rules:**
 - One decision at a time. Do not bundle multiple open questions in a single turn.
