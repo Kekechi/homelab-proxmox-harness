@@ -2,6 +2,8 @@
 name: design
 description: Design exploration for net-new infrastructure. Facilitates one-decision-at-a-time discussion to reach a clear design record before any planning or implementation begins.
 disable-model-invocation: false
+model: opus
+effort: high
 ---
 
 # Skill: Design Exploration

@@ -2,6 +2,8 @@
 name: retro
 description: Retrospective on a completed session. Surfaces prompting lessons and workflow insights, then recommends the right action — from no action to updating an existing skill or creating a new one.
 disable-model-invocation: false
+model: opus
+effort: high
 ---
 
 # Skill: Session Retrospective

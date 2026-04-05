@@ -69,7 +69,10 @@ docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, thr
     infra-plan/           Plan infrastructure changes (iac-planner, Opus)
     generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
     review/               Review code for security and correctness (tf-reviewer, Sonnet)
-    deploy/               Full PGE pipeline: plan → generate → review → apply
+    deploy/               RETIRED — use tf-deploy, ansible-deploy, or ansible-run
+    tf-deploy/            Full PGE pipeline for Terraform: plan → generate → review → apply
+    ansible-deploy/       Full PGE pipeline for Ansible: plan → generate → review → run
+    ansible-run/          Pre-flight + run + verify for Ansible (code already written)
     handoff/              Package production plan for operator handoff
     assess/               Structured project assessment with discussion
     day2-ops/             Day-2 operations: resize, snapshots, network, cloud-init
@@ -115,7 +118,9 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 | `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
 | `/generate` | Write code from an approved plan using iac-generator |
 | `/review [files]` | Review Terraform/Ansible code with tf-reviewer |
-| `/deploy <description>` | Full plan → generate → review → apply pipeline |
+| `/tf-deploy <description>` | Full pipeline for Terraform infrastructure changes |
+| `/ansible-deploy <description>` | Full pipeline for Ansible role/playbook deployments |
+| `/ansible-run` | Pre-flight + run + verify (code already written and reviewed) |
 | `/handoff` | Package production plan with context for operator handoff |
 | `/assess <scope + concerns>` | Structured project assessment with discussion |
 | `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs |

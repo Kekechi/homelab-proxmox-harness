@@ -2,6 +2,8 @@
 name: assess
 description: Structured project assessment. Evaluates organization, consistency, documentation, and intent alignment. Drives discussion to surface hidden assumptions before optional remediation.
 disable-model-invocation: false
+model: opus
+effort: high
 ---
 
 # Skill: Project Assessment

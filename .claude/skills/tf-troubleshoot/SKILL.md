@@ -1,6 +1,7 @@
 ---
 name: tf-troubleshoot
 description: Structured diagnostics for failed Terraform operations in the Proxmox homelab. Covers auth errors, state lock, partial apply, backend failures, and cloud-init issues.
+model: opus
 ---
 
 # Skill: Terraform Troubleshooting
