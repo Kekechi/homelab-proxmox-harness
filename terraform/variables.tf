@@ -50,7 +50,7 @@ variable "clone_template_id" {
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key to inject via cloud-init into provisioned VMs/LXCs"
+  description = "SSH public key to inject via cloud-init into provisioned VMs/LXCs. Required for the issuing CA LXC unless a root_password is passed directly to the module — the LXC module enforces at least one auth method at plan time."
   type        = string
   default     = null
 }
@@ -104,11 +104,14 @@ variable "cloud_init_template_id" {
 variable "lxc_template_file_id" {
   description = "LXC template file ID for the Issuing CA container. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'. Verify exact filename with: pveam available --section system | grep debian"
   type        = string
-  default     = "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+  # Default assumes the template has been downloaded to local storage. Download first:
+  #   pveam update && pveam download local debian-13-standard_13.0-1_amd64.tar.zst
+  # Override in sandbox.tfvars if the filename or storage differs on your node.
+  default = "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 }
 
 variable "domain_name" {
-  description = "Internal domain name used in DNS output hints (e.g. 'lab.example.com'). Does not affect resource configuration — informational only."
+  description = "Internal domain name used in DNS output hints (e.g. 'lab.example.com'). Does not affect resource configuration — informational only. Override in tfvars; default is a placeholder."
   type        = string
   default     = "lab.example.com"
 }

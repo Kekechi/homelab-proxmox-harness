@@ -6,8 +6,16 @@ resource "proxmox_virtual_environment_container" "this" {
   start_on_boot = var.start_on_boot
   unprivileged  = var.unprivileged
   started       = var.started
-  # Note: proxmox_virtual_environment_container does not support stop_on_destroy.
-  # The bpg/proxmox provider stops the container automatically before destroy.
+  # Note: proxmox_virtual_environment_container does not support stop_on_destroy
+  # (confirmed against bpg/proxmox v0.99 — it is a VM-only argument).
+  # Destroy behavior for a running container is provider-managed; verify in sandbox
+  # before relying on clean destroy in production.
+
+  console {
+    enabled   = true
+    type      = "console"
+    tty_count = 2
+  }
 
   initialization {
     hostname = var.hostname
@@ -27,6 +35,7 @@ resource "proxmox_virtual_environment_container" "this" {
       content {
         ipv4 {
           address = "dhcp"
+          # gateway assigned by DHCP — intentionally omitted
         }
       }
     }
@@ -39,6 +48,8 @@ resource "proxmox_virtual_environment_container" "this" {
 
   cpu {
     cores = var.cores
+    # LXC containers inherit the host CPU — no type argument exists for containers
+    # (unlike proxmox_virtual_environment_vm which supports cpu.type = "x86-64-v2-AES").
   }
 
   memory {
@@ -49,6 +60,13 @@ resource "proxmox_virtual_environment_container" "this" {
   disk {
     datastore_id = var.datastore_id
     size         = var.disk_size_gb
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.root_password != null || length(var.ssh_public_keys) > 0
+      error_message = "At least one authentication method must be provided: set root_password or ssh_public_keys."
+    }
   }
 
   network_interface {

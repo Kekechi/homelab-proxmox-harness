@@ -5,7 +5,7 @@ output "vm_id" {
 
 output "hostname" {
   description = "Container hostname"
-  value       = proxmox_virtual_environment_container.this.initialization[0].hostname
+  value       = try(proxmox_virtual_environment_container.this.initialization[0].hostname, null)
 }
 
 output "network_interface_names" {

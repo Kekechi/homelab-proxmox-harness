@@ -44,7 +44,6 @@ provider "proxmox" {
 #   bridge            = var.bridge
 #   vlan_id           = var.vlan_id
 #   ssh_public_key    = var.ssh_public_key
-#   tags              = ["terraform", "managed"]
 # }
 
 # ---------------------------------------------------------------------------
@@ -62,23 +61,23 @@ provider "proxmox" {
 module "root_ca" {
   source = "./modules/proxmox-vm"
 
-  node_name          = var.proxmox_node
-  pool_id            = var.pool_id
-  vm_name            = "root-ca"
-  vm_id              = var.root_ca_vm_id
+  node_name              = var.proxmox_node
+  pool_id                = var.pool_id
+  vm_name                = "root-ca"
+  vm_id                  = var.root_ca_vm_id
   clone_template_id      = var.cloud_init_template_id
   cloudinit_datastore_id = var.cloudinit_datastore_id
   started                = false
-  start_on_boot      = false
-  cores              = 1
-  memory_mb          = 512
-  disk_size_gb       = 8
-  datastore_id       = var.datastore_id
-  bridge             = var.bridge
-  vlan_id            = var.vlan_id
-  ipv4_address       = var.root_ca_ipv4_address
-  ipv4_gateway       = var.root_ca_ipv4_gateway
-  ssh_public_key     = var.ssh_public_key
+  start_on_boot          = false
+  cores                  = 1
+  memory_mb              = 512
+  disk_size_gb           = 8
+  datastore_id           = var.datastore_id
+  bridge                 = var.bridge
+  vlan_id                = var.vlan_id
+  ipv4_address           = var.root_ca_ipv4_address
+  ipv4_gateway           = var.root_ca_ipv4_gateway
+  ssh_public_key         = var.ssh_public_key
 }
 
 module "issuing_ca" {
