@@ -1,0 +1,8 @@
+---
+# Note: `when` on a meta dependency is evaluated at dependency-resolution time using
+# the parent play's variable scope. This works correctly when minio_tls_enabled is
+# set via inventory/group_vars/defaults. It may not behave as expected if overridden
+# via play-level `vars:` at runtime.
+dependencies:
+  - role: step_client
+    when: minio_tls_enabled | default(false)

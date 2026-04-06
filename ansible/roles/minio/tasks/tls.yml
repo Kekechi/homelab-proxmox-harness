@@ -1,0 +1,89 @@
+---
+# minio/tasks/tls.yml — obtain and renew MinIO TLS certificate from step-ca.
+# Requires: step_client role applied, STEP_CA_PROVISIONER_PASSWORD set in environment.
+
+- name: Create MinIO certs directory
+  ansible.builtin.file:
+    path: "{{ minio_certs_dir }}"
+    state: directory
+    owner: minio-user
+    group: minio-user
+    mode: "0750"
+
+- name: Assert STEP_CA_PROVISIONER_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
+    fail_msg: "STEP_CA_PROVISIONER_PASSWORD environment variable is not set"
+
+- name: Stat MinIO certificate file
+  ansible.builtin.stat:
+    path: "{{ minio_certs_dir }}/public.crt"
+  register: minio_cert_stat
+
+- name: Issue MinIO TLS certificate
+  when: not minio_cert_stat.stat.exists
+  block:
+    - name: Create temp file for provisioner password
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .pass
+      register: minio_prov_pass_file
+
+    - name: Write provisioner password to temp file
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
+        dest: "{{ minio_prov_pass_file.path }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Issue certificate via step ca
+      ansible.builtin.command:
+        cmd: >-
+          step ca certificate {{ minio_domain }}
+          {{ minio_certs_dir }}/public.crt
+          {{ minio_certs_dir }}/private.key
+          --provisioner {{ minio_jwk_provisioner }}
+          --provisioner-password-file {{ minio_prov_pass_file.path }}
+          --ca-url {{ minio_ca_url }}
+          --root {{ minio_ca_root }}
+          --kty EC
+          --curve P-256
+          --not-after 24h
+          --force
+      changed_when: true
+      no_log: true
+      notify: Restart minio
+
+  always:
+    - name: Delete provisioner password temp file
+      ansible.builtin.file:
+        path: "{{ minio_prov_pass_file.path }}"
+        state: absent
+      when: minio_prov_pass_file is defined
+
+# Run on every play — ensures permissions are correct even if a previous run
+# crashed after issuance but before the permission task completed.
+- name: Harden certificate file permissions
+  ansible.builtin.file:
+    path: "{{ minio_certs_dir }}/{{ item.name }}"
+    owner: minio-user
+    group: minio-user
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: public.crt, mode: "0640" }
+    - { name: private.key, mode: "0600" }
+
+- name: Deploy MinIO certificate renewal systemd service
+  ansible.builtin.template:
+    src: minio-cert-renew.service.j2
+    dest: /etc/systemd/system/minio-cert-renew.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable and start MinIO certificate renewal service
+  ansible.builtin.systemd:
+    name: minio-cert-renew
+    enabled: true
+    state: started
+    daemon_reload: true

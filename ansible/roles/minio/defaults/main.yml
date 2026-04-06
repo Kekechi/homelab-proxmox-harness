@@ -3,3 +3,13 @@ minio_data_dir: /var/lib/minio/data
 minio_port: 9000
 minio_console_port: 9001
 minio_checksum: "7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f"  # From https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum
+
+# TLS configuration (via step-ca JWK provisioner)
+# minio_tls_enabled, minio_domain, and minio_ca_url are propagated from config/<env>.yml
+# via make configure → ansible/inventory/hosts.yml group vars. Do not hardcode here.
+minio_tls_enabled: false
+minio_domain: ""
+minio_ca_url: ""
+minio_certs_dir: /etc/minio/certs
+minio_ca_root: /usr/local/share/ca-certificates/internal-root-ca.crt
+minio_jwk_provisioner: acme  # Name of the JWK provisioner on the issuing CA (not the ACME protocol provisioner)

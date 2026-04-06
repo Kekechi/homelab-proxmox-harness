@@ -82,3 +82,10 @@
     name: minio
     enabled: true
     state: started
+
+# Note: MinIO starts above without TLS on first run. The tls.yml tasks issue
+# the cert and notify the Restart handler, which corrects this at play end.
+# Subsequent runs are fully idempotent — MinIO is already serving HTTPS.
+- name: Configure TLS
+  ansible.builtin.include_tasks: tls.yml
+  when: minio_tls_enabled | default(false)

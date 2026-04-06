@@ -1,0 +1,48 @@
+---
+# step_client — install step-cli only (NOT step-ca) via the Smallstep APT repo.
+# Applied to any host that needs to request or renew certificates from step-ca.
+
+- name: Assert Debian-family OS
+  ansible.builtin.assert:
+    that: ansible_os_family == "Debian"
+    fail_msg: "step_client role requires a Debian-family OS (got: {{ ansible_os_family }})"
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: true
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download Smallstep APT signing key
+  ansible.builtin.get_url:
+    url: https://packages.smallstep.com/keys/apt/repo-signing-key.gpg
+    dest: /etc/apt/keyrings/smallstep.asc
+    mode: "0644"
+
+- name: Add Smallstep APT repository (DEB822 format)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/smallstep.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://packages.smallstep.com/stable/debian
+      Suites: debs
+      Components: main
+      Signed-By: /etc/apt/keyrings/smallstep.asc
+
+- name: Install step-cli
+  ansible.builtin.apt:
+    name: step-cli
+    state: present
+    update_cache: true

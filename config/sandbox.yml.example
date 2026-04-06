@@ -39,6 +39,8 @@ services:
     port: 9000
     ansible_user: root
     hostname: minio-server               # Ansible inventory hostname
+    fqdn: "minio.sandbox.example.com"    # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true (generator exits with error if missing)
+    tls: true                            # Enable TLS via step-ca ACME; set false for plain HTTP
   pki:
     root_ca:
       ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init

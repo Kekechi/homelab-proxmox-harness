@@ -1,0 +1,23 @@
+[Unit]
+Description=MinIO TLS certificate renewal daemon
+After=network.target
+
+[Service]
+Type=simple
+User=minio-user
+Group=minio-user
+# Renews when 2/3 of the 24h validity has elapsed (~8h remaining).
+# --force overwrites cert files without interactive prompt (no forced timing).
+# Renewal authenticates via mTLS using the existing cert+key — no password needed.
+ExecStart=/usr/bin/step ca renew \
+  --daemon \
+  --force \
+  --ca-url {{ minio_ca_url }} \
+  --root {{ minio_ca_root }} \
+  {{ minio_certs_dir }}/public.crt \
+  {{ minio_certs_dir }}/private.key
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

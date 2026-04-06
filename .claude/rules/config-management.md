@@ -59,7 +59,10 @@ make configure ENV=production
 ## Derivations performed by the generator
 
 - `infrastructure.proxmox.ip` + `port` → `https://{ip}:{port}` for envrc, `{ip}/32` for Squid
-- `services.minio.ip` + `port` → `http://{ip}:{port}` for envrc, `{ip}/32` for Squid, bare IP for ansible_host
+- `services.minio.ip` + `port` → `http://{ip}:{port}` for envrc (when tls:false), `{ip}/32` for Squid, bare IP for ansible_host
+- `services.minio.fqdn` + `tls` → `https://{fqdn}:{port}` for envrc (when tls:true); also emitted as `minio_domain` in `hosts.yml` minio group vars
+- `services.minio.tls` → `minio_tls_enabled` group var in `hosts.yml`
+- `domain_name` → `minio_ca_url: https://ca.{domain_name}` group var in `hosts.yml` minio group
 - `services.*` with `ip` → Ansible inventory group auto-derived (no manual `hosts:` entry needed)
 - `services.pki.*` sub-hosts → `pki_root_ca` / `pki_issuing_ca` Ansible groups
 
