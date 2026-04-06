@@ -44,7 +44,8 @@ Work through decision axes in dependency order — don't discuss sizing before t
 3. Include the industry reference point when it's meaningfully different from homelab practice
 4. **Verify against official documentation** — if the recommendation depends on how a specific tool behaves or what a vendor recommends, check the official docs before presenting it. Distinguish "this is from training knowledge" from "this is what the docs say." If docs are unreachable, say so explicitly rather than presenting training knowledge as authoritative.
 5. **Test against a live instance if one is available** — if the user has a running (even broken) sandbox with the target software, test CLI flags and initialization paths live during design. Don't carry forward an assumption about how a command behaves when it can be verified directly. Catching a wrong flag mapping or initialization flow during design is far cheaper than debugging it after code is written. If the user hasn't mentioned whether a sandbox exists, ask.
-6. Make a recommendation if you have one — say why
+6. **Frame configuration methods to match the tool's deployment model** — if the tool's standalone/self-hosted mode is designed around a config file, present config-file editing as the native approach, not a workaround. "Edit ca.json" and "edit nginx.conf" are native operations. Framing them as "hand-editing" or inferior to a CLI implies they're fallbacks, which triggers unnecessary exploration of alternative interfaces. Reserve API/CLI framing for deployment modes where those are the primary interface.
+7. Make a recommendation if you have one — say why
 7. Wait for the user to decide before moving on
 
 **Rules:**
