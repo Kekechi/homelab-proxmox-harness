@@ -19,7 +19,7 @@ infrastructure:
   network:
     bridge: vmbr0                        # Network bridge for VMs/LXCs
     vlan_id: 50                          # VLAN tag for sandbox network (null = untagged)
-    cidr: "192.168.X.0/24"              # Sandbox VLAN subnet — MUST use CIDR notation
+    cidr: "192.168.X.0/24"              # Sandbox VLAN subnet — MUST use CIDR notation (e.g. /24); bare IPs rejected
   storage:
     datastore_id: local-lvm             # Proxmox storage ID for VM/LXC disks
     cloudinit_datastore_id: local-lvm   # Directory storage with Snippets content type enabled
@@ -48,7 +48,7 @@ services:
       vm_id: 201                         # must not conflict with existing VMs
       ansible_user: debian
       hostname: root-ca
-      cloud_init_template_id: 9000       # VMID of Debian cloud-init template (from setup-vm-template.sh)
+      cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
     issuing_ca:
       ip: "192.168.X.X/24"
       gateway: "192.168.X.1"

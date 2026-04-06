@@ -11,7 +11,8 @@ This project uses Claude Code skills to automate common infrastructure workflows
 | `infra-plan` | `/infra-plan <description>` | yes | Plans infrastructure changes, waits for your approval |
 | `generate` | `/generate` | yes | Writes Terraform/Ansible code from an approved plan |
 | `review` | `/review [path]` | yes | Reviews code and returns APPROVE / WARN / BLOCK |
-| `deploy` | `/deploy <description>` | **no** | Full pipeline: plan → generate → review → apply |
+| `tf-deploy` | `/tf-deploy <description>` | **no** | Full Terraform pipeline: plan → generate → review → apply |
+| `ansible-deploy` | `/ansible-deploy <description>` | **no** | Full Ansible pipeline: plan → generate → review → run |
 | `handoff` | `/handoff` | **no** | Packages a production plan for operator handoff |
 | `assess` | `/assess <scope>` | yes | Structured project assessment with discussion |
 | `day2-ops` | `/day2-ops` | **no** | Modifies existing VMs/LXCs (resize, snapshots, network) |
@@ -24,10 +25,10 @@ Skills marked **no** require explicit invocation and will not be triggered autom
 
 ### Full pipeline (recommended)
 
-Use `/deploy` when you want Claude to handle everything end-to-end with checkpoints at each step:
+Use `/tf-deploy` (Terraform) or `/ansible-deploy` (Ansible) when you want Claude to handle everything end-to-end with checkpoints at each step:
 
 ```
-/deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.X.X
+/tf-deploy a Ubuntu 24.04 VM with 2 cores, 4GB RAM, static IP 192.168.X.X
 ```
 
 Pipeline: **plan** → *(your approval)* → **generate** → **review** → *(your approval)* → `terraform plan` → *(your approval)* → `terraform apply`
@@ -100,7 +101,8 @@ Always check the plan output for `# forces replacement` before applying day-2 ch
 /generate   ─┤─ these three are the building blocks
 /review     ─┘
 
-/deploy ── orchestrates all three + terraform plan/apply
+/tf-deploy      ── orchestrates all three + terraform plan/apply
+/ansible-deploy ── orchestrates all three + ansible run
 
 /handoff ── post-planning, production only
 /assess  ── independent; not part of the deploy pipeline
@@ -123,7 +125,6 @@ See the individual `README.md` files for detailed usage, output format, and exam
 - [`.claude/skills/infra-plan/README.md`](../.claude/skills/infra-plan/README.md)
 - [`.claude/skills/generate/README.md`](../.claude/skills/generate/README.md)
 - [`.claude/skills/review/README.md`](../.claude/skills/review/README.md)
-- [`.claude/skills/deploy/README.md`](../.claude/skills/deploy/README.md)
 - [`.claude/skills/handoff/README.md`](../.claude/skills/handoff/README.md)
 - [`.claude/skills/assess/README.md`](../.claude/skills/assess/README.md)
 - [`.claude/skills/day2-ops/README.md`](../.claude/skills/day2-ops/README.md)

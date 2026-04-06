@@ -53,7 +53,10 @@ cp config/sandbox.yml.example config/sandbox.yml
 
 make configure
 # Generates: terraform/sandbox.tfvars, ansible/inventory/hosts.yml,
-#            .devcontainer/squid/allowed-cidrs.conf, .envrc
+#            .devcontainer/squid/allowed-cidrs.conf, .envrc, .env.mk
+
+# Verify the generated files exist:
+ls terraform/sandbox.tfvars ansible/inventory/hosts.yml
 ```
 
 **2. Fill in secrets**
@@ -75,16 +78,28 @@ Then: `direnv allow`
 After `make configure` updates `allowed-cidrs.conf`, rebuild the dev container:
 ```bash
 make build       # rebuild Squid image with updated allowlist
-# Then reopen in dev container (VS Code: "Reopen in Container")
+# Then reopen in dev container:
+#   VS Code: Ctrl+Shift+P → "Dev Containers: Reopen in Container"
 ```
 
-**4. Initialize and plan**
+**4. Verify isolation and initialize**
 
 ```bash
-make init        # initialize Terraform with sandbox state bucket
-make plan        # terraform plan → sandbox.tfplan
-make apply       # terraform apply sandbox.tfplan
+make verify-isolation    # confirm Squid proxy and network isolation are working
+make init                # initialize Terraform with sandbox state bucket
+make plan                # terraform plan → sandbox.tfplan
+make apply               # terraform apply sandbox.tfplan
 ```
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `make configure` fails with "must use CIDR notation" | Bare IP in `infrastructure.network.cidr` or `services.pki.*.ip` | Use CIDR notation (e.g. `192.168.50.0/24`, `192.168.50.10/24`) |
+| `make configure` fails with "fqdn is not set" | `services.minio.tls: true` but no `fqdn` | Set `services.minio.fqdn` or change `tls: false` |
+| `make init` fails | MinIO not running or `MINIO_ENDPOINT` wrong | Verify MinIO is reachable: `curl -s $MINIO_ENDPOINT/minio/health/live` |
+| `make plan` fails with auth error | `PROXMOX_VE_API_TOKEN` not set or expired | Check `.envrc` is loaded: `echo $PROXMOX_VE_API_TOKEN` |
+| Template VM not found during apply | `cloud_init_template_id` refers to nonexistent VM | Run `scripts/setup-vm-template.sh` on the Proxmox host first |
 
 ## Documentation
 
@@ -104,7 +119,8 @@ This repo includes a Claude Code harness that enables AI-assisted infrastructure
 | `/plan <description>` | Plans an infrastructure change (no code written) |
 | `/generate` | Writes code from an approved plan |
 | `/review [files]` | Reviews code for security and correctness |
-| `/deploy <description>` | Full plan → generate → review → apply pipeline |
+| `/tf-deploy <description>` | Full Terraform plan → generate → review → apply pipeline |
+| `/ansible-deploy <description>` | Full Ansible plan → generate → review → run pipeline |
 
 The harness uses a **Planner-Generator-Evaluator** architecture:
 - **iac-planner** (Opus) — researches and designs the change

@@ -71,7 +71,6 @@ docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, thr
     infra-plan/           Plan infrastructure changes (iac-planner, Opus)
     generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
     review/               Review code for security and correctness (tf-reviewer, Sonnet)
-    deploy/               RETIRED — use tf-deploy, ansible-deploy, or ansible-run
     tf-deploy/            Full PGE pipeline for Terraform: plan → generate → review → apply
     ansible-deploy/       Full PGE pipeline for Ansible: plan → generate → review → run
     ansible-run/          Pre-flight + run + verify for Ansible (code already written)
