@@ -15,13 +15,13 @@ the role skips trust setup with a warning. Run `pki-setup.yml` first.
 Download the root CA certificate from the issuing CA:
 
 ```
-https://ca.sandbox.bubukakkin.com/roots.pem
+https://ca.<your-sandbox-domain>/roots.pem
 ```
 
 Accept the one-time browser TLS warning — this is expected. You are downloading
 the cert that will remove this warning permanently once installed.
 
-> **Production:** Uses a separate issuing CA at `ca.lab.bubukakkin.com`.
+> **Production:** Uses a separate issuing CA at `ca.<your-prod-domain>`.
 
 ---
 
@@ -51,7 +51,7 @@ Double-click the downloaded `roots.pem` file. Keychain Access opens.
 
 ### iOS
 
-1. Open Safari and navigate to `https://ca.sandbox.bubukakkin.com/roots.pem`
+1. Open Safari and navigate to `https://ca.<your-sandbox-domain>/roots.pem`
 2. Accept the TLS warning
 3. Tap **Allow** when prompted to download a configuration profile
 4. Open **Settings** — a banner at the top shows **Profile Downloaded**. Tap it and install.

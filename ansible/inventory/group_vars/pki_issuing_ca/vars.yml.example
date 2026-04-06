@@ -1,5 +1,5 @@
 ---
 # Copy to vars.yml (gitignored) and fill in values
 step_ca_issuing_ca_name: "Homelab Issuing CA"
-step_ca_issuing_ca_dns: "ca.sandbox.bubukakkin.com"
+step_ca_issuing_ca_dns: "ca.sandbox.<your-domain>"
 step_ca_issuing_ca_address: ":443"

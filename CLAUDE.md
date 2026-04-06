@@ -8,7 +8,7 @@ Homelab Proxmox Private Cloud managed with Terraform (`bpg/proxmox` v0.99.0+) an
 State backend: MinIO (self-hosted S3, LXC on Proxmox) with a GitLab HTTP migration path.
 Claude Code runs inside a dev container with a Squid forward proxy for network isolation.
 
-**This repository is public.** Do not commit or write to docs anything that reveals specific network topology, firewall product names, internal IPs, or deployment-specific implementation details. Keep committed docs at intent level.
+**This repository is public.** Do not commit or write to docs anything that reveals specific network topology, firewall product names, internal IPs, domain names, or deployment-specific implementation details. Keep committed docs at intent level.
 
 ---
 
