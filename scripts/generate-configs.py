@@ -91,25 +91,59 @@ _ENVRC_SECRET_VARS = [
 
 
 def atomic_write(path: str, content: str, force: bool = False):
-    """Write content atomically. For .envrc, warn if any secret has been filled in."""
-    tmp = path + ".new"
-    if os.path.exists(path) and not force:
+    """Write content atomically. For .envrc, preserve filled-in secrets via smart merge."""
+    if os.path.basename(path) == ".envrc" and os.path.exists(path) and not force:
         with open(path) as f:
-            existing_lines = f.readlines()
-        # Protect if ANY secret line has been changed away from the placeholder.
-        # This allows partial fills (e.g. PVE token set, MinIO keys still CHANGE_ME).
-        for line in existing_lines:
+            existing = f.read()
+
+        # Extract secret values the user has already filled in (i.e. not CHANGE_ME or empty).
+        preserved = {}
+        for line in existing.splitlines():
             for var in _ENVRC_SECRET_VARS:
-                if var in line and CHANGE_ME not in line:
-                    print(f"WARNING: {os.path.relpath(path, REPO_ROOT)} contains filled-in secrets.", file=sys.stderr)
-                    print(f"         New content written to {os.path.relpath(tmp, REPO_ROOT)}", file=sys.stderr)
-                    print(f"         Review the diff and merge manually, or re-run with --force to overwrite.", file=sys.stderr)
-                    with open(tmp, "w") as f:
-                        f.write(content)
-                    return
+                m = re.match(rf'^export {re.escape(var)}="([^"]*)"', line)
+                if m and m.group(1) not in ("", CHANGE_ME):
+                    preserved[var] = m.group(1)
+
+        # Track which non-secret vars the user has explicitly uncommented (e.g. SSL_CERT_FILE).
+        uncommented = set()
+        for line in existing.splitlines():
+            m = re.match(r'^export (\w+)=', line)
+            if m and m.group(1) not in _ENVRC_SECRET_VARS:
+                uncommented.add(m.group(1))
+
+        # Substitute preserved secrets and restore uncommented opt-in lines.
+        merged = []
+        for line in content.splitlines():
+            replaced = False
+            for var, value in preserved.items():
+                m = re.match(
+                    rf'^(export {re.escape(var)}="){re.escape(CHANGE_ME)}"(.*)', line
+                )
+                if m:
+                    escaped = value.replace('"', '\\"')
+                    merged.append(f'{m.group(1)}{escaped}"{m.group(2)}')
+                    replaced = True
+                    break
+            if not replaced:
+                # Uncomment lines the user had previously activated.
+                m = re.match(r'^# (export (\w+)=.*)', line)
+                if m and m.group(2) in uncommented:
+                    merged.append(m.group(1))
+                    replaced = True
+            if not replaced:
+                merged.append(line)
+        content = "\n".join(merged) + "\n"
+
+    tmp = path + ".new"
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(tmp, "w") as f:
         f.write(content)
-    os.rename(tmp, path)
+    try:
+        os.rename(tmp, path)
+    except Exception:
+        os.unlink(tmp)
+        raise
+    return content
 
 
 def write_file(path: str, content: str, label: str):
@@ -415,18 +449,15 @@ def main():
     # 4. .envrc
     envrc_path = os.path.join(REPO_ROOT, ".envrc")
     envrc_content = gen_envrc(cfg, env)
-    atomic_write(envrc_path, envrc_content, force=force)
+    written = atomic_write(envrc_path, envrc_content, force=force)
     rel_envrc = os.path.relpath(envrc_path, REPO_ROOT)
-    if os.path.exists(envrc_path + ".new"):
-        pass  # warning already printed by atomic_write
-    else:
-        print(f"  wrote  {rel_envrc}")
-        # Check if secrets still need to be filled
-        with open(envrc_path) as f:
-            content = f.read()
-        if CHANGE_ME in content:
-            remaining = content.count(CHANGE_ME)
-            print(f"  ACTION: Fill in {remaining} secret(s) in .envrc marked {CHANGE_ME!r}")
+    print(f"  wrote  {rel_envrc}")
+    remaining = sum(
+        1 for line in written.splitlines()
+        if re.match(rf'^export \w+="{re.escape(CHANGE_ME)}"', line)
+    )
+    if remaining:
+        print(f"  ACTION: Fill in {remaining} secret(s) in .envrc marked {CHANGE_ME!r}")
 
     # 5. .env.mk
     env_mk_path = os.path.join(REPO_ROOT, ".env.mk")
@@ -434,7 +465,7 @@ def main():
 
     print()
     print(f"Done. Next steps:")
-    if CHANGE_ME in gen_envrc(cfg, env):
+    if remaining:
         print(f"  1. Fill in secrets in .envrc (API token, MinIO keys)")
         print(f"  2. Run: direnv allow")
         print(f"  3. Run: make init && make plan")

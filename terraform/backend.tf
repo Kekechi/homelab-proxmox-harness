@@ -39,7 +39,7 @@ terraform {
     # secret_key = $MINIO_SECRET_KEY
     # endpoints  = { s3 = $MINIO_ENDPOINT }
 
-    force_path_style            = true # required for MinIO
+    use_path_style              = true # required for MinIO
     skip_credentials_validation = true # MinIO does not expose AWS validation
     skip_metadata_api_check     = true
     skip_region_validation      = true
