@@ -1,2 +1,6 @@
 ---
 common_timezone: UTC
+
+# Controller-side path where pki-setup.yml fetches the root CA cert.
+# Derives from step_ca_controller_staging_dir (group_vars/all/step_ca.yml).
+common_root_ca_controller_path: "{{ step_ca_controller_staging_dir }}/root_ca.crt"

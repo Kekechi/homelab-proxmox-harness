@@ -17,6 +17,41 @@
       - python3-pip
     state: present
 
+- name: Check if internal root CA cert exists on controller
+  ansible.builtin.stat:
+    path: "{{ common_root_ca_controller_path }}"
+  delegate_to: localhost
+  become: false
+  register: common_root_ca_cert_stat
+
+- name: Warn if internal root CA cert is not available
+  ansible.builtin.debug:
+    msg: >-
+      {{ common_root_ca_controller_path }} not found on the Ansible controller.
+      Skipping internal root CA trust setup. Run pki-setup.yml first.
+  when: not common_root_ca_cert_stat.stat.exists
+
+- name: Copy internal root CA certificate to system trust store
+  ansible.builtin.copy:
+    src: "{{ common_root_ca_controller_path }}"
+    dest: /usr/local/share/ca-certificates/internal-root-ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_os_family == 'Debian'
+    - common_root_ca_cert_stat.stat.exists
+  notify: Update CA certificates
+
+- name: Remove internal root CA from trust store when cert is absent on controller
+  ansible.builtin.file:
+    path: /usr/local/share/ca-certificates/internal-root-ca.crt
+    state: absent
+  when:
+    - ansible_os_family == 'Debian'
+    - not common_root_ca_cert_stat.stat.exists
+  notify: Update CA certificates
+
 - name: Set timezone
   community.general.timezone:
     name: "{{ common_timezone | default('UTC') }}"

@@ -245,12 +245,12 @@ From any host on the sandbox VLAN:
 ```bash
 # Health check — should return step-ca server info
 curl https://ca.<your-domain>/health \
-  --cacert /tmp/ansible-pki/root_ca.crt
+  --cacert /workspace/.pki/root_ca.crt
 
 # List provisioners
 step ca provisioner list \
   --ca-url https://ca.<your-domain> \
-  --root /tmp/ansible-pki/root_ca.crt
+  --root /workspace/.pki/root_ca.crt
 ```
 
 The root cert is also available for download at:
@@ -264,17 +264,15 @@ curl -k https://ca.<your-domain>/roots.pem -o root_ca.crt
 
 ## Step 7 — Distribute the Root Certificate
 
-Push the root cert to all managed hosts so that curl, apt, and other tools trust the CA:
+The root CA certificate is automatically distributed to all Ansible-managed hosts
+via the `common` role. Running any playbook that includes `common` (e.g. `site.yml`)
+is sufficient — no separate step needed.
 
 ```bash
 # Run from /workspace/ansible (or set ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg)
 cd ansible
-ansible-playbook playbooks/distribute-root-cert.yml --limit minio
+ansible-playbook playbooks/site.yml
 ```
-
-> **Note:** The `sandbox` inventory group is intentionally empty — PKI hosts already have
-> the root cert deployed by `pki-setup.yml`. Use `--limit <group_or_host>` for any
-> additional hosts added later.
 
 For personal devices and browsers, see `docs/trust-root-ca.md` for per-platform
 installation instructions.
@@ -323,5 +321,5 @@ terraform apply production.tfplan
 
 # Ansible (same playbooks, different inventory)
 ansible-playbook ansible/playbooks/pki-setup.yml
-ansible-playbook ansible/playbooks/distribute-root-cert.yml --limit production
+ansible-playbook ansible/playbooks/site.yml  # common role handles cert distribution
 ```

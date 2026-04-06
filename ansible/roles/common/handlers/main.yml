@@ -3,3 +3,9 @@
   ansible.builtin.systemd:
     name: ssh
     state: restarted
+
+- name: Update CA certificates
+  ansible.builtin.command:
+    cmd: update-ca-certificates
+  register: common_update_ca_result
+  changed_when: "'0 added, 0 removed' not in common_update_ca_result.stdout"
