@@ -5,12 +5,12 @@
 #   1. cp config/sandbox.yml.example config/sandbox.yml
 #   2. Edit config/sandbox.yml with your Proxmox/MinIO endpoints
 #   3. make configure        <- generates .envrc with non-secret values filled in
-#   4. Fill in the 3 REPLACE_ME secrets in the generated .envrc
+#   4. Fill in the REPLACE_ME secrets in the generated .envrc
 #   5. direnv allow
 #
 # `make configure` auto-populates PROXMOX_VE_ENDPOINT, PROXMOX_VE_INSECURE,
 # and MINIO_ENDPOINT from config/<env>.yml.
-# You only need to set the 3 secret values marked REPLACE_ME manually.
+# All other values must be filled in manually.
 #
 # NEVER commit .envrc -- it is gitignored
 # =============================================================================
@@ -27,6 +27,18 @@ export PROXMOX_VE_INSECURE="true"                         # auto-set by make con
 export MINIO_ENDPOINT="http://192.168.X.X:9000"   # auto-set by make configure
 export MINIO_ACCESS_KEY="REPLACE_ME"               # output of scripts/bootstrap-minio.sh
 export MINIO_SECRET_KEY="REPLACE_ME"               # output of scripts/bootstrap-minio.sh
+
+# MinIO admin credentials (Ansible minio role reads these at playbook runtime)
+export MINIO_ROOT_USER="REPLACE_ME"
+export MINIO_ROOT_PASSWORD="REPLACE_ME"
+
+# Ansible vault password (read by ansible/vault-pass.sh at playbook runtime)
+export ANSIBLE_VAULT_PASSWORD="REPLACE_ME"
+
+# PKI passwords (Ansible step_ca_root and step_ca_issuing roles read these at playbook runtime)
+export STEP_CA_ROOT_PASSWORD="REPLACE_ME"       # protects the Root CA private key
+export STEP_CA_ISSUING_PASSWORD="REPLACE_ME"    # protects the Issuing CA private key
+export STEP_CA_PROVISIONER_PASSWORD="REPLACE_ME" # protects the ACME provisioner key
 
 # PRODUCTION PROXMOX -- MUST NEVER BE SET HERE
 # Production credentials are held by the operator only, never in the dev container.

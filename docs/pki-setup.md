@@ -22,8 +22,7 @@ Root CA (VM, normally off)
 Issuing CA (LXC, always on)
   └── ACME provisioner  — automatic cert renewal for services
   └── JWK provisioner   — manual/one-off cert issuance
-  └── nginx TCP proxy   — forwards :443 → step-ca:9000
-  └── serves root.crt   — at /var/www/html/root.crt for manual trust installs
+  └── binds :443 directly via setcap (no reverse proxy)
 ```
 
 DNS records (add to your internal DNS resolver after deployment):
@@ -132,9 +131,9 @@ Fill in the new step-ca secrets in `.envrc`:
 
 ```bash
 # .envrc — fill in these three new entries (in addition to existing secrets)
-export STEP_CA_ROOT_PASSWORD="..."      # protects the Root CA private key
+export STEP_CA_ROOT_PASSWORD="..."       # protects the Root CA private key
 export STEP_CA_ISSUING_PASSWORD="..."   # protects the Issuing CA private key
-export STEP_CA_LXC_ROOT_PASSWORD="..."  # root account password for the Issuing CA LXC
+export STEP_CA_PROVISIONER_PASSWORD="..." # protects the ACME provisioner key
 
 direnv allow
 ```
@@ -235,7 +234,7 @@ ansible-playbook playbooks/pki-setup.yml
 ```
 
 The playbook is idempotent — it detects the signed cert and proceeds to configure
-and start step-ca and nginx on the Issuing CA.
+and start step-ca on the Issuing CA.
 
 ---
 
@@ -257,11 +256,8 @@ step ca provisioner list \
 The root cert is also available for download at:
 
 ```bash
-# Via step-ca's built-in API (HTTPS — requires trusting the root CA first):
-curl https://ca.<your-domain>/roots.pem --cacert /tmp/ansible-pki/root_ca.crt
-
-# Via nginx on HTTP (no trust required — safe for initial bootstrap):
-curl http://ca.<your-domain>/root.crt -o root_ca.crt
+# Via step-ca's built-in API (accept the TLS warning on first use — this is expected):
+curl -k https://ca.<your-domain>/roots.pem -o root_ca.crt
 ```
 
 ---
@@ -280,16 +276,8 @@ ansible-playbook playbooks/distribute-root-cert.yml --limit minio
 > the root cert deployed by `pki-setup.yml`. Use `--limit <group_or_host>` for any
 > additional hosts added later.
 
-For personal devices and browsers, download and install manually from:
-```
-http://ca.<your-domain>/root.crt
-```
-
-Installation guides:
-- **macOS:** Double-click → Keychain Access → set "Always Trust"
-- **Linux:** Copy to `/usr/local/share/ca-certificates/` → run `sudo update-ca-certificates`
-- **Firefox:** Preferences → Privacy & Security → Certificates → View Certificates → Import
-- **Chrome/Edge:** Uses the OS trust store (Linux/macOS) — no separate browser step needed
+For personal devices and browsers, see `docs/trust-root-ca.md` for per-platform
+installation instructions.
 
 ---
 
