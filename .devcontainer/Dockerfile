@@ -78,6 +78,13 @@ RUN wget -qO /tmp/gitleaks.tar.gz \
 
 RUN pip3 install --no-cache-dir --break-system-packages pre-commit
 
+# SSH config — proxy all lab subnet connections through Squid                                                                                         
+RUN mkdir -p /home/vscode/.ssh \                                                                                                                      
+    && chmod 700 /home/vscode/.ssh \                                                                                                                  
+    && echo "Include /workspace/.ssh/config" > /home/vscode/.ssh/config \                                                                             
+    && chmod 600 /home/vscode/.ssh/config \                                                                                                           
+    && chown -R vscode:vscode /home/vscode/.ssh
+
 USER vscode
 
 # Install Claude Code
