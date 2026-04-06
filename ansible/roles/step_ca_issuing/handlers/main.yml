@@ -4,3 +4,8 @@
     daemon_reload: true
     name: step-ca
     state: restarted
+
+- name: Reload step-ca config
+  ansible.builtin.command:
+    cmd: systemctl kill -s HUP step-ca
+  changed_when: true
