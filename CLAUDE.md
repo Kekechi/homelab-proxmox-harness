@@ -163,3 +163,4 @@ Before any commit:
 - [ ] `.devcontainer/` changes are operator-directed (not autonomous) and flagged for rebuild (except `allowed-cidrs.conf` from `make configure`)
 - [ ] `make lint` passes (tflint + ansible-lint)
 - [ ] Any `terraform apply` in this session targeted sandbox only
+- [ ] Any new/modified doc files contain no firewall product names, VLAN IDs, IPs, or internal hostnames — intent level only (public repo)
