@@ -7,6 +7,10 @@
 
 - **DNS server** — internal authoritative resolver. Preference for something simple.
 
+- **Management VLAN** — isolated segment housing DNS, PKI CAs, management interfaces, and infrastructure state storage (MinIO). Strict ingress from admin workstation; LAN → MGMT on service ports only. Controlled egress; no open internet access post-bootstrap. MinIO migration from current location planned.
+
+- **Internal artifact mirror** — eliminates direct internet dependency from MGMT hosts. Tool TBD at design time. Phase 2 after MGMT VLAN is stable.
+
 ## Security & Compliance
 
 - **Greenbone / OpenVAS** — vulnerability management.
