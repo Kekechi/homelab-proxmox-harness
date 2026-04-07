@@ -5,4 +5,3 @@
 # step ca init --context creates files under $STEPPATH/authorities/<context>/.
 # This default is used across all PKI roles so that the root CA play can check
 # the issuing CA init state via delegate_to without needing pki_issuing_ca vars.
-step_ca_issuing_context: issuing-ca

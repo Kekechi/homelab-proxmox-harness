@@ -84,7 +84,7 @@
 - name: Check if issuing CA has been initialized
   ansible.builtin.stat:
     path: "{{ step_ca_home }}/authorities/{{ step_ca_issuing_context }}/config/ca.json"
-  register: step_ca_issuing_init_stat
+  register: step_ca_root_issuing_init_stat
   delegate_to: "{{ groups['pki_issuing_ca'][0] }}"
 
 - name: Fetch root CA certificate to controller staging directory
@@ -98,4 +98,4 @@
     src: "{{ step_ca_home }}/secrets/root_ca.key"
     dest: "{{ step_ca_controller_staging_dir }}/root_ca.key"
     flat: true
-  when: not step_ca_root_cert_stat.stat.exists or not step_ca_issuing_init_stat.stat.exists
+  when: not step_ca_root_cert_stat.stat.exists or not step_ca_root_issuing_init_stat.stat.exists

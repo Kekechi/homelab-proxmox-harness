@@ -182,14 +182,14 @@
 - name: Get current capabilities on step-ca binary
   ansible.builtin.command:
     cmd: getcap /usr/bin/step-ca
-  register: step_ca_getcap
+  register: step_ca_issuing_getcap
   changed_when: false
 
 - name: Set cap_net_bind_service on step-ca binary
   ansible.builtin.command:
     cmd: setcap cap_net_bind_service=ep /usr/bin/step-ca
-  changed_when: "'cap_net_bind_service' not in step_ca_getcap.stdout"
-  when: "'cap_net_bind_service' not in step_ca_getcap.stdout"
+  changed_when: "'cap_net_bind_service' not in step_ca_issuing_getcap.stdout"
+  when: "'cap_net_bind_service' not in step_ca_issuing_getcap.stdout"
 
 - name: Deploy step-ca systemd unit
   ansible.builtin.template:

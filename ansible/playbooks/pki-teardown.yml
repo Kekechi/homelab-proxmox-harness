@@ -16,7 +16,7 @@
         name: step-ca
         state: stopped
         enabled: false
-      ignore_errors: true
+      failed_when: false
 
     - name: Remove systemd unit
       ansible.builtin.file:
