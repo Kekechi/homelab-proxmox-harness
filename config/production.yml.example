@@ -55,6 +55,19 @@ services:
       ansible_user: root
       hostname: issuing-ca
       lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+  dns:
+    auth:
+      ip: ""                                  # CIDR notation required (e.g. 192.168.X.103/24) — management VLAN IPs TBD
+      gateway: ""
+      ct_id: 103
+      ansible_user: root
+      hostname: dns-auth
+    dist:
+      ip: ""                                  # CIDR notation required (e.g. 192.168.X.104/24) — management VLAN IPs TBD
+      gateway: ""
+      ct_id: 104
+      ansible_user: root
+      hostname: dns-dist
 
 hosts:
   production:

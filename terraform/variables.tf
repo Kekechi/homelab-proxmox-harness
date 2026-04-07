@@ -116,3 +116,43 @@ variable "domain_name" {
   default     = "lab.example.com"
 }
 
+# ---------------------------------------------------------------------------
+# DNS — PowerDNS Auth+Recursor (LXC) + DNSdist (LXC)
+# ---------------------------------------------------------------------------
+
+variable "dns_auth_ct_id" {
+  description = "Proxmox container ID for the DNS Auth+Recursor LXC"
+  type        = number
+  default     = 103
+}
+
+variable "dns_auth_ipv4_address" {
+  description = "Static IPv4 address (CIDR notation) for the DNS Auth LXC"
+  type        = string
+  default     = null
+}
+
+variable "dns_auth_ipv4_gateway" {
+  description = "IPv4 gateway for the DNS Auth LXC"
+  type        = string
+  default     = null
+}
+
+variable "dns_dist_ct_id" {
+  description = "Proxmox container ID for the DNSdist LXC"
+  type        = number
+  default     = 104
+}
+
+variable "dns_dist_ipv4_address" {
+  description = "Static IPv4 address (CIDR notation) for the DNSdist LXC"
+  type        = string
+  default     = null
+}
+
+variable "dns_dist_ipv4_gateway" {
+  description = "IPv4 gateway for the DNSdist LXC"
+  type        = string
+  default     = null
+}
+

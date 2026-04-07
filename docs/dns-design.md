@@ -60,7 +60,7 @@ Clients ──► DNSdist (LXC 2, :53/:853/:443)
 |---|---|---|
 | VLAN | Sandbox VLAN | Management VLAN (not yet created) |
 | Zones | `sandbox.<domain>` | `lab.<domain>` |
-| LXC IPs | TBD — infra-plan | TBD — infra-plan |
+| LXC IPs | `.103` (Auth+Recursor), `.104` (DNSdist) | TBD |
 
 ---
 
@@ -71,11 +71,27 @@ Before cutover, migrate existing records from the gateway resolver to PDNS Auth:
 
 ---
 
+## Terraform Provisioning Decisions
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| OS template | Debian 13 standard LXC | Matches PKI pattern; all three PowerDNS components have trixie repos on repo.powerdns.com |
+| Resource sizing (both LXCs) | 1 core / 512 MB RAM / 8 GB disk | Matches PKI pattern; PowerDNS is lightweight; vertical scale later if needed |
+| LXC 1 hostname / CT ID / IP | `dns-auth` / 103 / `.103` | Auth + Recursor; ID/IP last octet match for clarity |
+| LXC 2 hostname / CT ID / IP | `dns-dist` / 104 / `.104` | DNSdist; client-facing component |
+| Template variable | Reuse shared `lxc_template_file_id` | Same template across all LXCs; no per-service variable needed |
+
+**Unvalidated TF assumptions (verify before apply):**
+- CT IDs 103 and 104 are free in the Proxmox cluster — assumed from PKI sequence, not verified against live state
+- SQLite WAL mode works inside an unprivileged LXC — WAL requires shared memory; flag if first Ansible run reports permission errors
+
+---
+
 ## Open Items (deferred, not forgotten)
 
 | Item | Deferred to |
 |---|---|
-| IP allocation for both LXCs | `/infra-plan` |
+| IP allocation for both LXCs | **Done** — `.103` / `.104` |
 | Reverse DNS (PTR records for sandbox subnet) | `/infra-plan` — separate authoritative reverse zone |
 | RPZ feed selection (threat intel blocklists) | Recursor deploy session |
 | DNSSEC signing + trust anchor distribution | Post-Stage 1 session |

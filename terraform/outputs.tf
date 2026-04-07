@@ -40,3 +40,17 @@ output "pki_dns_records" {
     }
   }
 }
+
+# ---------------------------------------------------------------------------
+# DNS outputs
+# ---------------------------------------------------------------------------
+
+output "dns_auth_ct_id" {
+  description = "Proxmox container ID of the DNS Auth+Recursor LXC"
+  value       = module.dns_auth.vm_id
+}
+
+output "dns_dist_ct_id" {
+  description = "Proxmox container ID of the DNSdist LXC"
+  value       = module.dns_dist.vm_id
+}

@@ -102,3 +102,58 @@ module "issuing_ca" {
   ipv4_gateway     = var.issuing_ca_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
 }
+
+# ---------------------------------------------------------------------------
+# DNS — PowerDNS Auth+Recursor + DNSdist
+#
+# dns-auth:  Auth (loopback:5300) + Recursor (LAN:53), colocated per
+#            official migration guide. Not client-facing.
+# dns-dist:  DNSdist — client-facing: plain DNS :53, DoT :853, DoH :443.
+#            Single advertised resolver via DHCP.
+# ---------------------------------------------------------------------------
+
+module "dns_auth" {
+  source = "./modules/proxmox-lxc"
+
+  node_name        = var.proxmox_node
+  pool_id          = var.pool_id
+  hostname         = "dns-auth"
+  vm_id            = var.dns_auth_ct_id
+  template_file_id = var.lxc_template_file_id
+  os_type          = "debian"
+  unprivileged     = true
+  started          = true
+  start_on_boot    = true
+  cores            = 1
+  memory_mb        = 512
+  disk_size_gb     = 8
+  datastore_id     = var.datastore_id
+  bridge           = var.bridge
+  vlan_id          = var.vlan_id
+  ipv4_address     = var.dns_auth_ipv4_address
+  ipv4_gateway     = var.dns_auth_ipv4_gateway
+  ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+}
+
+module "dns_dist" {
+  source = "./modules/proxmox-lxc"
+
+  node_name        = var.proxmox_node
+  pool_id          = var.pool_id
+  hostname         = "dns-dist"
+  vm_id            = var.dns_dist_ct_id
+  template_file_id = var.lxc_template_file_id
+  os_type          = "debian"
+  unprivileged     = true
+  started          = true
+  start_on_boot    = true
+  cores            = 1
+  memory_mb        = 512
+  disk_size_gb     = 8
+  datastore_id     = var.datastore_id
+  bridge           = var.bridge
+  vlan_id          = var.vlan_id
+  ipv4_address     = var.dns_dist_ipv4_address
+  ipv4_gateway     = var.dns_dist_ipv4_gateway
+  ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+}

@@ -56,6 +56,19 @@ services:
       ansible_user: root
       hostname: issuing-ca
       lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+  dns:
+    auth:
+      ip: "192.168.X.X/24"
+      gateway: "192.168.X.1"
+      ct_id: 203
+      ansible_user: root
+      hostname: dns-auth
+    dist:
+      ip: "192.168.X.X/24"
+      gateway: "192.168.X.1"
+      ct_id: 204
+      ansible_user: root
+      hostname: dns-dist
 
 # Ad-hoc hosts not covered by a named service above.
 # Each top-level key is an Ansible group; hosts within are inventory entries.

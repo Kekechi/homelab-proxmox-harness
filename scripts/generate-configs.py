@@ -227,6 +227,31 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'lxc_template_file_id    = {_hcl_str(lxc_tmpl)}',
         ]
 
+    # DNS section — only emitted when services.dns is present in config
+    dns = svcs.get("dns", {})
+    if dns:
+        auth = dns.get("auth", {})
+        dist = dns.get("dist", {})
+
+        auth_addr = auth.get("ip", "")
+        auth_gw   = auth.get("gateway", "")
+        dist_addr = dist.get("ip", "")
+        dist_gw   = dist.get("gateway", "")
+
+        validate_cidr(auth_addr, "services.dns.auth.ip")
+        validate_cidr(dist_addr, "services.dns.dist.ip")
+
+        lines += [
+            f"",
+            f"# DNS",
+            f'dns_auth_ct_id          = {auth.get("ct_id", 103)}',
+            f'dns_auth_ipv4_address   = {_hcl_str(auth_addr)}',
+            f'dns_auth_ipv4_gateway   = {_hcl_str(auth_gw)}',
+            f'dns_dist_ct_id          = {dist.get("ct_id", 104)}',
+            f'dns_dist_ipv4_address   = {_hcl_str(dist_addr)}',
+            f'dns_dist_ipv4_gateway   = {_hcl_str(dist_gw)}',
+        ]
+
     return "\n".join(lines) + "\n"
 
 
