@@ -5,8 +5,6 @@
 
 ## Up Next
 
-- **DNS server** — internal authoritative resolver. Preference for something simple.
-
 - **Management VLAN** — isolated segment housing DNS, PKI CAs, management interfaces, and infrastructure state storage (MinIO). Strict ingress from admin workstation; LAN → MGMT on service ports only. Controlled egress; no open internet access post-bootstrap. MinIO migration from current location planned.
 
 - **Internal artifact mirror** — eliminates direct internet dependency from MGMT hosts. Tool TBD at design time. Phase 2 after MGMT VLAN is stable.
@@ -16,6 +14,17 @@
 - **Greenbone / OpenVAS** — vulnerability management.
 - **Wazuh** — SIEM/EDR. Deployment form TBD.
 - **Honeypot** (Cowrie) — deception layer; internal-first, DMZ placement possible later.
+
+## DNS — Stage 3 (Deferred)
+
+Requires Stage 1/2 validated in production first.
+
+- **Encrypted transports** — DoT (port 853) and DoH on DNSdist; requires step-ca ACME cert on dns-dist.
+- **RPZ / threat intel blocklists** — feed selection TBD; configure in Recursor.
+- **DNSSEC** — signing on Auth + trust anchor rollout.
+- **Reverse DNS (PTR zones)** — separate authoritative reverse zone per subnet.
+- **GitOps record management** — OctoDNS or equivalent; separate design session after Netbox is live.
+- **Webserver ACL expansion** — open Auth/Recursor/DNSdist metrics endpoints to LAN when Prometheus is deployed.
 
 ## Network
 
