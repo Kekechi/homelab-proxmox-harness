@@ -41,6 +41,9 @@ services:
     hostname: minio-server               # Ansible inventory hostname
     fqdn: "minio.sandbox.example.com"    # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true (generator exits with error if missing)
     tls: true                            # Enable TLS via step-ca ACME; set false for plain HTTP
+    # dns_name: storage        # optional: override DNS label (default: service key "minio")
+    # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
+    # dns: false               # optional: set to false to exclude from DNS record generation
   pki:
     root_ca:
       ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
@@ -69,6 +72,9 @@ services:
       ct_id: 204
       ansible_user: root
       hostname: dns-dist
+      # dns: false             # optional: set to false to exclude this host from DNS record generation
+      # client_cidrs:          # optional: CIDRs added to DNSdist ACL beyond the sandbox VLAN
+      #   - "192.168.X.0/24"  # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
 
 # Ad-hoc hosts not covered by a named service above.
 # Each top-level key is an Ansible group; hosts within are inventory entries.

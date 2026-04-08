@@ -68,6 +68,40 @@ def _strip_prefix(addr: str) -> str:
     return addr.split("/")[0] if addr else addr
 
 
+def _derive_dns_records(svcs: dict) -> list[dict]:
+    """Derive DNS A record entries from services config.
+
+    Returns a list of dicts with keys: name, ip, ttl.
+    - Flat services (top-level 'ip'): label = service key, underscores → hyphens.
+    - Nested services (sub-dicts with 'ip'): label = sub-key, underscores → hyphens.
+    - dns_name: override the label; dns_ttl: override TTL (default 3600); dns: false skips the entry.
+    """
+    records = []
+    for svc_name, svc in svcs.items():
+        if not isinstance(svc, dict):
+            continue
+        if "ip" in svc:
+            # Flat service (e.g. minio)
+            if svc.get("dns") is False:
+                continue
+            label = svc.get("dns_name") or svc_name.replace("_", "-")
+            ip = _strip_prefix(svc["ip"])
+            ttl = int(svc.get("dns_ttl", 3600))
+            records.append({"name": label, "ip": ip, "ttl": ttl})
+        else:
+            # Nested service (e.g. pki.root_ca, dns.auth)
+            for subkey, sub in svc.items():
+                if not isinstance(sub, dict) or "ip" not in sub:
+                    continue
+                if sub.get("dns") is False:
+                    continue
+                label = sub.get("dns_name") or subkey.replace("_", "-")
+                ip = _strip_prefix(sub["ip"])
+                ttl = int(sub.get("dns_ttl", 3600))
+                records.append({"name": label, "ip": ip, "ttl": ttl})
+    return records
+
+
 def is_inside_container() -> bool:
     """Detect if we're running inside the dev container."""
     if os.path.exists("/.dockerenv"):
@@ -320,14 +354,30 @@ def gen_inventory(cfg: dict, env: str) -> str:
                     hostname = sub.get("hostname", subkey)
                     host_ip  = _strip_prefix(sub["ip"])
                     lines.append(f"    {group}:")
+                    # NOTE: each group may emit at most one `vars:` block.
+                    # If a group needs additional vars in the future, extend the
+                    # existing block here rather than adding a second `vars:` key
+                    # (duplicate YAML mapping keys produce invalid inventory).
                     if group == "dns_dist":
                         auth_sub = svc.get("auth", {})
                         recursor_ip = _strip_prefix(auth_sub.get("ip", ""))
                         network_cidr = infra.get("network", {}).get("cidr", "")
+                        client_cidrs = sub.get("client_cidrs", [])
                         lines.append(f"      vars:")
                         lines.append(f"        pdns_recursor_address: {recursor_ip}")
                         lines.append(f"        pdns_dnsdist_acl_cidrs:")
                         lines.append(f'          - "{network_cidr}"')
+                        for cidr in client_cidrs:
+                            lines.append(f'          - "{cidr}"')
+                    if group == "dns_auth":
+                        _dns_records = _derive_dns_records(cfg.get("services", {}))
+                        lines.append(f"      vars:")
+                        if _dns_records:
+                            lines.append(f"        dns_records:")
+                            for r in _dns_records:
+                                lines.append(f'          - {{name: "{r["name"]}", ip: "{r["ip"]}", ttl: {r["ttl"]}}}')
+                        else:
+                            lines.append(f"        dns_records: []")
                     lines.append(f"      hosts:")
                     lines.append(f"        {hostname}:")
                     lines.append(f"          ansible_host: {host_ip}")

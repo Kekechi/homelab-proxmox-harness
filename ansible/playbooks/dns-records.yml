@@ -1,0 +1,104 @@
+---
+# dns-records.yml — Manage DNS A records in PowerDNS Auth
+#
+# Reads dns_records from generated inventory (dns_auth group vars).
+# Run `make configure` to regenerate inventory from config/<env>.yml.
+#
+# Required env vars:
+#   PDNS_AUTH_API_KEY   — Auth webserver/API key (set in .envrc)
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/dns-records.yml
+#
+# Note: all PATCH tasks report "ok" (never "changed") because PowerDNS returns
+# HTTP 204 for every successful PATCH regardless of whether content changed.
+# True drift detection is not available via the PDNS REST API.
+
+- name: Manage DNS A records
+  hosts: dns_auth
+  gather_facts: false
+
+  tasks:
+    - name: Assert dns_records variable is defined
+      ansible.builtin.assert:
+        that: dns_records is defined
+        fail_msg: "dns_records is not defined. Run: make configure"
+
+    - name: Assert PDNS_AUTH_API_KEY is set
+      ansible.builtin.assert:
+        that:
+          - "lookup('env', 'PDNS_AUTH_API_KEY') != ''"
+          - "lookup('env', 'PDNS_AUTH_API_KEY') != 'CHANGE_ME'"
+        fail_msg: "PDNS_AUTH_API_KEY is not set. Fill in .envrc and run: direnv allow"
+      no_log: true
+
+    - name: Assert domain_name is defined
+      ansible.builtin.assert:
+        that:
+          - domain_name is defined
+          - domain_name != ''
+        fail_msg: "domain_name is not defined. Check group_vars or inventory."
+
+    - name: Warn if no DNS records to manage
+      ansible.builtin.debug:
+        msg: "No dns_records defined in inventory — nothing to do. Run make configure if expected."
+      when: (dns_records | default([])) | length == 0
+
+    - name: Upsert A records
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8081/api/v1/servers/localhost/zones/{{ domain_name }}."
+        method: PATCH
+        headers:
+          X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+        body_format: json
+        body:
+          rrsets:
+            - name: "{{ item.name }}.{{ domain_name }}."
+              type: A
+              ttl: "{{ item.ttl | int }}"
+              changetype: REPLACE
+              records:
+                - content: "{{ item.ip }}"
+                  disabled: false
+        status_code: 204
+      loop: "{{ dns_records }}"
+      loop_control:
+        label: "{{ item.name }}.{{ domain_name }}. → {{ item.ip }}"
+      no_log: true
+      # PDNS PATCH always returns 204 regardless of whether content changed;
+      # true change detection is not possible — suppress false positives.
+      changed_when: false
+      when: dns_records | default([]) | length > 0
+
+    - name: Get current zone records
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8081/api/v1/servers/localhost/zones/{{ domain_name }}."
+        method: GET
+        headers:
+          X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+        status_code: 200
+      no_log: true
+      register: zone_data
+      when: dns_records | default([]) | length > 0
+
+    - name: Build managed names set
+      ansible.builtin.set_fact:
+        managed_names: "{{ dns_records | map(attribute='name') | map('regex_replace', '$', '.' ~ (domain_name | regex_replace('\\.+$', '')) ~ '.') | list }}"
+      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200)
+
+    - name: Detect stale A records
+      ansible.builtin.set_fact:
+        stale_records: >-
+          {{ zone_data.json.rrsets
+             | selectattr('type', 'equalto', 'A')
+             | map(attribute='name')
+             | list
+             | difference(managed_names) }}
+      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200)
+
+    - name: Warn about stale A records
+      ansible.builtin.debug:
+        msg: >-
+          WARNING: The following A records exist in the zone but are not managed
+          by dns_records. Remove manually if stale: {{ stale_records | join(', ') }}
+      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200) and (stale_records | length > 0)
