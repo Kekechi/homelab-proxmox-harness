@@ -1,0 +1,28 @@
+---
+# dns-dist-setup.yml — Deploy DNSdist 2.1.x
+#
+# DNSdist listens on the host IP:53 and forwards all queries to the
+# PowerDNS Recursor on the dns-auth LXC. Webserver/API on 127.0.0.1:8083.
+#
+# Required env vars (set in .envrc, then run: direnv allow):
+#   PDNS_DNSDIST_API_KEY     — DNSdist webserver/API key
+#
+# Required variables (set via make configure):
+#   domain_name              — internal DNS zone
+#   pdns_recursor_address    — IP of PowerDNS Recursor (generator-emitted group var)
+#   pdns_dnsdist_acl_cidrs   — allowed client CIDRs (generator-emitted group var)
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/dns-dist-setup.yml
+
+- name: Common setup for DNS dist hosts
+  hosts: dns_dist
+  become: true
+  roles:
+    - common
+
+- name: Deploy DNSdist
+  hosts: dns_dist
+  become: true
+  roles:
+    - pdns_dnsdist

@@ -10,6 +10,16 @@ Execute an Ansible playbook against real infrastructure with pre-flight safety c
 
 ## Phase 1: Pre-flight
 
+### Generator check
+
+If `scripts/generate-configs.py` was modified in this session, confirm `make configure` has been run before proceeding:
+
+```bash
+grep "CHANGE_ME" /workspace/.envrc
+```
+
+Any `CHANGE_ME` value added by the generator patch means the secret hasn't been filled in yet. A role that asserts on the env var will fail on the first task — catch it here rather than mid-run. If new secrets are present, stop and ask the operator to fill them in and run `direnv allow`.
+
 ### Connectivity check
 
 Verify all target hosts are reachable before running:

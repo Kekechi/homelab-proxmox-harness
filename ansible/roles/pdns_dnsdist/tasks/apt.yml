@@ -1,0 +1,52 @@
+---
+- name: Install ca-certificates
+  ansible.builtin.apt:
+    name: ca-certificates
+    state: present
+    update_cache: true
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download DNSdist APT signing key
+  ansible.builtin.get_url:
+    url: "{{ pdns_dnsdist_apt_key_url }}"
+    dest: "{{ pdns_dnsdist_apt_key_path }}"
+    mode: "0644"
+
+- name: Add DNSdist 2.1 APT repository (DEB822 format)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/dnsdist-21.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://repo.powerdns.com/debian
+      Suites: trixie-dnsdist-21
+      Components: main
+      Signed-By: /etc/apt/keyrings/dnsdist-21-pub.asc
+
+- name: Write APT pin to prefer DNSdist package from vendor repo
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/dnsdist
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: dnsdist
+      Pin: origin repo.powerdns.com
+      Pin-Priority: 600
+
+- name: Install DNSdist packages
+  ansible.builtin.apt:
+    name:
+      - dnsdist
+      - dnsutils
+    state: present
+    update_cache: true

@@ -22,6 +22,16 @@ Facilitate a structured design discussion for net-new infrastructure. The goal i
 - User already knows what they want to build → use `/infra-plan` directly
 - User wants to evaluate existing infrastructure → use `/assess`
 
+## Pre-flight: Squid allowlist check
+
+Before starting any design session involving new software, check whether that software's documentation domain is in the Squid allowed-domains list:
+
+```bash
+grep "<software-domain>" /workspace/.devcontainer/squid/squid.conf
+```
+
+If the domain is missing, ask the operator to add it **now** — before design begins. Doc verification is needed throughout design, plan review, and deployment. Discovering a blocked domain mid-session wastes time and breaks the research flow. Relevant domains to check: official docs, vendor package repos (e.g. `repo.powerdns.com`), and any GitHub raw content sources.
+
 ## Phase 1: Orient
 
 Before asking anything, do three things:

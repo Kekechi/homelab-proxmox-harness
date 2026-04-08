@@ -16,6 +16,7 @@ Think hard about whether the request is well-specified enough to plan. If the de
 - Port binding constraints (e.g. can it bind 443 in an unprivileged LXC?)
 - Bootstrap or template prerequisites (e.g. cloud-init image setup, one-time host-shell steps)
 - Any operations that bypass the Proxmox API and require host shell access
+- **Squid allowlist:** confirm the software's documentation domain and vendor package repo are in `/workspace/.devcontainer/squid/squid.conf`. Doc verification happens during plan review and code generation — a missing domain discovered mid-pipeline stalls the session. Ask the operator to add any missing domains before planning starts.
 
 Resolve these in conversation first, then hand a complete brief to the agent.
 

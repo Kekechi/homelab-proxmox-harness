@@ -1,0 +1,10 @@
+---
+pdns_dnsdist_listen_port: 53
+pdns_dnsdist_webserver_address: "127.0.0.1"
+pdns_dnsdist_webserver_port: 8083
+pdns_dnsdist_webserver_allow_from: "127.0.0.1"
+pdns_dnsdist_user: "_dnsdist"
+pdns_dnsdist_group: "_dnsdist"
+pdns_dnsdist_apt_key_url: "https://repo.powerdns.com/FD380FBB-pub.asc"
+pdns_dnsdist_apt_key_path: "/etc/apt/keyrings/dnsdist-21-pub.asc"
+pdns_dnsdist_binary_path: "/usr/bin/dnsdist"

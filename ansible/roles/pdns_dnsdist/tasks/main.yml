@@ -1,0 +1,59 @@
+---
+# pdns_dnsdist — deploy DNSdist 2.1.x on a Debian LXC.
+# DNSdist listens on host IP:53, forwards to Recursor.
+# Webserver/API on 127.0.0.1:8083.
+
+- name: Assert required env var is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'PDNS_DNSDIST_API_KEY') | length > 0
+    fail_msg: "PDNS_DNSDIST_API_KEY must be set in .envrc. Run: direnv allow"
+
+- name: Assert required inventory variables are defined
+  ansible.builtin.assert:
+    that:
+      - pdns_recursor_address is defined
+      - pdns_recursor_address | length > 0
+      - pdns_dnsdist_acl_cidrs is defined
+      - pdns_dnsdist_acl_cidrs | length > 0
+      - domain_name is defined
+      - domain_name | length > 0
+    fail_msg: "pdns_recursor_address, pdns_dnsdist_acl_cidrs, and domain_name must be defined. Run: make configure"
+
+- name: Install DNSdist packages via vendor APT repo
+  ansible.builtin.include_tasks: apt.yml
+
+- name: Get current capabilities on dnsdist binary
+  ansible.builtin.command:
+    cmd: getcap {{ pdns_dnsdist_binary_path }}
+  register: pdns_dnsdist_getcap
+  changed_when: false
+
+- name: Set cap_net_bind_service on dnsdist binary
+  ansible.builtin.command:
+    cmd: setcap cap_net_bind_service=ep {{ pdns_dnsdist_binary_path }}
+  when: "'cap_net_bind_service=ep' not in pdns_dnsdist_getcap.stdout"
+  changed_when: "'cap_net_bind_service=ep' not in pdns_dnsdist_getcap.stdout"
+
+- name: Deploy dnsdist.yml config
+  ansible.builtin.template:
+    src: dnsdist.yml.j2
+    dest: /etc/dnsdist/dnsdist.yml
+    owner: root
+    group: "{{ pdns_dnsdist_group }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart dnsdist
+
+- name: Enable and start dnsdist service
+  ansible.builtin.systemd:
+    name: dnsdist
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify DNSdist health
+  ansible.builtin.include_tasks: verify.yml

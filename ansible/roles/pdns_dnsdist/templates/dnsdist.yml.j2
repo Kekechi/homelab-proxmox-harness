@@ -1,0 +1,26 @@
+# dnsdist.yml — DNSdist 2.1.x configuration (YAML format)
+# Managed by Ansible (pdns_dnsdist role). Do not edit manually.
+#
+# Field names verified against https://dnsdist.org/reference/yaml-settings.html (2026-04-08)
+
+acl:
+  - "127.0.0.0/8"
+{% for cidr in pdns_dnsdist_acl_cidrs %}
+  - "{{ cidr }}"
+{% endfor %}
+
+binds:
+  - listen_address: "{{ ansible_host }}:{{ pdns_dnsdist_listen_port }}"
+    protocol: Do53
+
+backends:
+  - address: "{{ pdns_recursor_address }}:53"
+    protocol: Do53
+    name: recursor
+
+webserver:
+  listen_addresses:
+    - "{{ pdns_dnsdist_webserver_address }}:{{ pdns_dnsdist_webserver_port }}"
+  api_key: "{{ lookup('env', 'PDNS_DNSDIST_API_KEY') }}"
+  acl:
+    - "{{ pdns_dnsdist_webserver_allow_from }}"

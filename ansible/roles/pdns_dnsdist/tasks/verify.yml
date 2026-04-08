@@ -1,0 +1,27 @@
+---
+# Verify tasks use ansible_host (LAN IP), NOT 127.0.0.1.
+# DNSdist binds to ansible_host:53, not loopback.
+
+- name: Verify internal SOA resolution via DNSdist
+  ansible.builtin.command:
+    cmd: "dig @{{ ansible_host }} {{ domain_name }} SOA +short"
+  register: pdns_dnsdist_verify_soa
+  changed_when: false
+  failed_when: pdns_dnsdist_verify_soa.rc != 0 or pdns_dnsdist_verify_soa.stdout == ""
+
+- name: Verify external resolution via DNSdist
+  ansible.builtin.command:
+    cmd: "dig @{{ ansible_host }} google.com A +short"
+  register: pdns_dnsdist_verify_external
+  changed_when: false
+  failed_when: pdns_dnsdist_verify_external.rc != 0 or pdns_dnsdist_verify_external.stdout == ""
+
+- name: Verify DNSdist webserver API responds
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_dnsdist_webserver_port }}/api/v1/servers/localhost"
+    method: GET
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_DNSDIST_API_KEY') }}"
+    status_code:
+      - 200
+  no_log: true
