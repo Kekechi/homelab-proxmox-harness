@@ -41,6 +41,10 @@
 
 ## Developer Tooling
 
+- **GitLab** — self-hosted source control, CI/CD, and Terraform state backend (replacing MinIO post-bootstrap). Pull mirror of public GitHub repo; production deployments triggered via pipeline so production credentials never touch a developer machine.
+
+
+
 - **Kubernetes cluster** — potential deployment target for personal projects.
 - **Ghidra MCP server** — for fun / personal tooling.
 
