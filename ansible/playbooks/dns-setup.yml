@@ -1,0 +1,27 @@
+---
+# dns-setup.yml — Deploy PowerDNS Authoritative (5.0) and Recursor (5.4)
+#
+# PowerDNS Auth listens on 127.0.0.1:5300; Recursor listens on the host IP:53
+# and forwards the internal zone to Auth. External queries are resolved recursively.
+#
+# Required env vars (set in .envrc, then run: direnv allow):
+#   PDNS_AUTH_API_KEY        — Auth webserver/API key
+#   PDNS_RECURSOR_API_KEY    — Recursor webserver/API key
+#
+# Required variables (set in group_vars or passed via -e):
+#   domain_name              — internal DNS zone, e.g. "sandbox.example.com"
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/dns-setup.yml
+
+- name: Common setup for DNS hosts
+  hosts: dns_auth
+  become: true
+  roles:
+    - common
+
+- name: Deploy PowerDNS Auth and Recursor
+  hosts: dns_auth
+  become: true
+  roles:
+    - pdns_auth_recursor

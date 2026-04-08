@@ -28,7 +28,7 @@ output "issuing_ca_ct_id" {
 }
 
 output "pki_dns_records" {
-  description = "DNS A records to add to OPNsense Unbound for PKI hosts. IPs are null when DHCP is configured — set root_ca_ipv4_address / issuing_ca_ipv4_address in tfvars to populate."
+  description = "DNS A records to add to DNS for PKI hosts. IPs are null when DHCP is configured — set root_ca_ipv4_address / issuing_ca_ipv4_address in tfvars to populate."
   value = {
     "root-ca" = {
       ip     = var.root_ca_ipv4_address

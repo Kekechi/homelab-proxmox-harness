@@ -1,0 +1,42 @@
+---
+# pdns_auth_recursor — deploy PowerDNS Authoritative (5.0) and Recursor (5.4)
+# on a single LXC. Auth listens on 127.0.0.1:5300; Recursor listens on the
+# host IP:53 and forwards the internal zone to Auth.
+
+- name: Assert required env vars are set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'PDNS_AUTH_API_KEY') | length > 0
+      - lookup('env', 'PDNS_RECURSOR_API_KEY') | length > 0
+    fail_msg: >
+      PDNS_AUTH_API_KEY and PDNS_RECURSOR_API_KEY must both be set in .envrc.
+      Run: direnv allow
+
+- name: Assert domain_name is defined and non-empty
+  ansible.builtin.assert:
+    that:
+      - domain_name is defined
+      - domain_name | length > 0
+    fail_msg: >
+      domain_name must be defined. Set it in group_vars or pass -e domain_name=<value>.
+
+- name: Install PowerDNS packages via vendor APT repo
+  ansible.builtin.include_tasks: apt.yml
+
+- name: Configure PowerDNS Authoritative
+  ansible.builtin.include_tasks: auth.yml
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Create internal DNS zone
+  ansible.builtin.include_tasks: zones.yml
+
+- name: Configure PowerDNS Recursor
+  ansible.builtin.include_tasks: recursor.yml
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify DNS stack health
+  ansible.builtin.include_tasks: verify.yml

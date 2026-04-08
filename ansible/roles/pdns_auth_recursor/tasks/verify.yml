@@ -1,0 +1,44 @@
+---
+- name: Verify Auth API health
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_auth_recursor_auth_webserver_port }}/api/v1/servers/localhost"
+    method: GET
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+    status_code:
+      - 200
+  no_log: true
+
+- name: Verify internal zone is present
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_auth_recursor_auth_webserver_port }}/api/v1/servers/localhost/zones/{{ domain_name }}."
+    method: GET
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+    status_code:
+      - 200
+  no_log: true
+
+- name: Verify Recursor API health
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_auth_recursor_webserver_port }}/api/v1/servers/localhost"
+    method: GET
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_RECURSOR_API_KEY') }}"
+    status_code:
+      - 200
+  no_log: true
+
+- name: Verify internal SOA resolution via Recursor
+  ansible.builtin.command:
+    cmd: "dig @{{ pdns_auth_recursor_recursor_listen_address }} {{ domain_name }} SOA +short"
+  register: pdns_auth_recursor_verify_soa
+  changed_when: false
+  failed_when: pdns_auth_recursor_verify_soa.rc != 0 or pdns_auth_recursor_verify_soa.stdout == ""
+
+- name: Verify external resolution via Recursor
+  ansible.builtin.command:
+    cmd: "dig @{{ pdns_auth_recursor_recursor_listen_address }} example.com A +short"
+  register: pdns_auth_recursor_verify_external
+  changed_when: false
+  failed_when: pdns_auth_recursor_verify_external.rc != 0 or pdns_auth_recursor_verify_external.stdout == ""

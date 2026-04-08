@@ -18,9 +18,24 @@ Follow the `infra-plan` skill with the user's request.
 
 **Checkpoint:** Stop and wait for explicit user approval of the plan before proceeding. Accept revisions and re-plan if requested.
 
+### Step 1b: Plan Review
+
+After the user approves the plan, launch a general-purpose subagent to review it for runtime correctness before any code is written. The planner produces structurally sound plans but does not always think through Ansible runtime mechanics.
+
+Check for:
+- Missing module arguments that cause silent failures (`headers:` on `uri`, `status_code:` lists, `changed_when:` on `shell` tasks)
+- Idempotency gaps (unguarded commands, missing `stat` checks before init tasks, `when:` conditions that skip cleanup)
+- Service ordering dependencies (handler flush timing, `wait_for` placement before API calls)
+- Template correctness (YAML quoting, config key names matching the target software version)
+- String format mismatches between tool input syntax and tool output syntax (e.g. `setcap` uses `+ep`, `getcap` outputs `=ep`)
+
+Fix issues found, re-review until the subagent confirms no blocking issues remain. This step is cheap — bugs caught in plan text cost nothing; the same bugs caught after code generation require fixing across multiple files.
+
+**Do not proceed to Step 2 until the plan review is clean.**
+
 ### Step 2: Generate
 
-Follow the `generate` skill with the approved plan from Step 1.
+Follow the `generate` skill with the approved and reviewed plan from Step 1.
 
 Continues automatically when `ansible-lint` passes (if configured). If lint fails, surface the errors and stop.
 

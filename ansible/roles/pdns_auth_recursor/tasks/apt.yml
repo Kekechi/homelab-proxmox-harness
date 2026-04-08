@@ -1,0 +1,68 @@
+---
+- name: Install ca-certificates
+  ansible.builtin.apt:
+    name: ca-certificates
+    state: present
+    update_cache: true
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download PowerDNS APT signing key
+  ansible.builtin.get_url:
+    url: "{{ pdns_auth_recursor_apt_key_url }}"
+    dest: "{{ pdns_auth_recursor_apt_key_path }}"
+    mode: "0644"
+
+- name: Add PowerDNS Auth 5.0 APT repository (DEB822 format)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pdns-auth-50.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://repo.powerdns.com/debian
+      Suites: trixie-auth-50
+      Components: main
+      Signed-By: /etc/apt/keyrings/pdns.asc
+
+- name: Add PowerDNS Recursor 5.4 APT repository (DEB822 format)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pdns-rec-54.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: https://repo.powerdns.com/debian
+      Suites: trixie-rec-54
+      Components: main
+      Signed-By: /etc/apt/keyrings/pdns.asc
+
+- name: Write APT pin to prefer PowerDNS packages from vendor repo
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/pdns
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Package: pdns-*
+      Pin: origin repo.powerdns.com
+      Pin-Priority: 600
+
+- name: Install PowerDNS packages
+  ansible.builtin.apt:
+    name:
+      - pdns-server
+      - pdns-backend-sqlite3
+      - pdns-recursor
+      - dnsutils
+      - sqlite3
+    state: present
+    update_cache: true

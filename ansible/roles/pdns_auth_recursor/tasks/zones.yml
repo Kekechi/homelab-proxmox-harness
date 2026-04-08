@@ -1,0 +1,38 @@
+---
+- name: Wait for Auth API to become available
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ pdns_auth_recursor_auth_webserver_port }}"
+    timeout: 30
+
+- name: Check if internal zone already exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_auth_recursor_auth_webserver_port }}/api/v1/servers/localhost/zones/{{ domain_name }}."
+    method: GET
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+    status_code:
+      - 200
+      - 404
+  no_log: true
+  register: pdns_auth_recursor_zone_check
+
+- name: Create internal zone if missing
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ pdns_auth_recursor_auth_webserver_port }}/api/v1/servers/localhost/zones"
+    method: POST
+    headers:
+      X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+    body_format: json
+    body:
+      name: "{{ domain_name }}."
+      kind: "Native"
+      nameservers:
+        - "ns1.{{ domain_name }}."
+    status_code:
+      - 201
+      - 409
+  register: pdns_auth_recursor_zone_create
+  changed_when: pdns_auth_recursor_zone_create.status == 201
+  no_log: true
+  when: pdns_auth_recursor_zone_check.status == 404

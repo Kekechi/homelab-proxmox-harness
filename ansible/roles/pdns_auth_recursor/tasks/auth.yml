@@ -1,0 +1,57 @@
+---
+- name: Create PowerDNS database directory
+  ansible.builtin.file:
+    path: "{{ pdns_auth_recursor_db_dir }}"
+    state: directory
+    owner: "{{ pdns_auth_recursor_user }}"
+    group: "{{ pdns_auth_recursor_group }}"
+    mode: "0750"
+
+- name: Stat PowerDNS SQLite database
+  ansible.builtin.stat:
+    path: "{{ pdns_auth_recursor_db_path }}"
+  register: pdns_auth_recursor_db_stat
+
+- name: Initialize PowerDNS SQLite database from schema
+  when: not pdns_auth_recursor_db_stat.stat.exists
+  block:
+    - name: Copy SQLite schema to remote temp location
+      ansible.builtin.copy:
+        src: pdns-sqlite3-schema.sql
+        dest: /tmp/pdns-sqlite3-schema.sql
+        mode: "0644"
+
+    - name: Initialize SQLite database from schema
+      ansible.builtin.shell:
+        cmd: "sqlite3 {{ pdns_auth_recursor_db_path }} < /tmp/pdns-sqlite3-schema.sql"
+      changed_when: true
+
+  always:
+    - name: Remove SQLite schema temp file
+      ansible.builtin.file:
+        path: /tmp/pdns-sqlite3-schema.sql
+        state: absent
+
+- name: Set ownership on PowerDNS database file
+  ansible.builtin.file:
+    path: "{{ pdns_auth_recursor_db_path }}"
+    owner: "{{ pdns_auth_recursor_user }}"
+    group: "{{ pdns_auth_recursor_group }}"
+    mode: "0640"
+
+- name: Deploy pdns.conf
+  ansible.builtin.template:
+    src: pdns.conf.j2
+    dest: /etc/powerdns/pdns.conf
+    owner: root
+    group: "{{ pdns_auth_recursor_group }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart pdns
+
+- name: Enable and start pdns service
+  ansible.builtin.systemd:
+    name: pdns
+    enabled: true
+    state: started
+    daemon_reload: true

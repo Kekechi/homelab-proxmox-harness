@@ -1,0 +1,17 @@
+---
+pdns_auth_recursor_auth_listen_address: "127.0.0.1"
+pdns_auth_recursor_auth_port: 5300
+pdns_auth_recursor_auth_webserver_address: "127.0.0.1"
+pdns_auth_recursor_auth_webserver_port: 8081
+pdns_auth_recursor_auth_webserver_allow_from: "127.0.0.1"
+pdns_auth_recursor_db_path: "/var/lib/powerdns/pdns.sqlite3"
+pdns_auth_recursor_db_dir: "/var/lib/powerdns"
+pdns_auth_recursor_recursor_listen_address: "{{ ansible_host }}"
+pdns_auth_recursor_recursor_port: 53
+pdns_auth_recursor_webserver_address: "127.0.0.1"
+pdns_auth_recursor_webserver_port: 8082
+pdns_auth_recursor_webserver_allow_from: "127.0.0.1"
+pdns_auth_recursor_user: "pdns"
+pdns_auth_recursor_group: "pdns"
+pdns_auth_recursor_apt_key_url: "https://repo.powerdns.com/FD380FBB-pub.asc"
+pdns_auth_recursor_apt_key_path: "/etc/apt/keyrings/pdns.asc"

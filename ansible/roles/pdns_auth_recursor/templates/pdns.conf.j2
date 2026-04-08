@@ -1,0 +1,14 @@
+# pdns.conf — PowerDNS Authoritative Server configuration
+# Managed by Ansible (pdns_auth_recursor role). Do not edit manually.
+
+launch=gsqlite3
+gsqlite3-database={{ pdns_auth_recursor_db_path }}
+gsqlite3-pragma-journal-mode=WAL
+local-address={{ pdns_auth_recursor_auth_listen_address }}
+local-port={{ pdns_auth_recursor_auth_port }}
+webserver=yes
+webserver-address={{ pdns_auth_recursor_auth_webserver_address }}
+webserver-port={{ pdns_auth_recursor_auth_webserver_port }}
+webserver-allow-from={{ pdns_auth_recursor_auth_webserver_allow_from }}
+api=yes
+api-key={{ lookup('env', 'PDNS_AUTH_API_KEY') }}

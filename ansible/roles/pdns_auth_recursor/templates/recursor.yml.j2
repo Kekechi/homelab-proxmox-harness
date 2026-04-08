@@ -1,0 +1,19 @@
+# recursor.yml — PowerDNS Recursor 5.4 configuration (YAML format)
+# Managed by Ansible (pdns_auth_recursor role). Do not edit manually.
+
+incoming:
+  listen:
+    - "{{ pdns_auth_recursor_recursor_listen_address }}:{{ pdns_auth_recursor_recursor_port }}"
+recursor:
+  forward_zones:
+    - zone: "{{ domain_name }}"
+      recurse: false
+      forwarders:
+        - "127.0.0.1:{{ pdns_auth_recursor_auth_port }}"
+webservice:
+  webserver: true
+  address: "{{ pdns_auth_recursor_webserver_address }}"
+  port: {{ pdns_auth_recursor_webserver_port }}
+  allow_from:
+    - "{{ pdns_auth_recursor_webserver_allow_from }}"
+  api_key: "{{ lookup('env', 'PDNS_RECURSOR_API_KEY') }}"

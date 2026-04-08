@@ -87,6 +87,8 @@ _ENVRC_SECRET_VARS = [
     "STEP_CA_ISSUING_PASSWORD",
     "STEP_CA_LXC_ROOT_PASSWORD",
     "STEP_CA_PROVISIONER_PASSWORD",
+    "PDNS_AUTH_API_KEY",
+    "PDNS_RECURSOR_API_KEY",
 ]
 
 
@@ -411,6 +413,10 @@ def gen_envrc(cfg: dict, env: str) -> str:
         export STEP_CA_ISSUING_PASSWORD="{CHANGE_ME}"       # password protecting the Issuing CA private key
         export STEP_CA_LXC_ROOT_PASSWORD="{CHANGE_ME}"      # root account password for the Issuing CA LXC
         export STEP_CA_PROVISIONER_PASSWORD="{CHANGE_ME}"   # JWK provisioner password (used by minio TLS setup)
+
+        # PowerDNS API keys — used by Ansible dns-setup.yml playbook
+        export PDNS_AUTH_API_KEY="{CHANGE_ME}"          # Auth webserver/API key
+        export PDNS_RECURSOR_API_KEY="{CHANGE_ME}"      # Recursor webserver/API key
 
         # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
         # Go (Terraform) and curl pick this up; no container rebuild needed.

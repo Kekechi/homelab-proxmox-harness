@@ -1,0 +1,29 @@
+---
+- name: Deploy recursor.yml config
+  ansible.builtin.template:
+    src: recursor.yml.j2
+    dest: /etc/powerdns/recursor.yml
+    owner: root
+    group: "{{ pdns_auth_recursor_group }}"
+    mode: "0640"
+  no_log: true
+  notify: Restart pdns-recursor
+
+- name: Get current capabilities on pdns_recursor binary
+  ansible.builtin.command:
+    cmd: getcap /usr/sbin/pdns_recursor
+  register: pdns_auth_recursor_getcap
+  changed_when: false
+
+- name: Set cap_net_bind_service on pdns_recursor binary
+  ansible.builtin.command:
+    cmd: setcap cap_net_bind_service=ep /usr/sbin/pdns_recursor
+  when: "'cap_net_bind_service=ep' not in pdns_auth_recursor_getcap.stdout"
+  changed_when: "'cap_net_bind_service=ep' not in pdns_auth_recursor_getcap.stdout"
+
+- name: Enable and start pdns-recursor service
+  ansible.builtin.systemd:
+    name: pdns-recursor
+    enabled: true
+    state: started
+    daemon_reload: true
