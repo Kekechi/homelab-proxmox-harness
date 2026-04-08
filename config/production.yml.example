@@ -18,10 +18,19 @@ infrastructure:
     port: 8006
     node: pve
     insecure: true
-  network:
-    bridge: vmbr0
-    vlan_id: null                          # null = untagged (adjust for your production network)
-    cidr: "192.168.X.0/24"                # Production subnet — MUST use CIDR notation (e.g. /24); bare IPs rejected
+  networks:
+    mgmt:
+      bridge: vmbr0                        # Management VNet bridge (replace with your bridge name)
+      cidr: "X.X.X.X/24"                  # Management VLAN subnet — MUST use CIDR notation; bare IPs rejected
+      gateway: "X.X.X.X"                  # Management VLAN gateway
+      vlan_id: null                        # null when Proxmox SDN VNets handle VLAN tagging; set an integer for NIC-level tagging
+    lan:
+      bridge: vmbr1                        # LAN VNet bridge (replace with your bridge name)
+      cidr: "X.X.X.X/24"                  # LAN subnet — MUST use CIDR notation
+      gateway: "X.X.X.X"                  # LAN gateway
+      vlan_id: null                        # null when Proxmox SDN VNets handle VLAN tagging; set an integer for NIC-level tagging
+  # No default_network — every service must declare its network explicitly.
+  # This prevents accidental placement on the wrong network in production.
   storage:
     datastore_id: local-lvm
     cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
@@ -34,49 +43,56 @@ terraform:
 
 services:
   minio:
-    ip: "192.168.X.X"                    # MinIO server IP (bare IP, no prefix)
+    ip: "X.X.X.X"                         # MinIO server IP (bare IP, no prefix)
     port: 9000
     ansible_user: root
     hostname: minio-server
-    fqdn: "minio.lab.example.com"        # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true
-    tls: true                            # Enable TLS via step-ca ACME; set false for plain HTTP
+    fqdn: "minio.lab.example.com"          # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true
+    tls: true                              # Enable TLS via step-ca ACME; set false for plain HTTP
+    network: mgmt                          # Which named network this service is on
     # dns_name: storage        # optional: override DNS label (default: service key "minio")
     # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
     # dns: false               # optional: set to false to exclude from DNS record generation
   pki:
     root_ca:
-      ip: "192.168.X.X/24"               # CIDR notation required — Terraform uses prefix for cloud-init
-      gateway: "192.168.X.1"
+      ip: "X.X.X.X/24"                    # CIDR notation required — Terraform uses prefix for cloud-init
       vm_id: 101
       ansible_user: debian
       hostname: root-ca
-      cloud_init_template_id: 9000        # VMID of cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
+      cloud_init_template_id: 9000         # VMID of cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
+      network: mgmt
     issuing_ca:
-      ip: "192.168.X.X/24"
-      gateway: "192.168.X.1"
+      ip: "X.X.X.X/24"
       ct_id: 102
       ansible_user: root
       hostname: issuing-ca
       lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+      network: mgmt
   dns:
     auth:
-      ip: ""                                  # CIDR notation required (e.g. 192.168.X.103/24) — management VLAN IPs TBD
-      gateway: ""
+      ip: "X.X.X.X/24"                    # CIDR notation required — management VLAN IPs
       ct_id: 103
       ansible_user: root
       hostname: dns-auth
+      network: mgmt
     dist:
-      ip: ""                                  # CIDR notation required (e.g. 192.168.X.104/24) — management VLAN IPs TBD
-      gateway: ""
+      ip: "X.X.X.X/24"                    # CIDR notation required — management VLAN IPs
       ct_id: 104
       ansible_user: root
       hostname: dns-dist
+      network: mgmt
       # dns: false             # optional: set to false to exclude this host from DNS record generation
-      # client_cidrs:          # optional: CIDRs added to DNSdist ACL beyond the production subnet
-      #   - "192.168.X.0/24"  # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+      # client_cidrs:          # optional: CIDRs added to DNSdist ACL beyond the management subnet
+      #   - "X.X.X.X/24"     # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+
+# Future services on LAN:
+# services:
+#   kubernetes:
+#     ip: "X.X.X.X"
+#     network: lan
 
 hosts:
   production:
     # production-vm-01:
-    #   ansible_host: 192.168.X.X
+    #   ansible_host: X.X.X.X
     #   ansible_user: ubuntu

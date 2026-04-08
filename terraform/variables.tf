@@ -19,22 +19,24 @@ variable "cloudinit_datastore_id" {
   type        = string
 }
 
-variable "bridge" {
-  description = "Linux bridge to attach VMs/LXCs to"
+variable "root_ca_bridge" {
+  description = "Proxmox VNet bridge for the root CA VM"
   type        = string
-  default     = "vmbr0"
 }
 
-variable "vlan_id" {
-  description = "VLAN tag for the network. Set to null for untagged."
-  type        = number
-  default     = null
+variable "issuing_ca_bridge" {
+  description = "Proxmox VNet bridge for the issuing CA LXC"
+  type        = string
 }
 
-variable "network_cidr" {
-  description = "CIDR of the target network (informational — used in docs and Squid ACL reference)"
+variable "dns_auth_bridge" {
+  description = "Proxmox VNet bridge for the DNS auth+recursor LXC"
   type        = string
-  default     = null
+}
+
+variable "dns_dist_bridge" {
+  description = "Proxmox VNet bridge for the DNSdist LXC"
+  type        = string
 }
 
 variable "vm_id_range_start" {

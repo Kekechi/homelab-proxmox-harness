@@ -16,10 +16,13 @@ infrastructure:
     port: 8006                           # Proxmox API port
     node: pve                            # Proxmox node name (run: pvesh get /nodes)
     insecure: true                       # true = accept self-signed TLS cert
-  network:
-    bridge: vmbr0                        # Network bridge for VMs/LXCs
-    vlan_id: 50                          # VLAN tag for sandbox network (null = untagged)
-    cidr: "192.168.X.0/24"              # Sandbox VLAN subnet — MUST use CIDR notation (e.g. /24); bare IPs rejected
+  networks:
+    sandbox:
+      bridge: vmbr0                      # Replace with your Proxmox VNet bridge name
+      cidr: "192.168.X.0/24"            # Sandbox subnet — MUST use CIDR notation (e.g. /24); bare IPs rejected
+      gateway: "192.168.X.1"            # Default gateway for all sandbox VMs/LXCs
+      vlan_id: null                      # null when Proxmox SDN VNets handle VLAN tagging; set an integer for NIC-level tagging
+  default_network: sandbox               # All services inherit this network; omit in production to require explicit placement
   storage:
     datastore_id: local-lvm             # Proxmox storage ID for VM/LXC disks
     cloudinit_datastore_id: local-lvm   # Directory storage with Snippets content type enabled
@@ -41,20 +44,19 @@ services:
     hostname: minio-server               # Ansible inventory hostname
     fqdn: "minio.sandbox.example.com"    # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true (generator exits with error if missing)
     tls: true                            # Enable TLS via step-ca ACME; set false for plain HTTP
+    network: sandbox                     # Which named network this service is on
     # dns_name: storage        # optional: override DNS label (default: service key "minio")
     # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
     # dns: false               # optional: set to false to exclude from DNS record generation
   pki:
     root_ca:
       ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
-      gateway: "192.168.X.1"
       vm_id: 201                         # must not conflict with existing VMs
       ansible_user: debian
       hostname: root-ca
       cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
     issuing_ca:
       ip: "192.168.X.X/24"
-      gateway: "192.168.X.1"
       ct_id: 202
       ansible_user: root
       hostname: issuing-ca
@@ -62,13 +64,11 @@ services:
   dns:
     auth:
       ip: "192.168.X.X/24"
-      gateway: "192.168.X.1"
       ct_id: 203
       ansible_user: root
       hostname: dns-auth
     dist:
       ip: "192.168.X.X/24"
-      gateway: "192.168.X.1"
       ct_id: 204
       ansible_user: root
       hostname: dns-dist

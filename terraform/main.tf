@@ -26,26 +26,6 @@ provider "proxmox" {
 # Keep resources pool-scoped (pool_id = var.pool_id) to enforce sandbox isolation.
 # ---------------------------------------------------------------------------
 
-# Example: sandbox test VM
-# Uncomment and adjust when deploying a VM.
-#
-# module "test_vm" {
-#   source = "./modules/proxmox-vm"
-#
-#   node_name         = var.proxmox_node
-#   pool_id           = var.pool_id
-#   vm_name           = "test-01"
-#   vm_id             = var.vm_id_range_start
-#   clone_template_id = var.clone_template_id
-#   cores             = 2
-#   memory_mb         = 2048
-#   disk_size_gb      = 20
-#   datastore_id      = var.datastore_id
-#   bridge            = var.bridge
-#   vlan_id           = var.vlan_id
-#   ssh_public_key    = var.ssh_public_key
-# }
-
 # ---------------------------------------------------------------------------
 # PKI — two-tier internal certificate authority
 #
@@ -73,8 +53,8 @@ module "root_ca" {
   memory_mb              = 512
   disk_size_gb           = 8
   datastore_id           = var.datastore_id
-  bridge                 = var.bridge
-  vlan_id                = var.vlan_id
+  bridge                 = var.root_ca_bridge
+  vlan_id                = null
   ipv4_address           = var.root_ca_ipv4_address
   ipv4_gateway           = var.root_ca_ipv4_gateway
   ssh_public_key         = var.ssh_public_key
@@ -96,8 +76,8 @@ module "issuing_ca" {
   memory_mb        = 512
   disk_size_gb     = 8
   datastore_id     = var.datastore_id
-  bridge           = var.bridge
-  vlan_id          = var.vlan_id
+  bridge           = var.issuing_ca_bridge
+  vlan_id          = null
   ipv4_address     = var.issuing_ca_ipv4_address
   ipv4_gateway     = var.issuing_ca_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
@@ -128,8 +108,8 @@ module "dns_auth" {
   memory_mb        = 512
   disk_size_gb     = 8
   datastore_id     = var.datastore_id
-  bridge           = var.bridge
-  vlan_id          = var.vlan_id
+  bridge           = var.dns_auth_bridge
+  vlan_id          = null
   ipv4_address     = var.dns_auth_ipv4_address
   ipv4_gateway     = var.dns_auth_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
@@ -151,8 +131,8 @@ module "dns_dist" {
   memory_mb        = 512
   disk_size_gb     = 8
   datastore_id     = var.datastore_id
-  bridge           = var.bridge
-  vlan_id          = var.vlan_id
+  bridge           = var.dns_dist_bridge
+  vlan_id          = null
   ipv4_address     = var.dns_dist_ipv4_address
   ipv4_gateway     = var.dns_dist_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []

@@ -52,6 +52,7 @@ def validate_cidr(value: str, field: str):
     """Reject bare IPs without a prefix length."""
     if value and "/" not in str(value):
         print(f"ERROR: {field} must use CIDR notation (e.g., 192.168.1.0/24 or 192.168.1.5/32).", file=sys.stderr)
+        sys.exit(1)
 
 
 def validate_domain_name(value: str, field: str):
@@ -66,6 +67,34 @@ def validate_domain_name(value: str, field: str):
 def _strip_prefix(addr: str) -> str:
     """Strip CIDR prefix: '10.0.0.1/24' → '10.0.0.1'."""
     return addr.split("/")[0] if addr else addr
+
+
+def resolve_network(svc_dict: dict, networks: dict, default_network: str, service_label: str) -> dict:
+    """Resolve the network dict for a service.
+
+    Looks up svc_dict.get("network") in networks; falls back to networks[default_network]
+    if default_network is set. Hard errors if neither is available or the referenced
+    network name is not a key in networks.
+    """
+    net_name = svc_dict.get("network")
+    if net_name is not None:
+        if net_name not in networks:
+            print(
+                f"ERROR: Service '{service_label}' references network '{net_name}' "
+                f"which is not defined in infrastructure.networks.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return networks[net_name]
+    if default_network:
+        return networks[default_network]
+    print(
+        f"ERROR: Service '{service_label}' has no 'network:' field and no "
+        f"'default_network' is set in infrastructure. "
+        f"Add a 'network:' field to this service or set 'infrastructure.default_network'.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def _derive_dns_records(svcs: dict) -> list[dict]:
@@ -192,6 +221,83 @@ def write_file(path: str, content: str, label: str):
 
 
 # ---------------------------------------------------------------------------
+# Schema validation
+# ---------------------------------------------------------------------------
+
+def validate_schema(cfg: dict):
+    """Validate config schema before generating any files. Exits on error."""
+    infra = cfg.get("infrastructure", {})
+
+    # Migration detector: singular 'network' key is no longer supported
+    if "network" in infra:
+        print(
+            "ERROR: 'infrastructure.network' is no longer supported. "
+            "Migrate to 'infrastructure.networks' (plural map). "
+            "See config/sandbox.yml.example for the new schema.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # infrastructure.networks must exist and be a non-empty dict
+    networks = infra.get("networks")
+    if not networks or not isinstance(networks, dict):
+        print(
+            "ERROR: 'infrastructure.networks' must be a non-empty map of named networks.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Each network entry must have bridge, cidr, gateway
+    for name, net in networks.items():
+        if not isinstance(net, dict):
+            print(
+                f"ERROR: infrastructure.networks.{name} must be a dict with bridge, cidr, gateway.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        for required_field in ("bridge", "cidr", "gateway"):
+            if required_field not in net:
+                print(
+                    f"ERROR: infrastructure.networks.{name} is missing required field '{required_field}'.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        validate_cidr(net["cidr"], f"infrastructure.networks.{name}.cidr")
+
+    # default_network (if set) must reference a key in infrastructure.networks
+    default_network = infra.get("default_network")
+    if default_network is not None and default_network not in networks:
+        print(
+            f"ERROR: infrastructure.default_network '{default_network}' is not defined in "
+            f"infrastructure.networks. Available networks: {list(networks.keys())}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # Stale gateway detector: scan all services for 'gateway' keys
+    svcs = cfg.get("services", {}) or {}
+    for svc_name, svc in svcs.items():
+        if not isinstance(svc, dict):
+            continue
+        if "gateway" in svc:
+            print(
+                f"ERROR: Remove 'gateway:' from service '{svc_name}'. "
+                f"Gateway is now defined in infrastructure.networks.<name>.gateway",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Check nested sub-dicts
+        for subkey, sub in svc.items():
+            if isinstance(sub, dict) and "gateway" in sub:
+                print(
+                    f"ERROR: Remove 'gateway:' from service '{svc_name}.{subkey}'. "
+                    f"Gateway is now defined in infrastructure.networks.<name>.gateway",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # Generators
 # ---------------------------------------------------------------------------
 
@@ -203,41 +309,31 @@ def _hcl_str(val: str) -> str:
 def gen_tfvars(cfg: dict, env: str) -> str:
     infra = cfg.get("infrastructure", {})
     p = infra.get("proxmox", {})
-    n = infra.get("network", {})
+    networks = infra["networks"]
+    default_network = infra.get("default_network")
     s = infra.get("storage", {})
     t = cfg.get("terraform", {})
     ssh = cfg.get("ssh", {})
     svcs = cfg.get("services", {})
     pki = svcs.get("pki", {})
 
-    vlan = n.get("vlan_id")
-    vlan_line = f'vlan_id            = {vlan}' if vlan is not None else 'vlan_id            = null'
-
     pool_id = t.get("pool_id", "")
-    pool_line = f'pool_id            = "{pool_id}"'
-
-    cidr = n.get("cidr", "")
-    cidr_line = f'network_cidr       = "{cidr}"' if cidr else 'network_cidr       = ""'
-
     ssh_key = ssh.get("public_key", "")
-
     domain_name = cfg.get("domain_name", "")
 
+    # Widest key in this block: cloudinit_datastore_id (22 chars) — pad all to column 23
     lines = [
         f"# Generated by scripts/generate-configs.py from config/{env}.yml",
         f"# DO NOT EDIT — run `make configure` to regenerate.",
         f"",
-        f'proxmox_node       = "{p.get("node", "")}"',
-        pool_line,
+        f'proxmox_node           = "{p.get("node", "")}"',
+        f'pool_id                = "{pool_id}"',
         f'datastore_id           = "{s.get("datastore_id", "local-lvm")}"',
         f'cloudinit_datastore_id = "{s.get("cloudinit_datastore_id", "local")}"',
-        f'bridge             = "{n.get("bridge", "vmbr0")}"',
-        vlan_line,
-        cidr_line,
-        f'vm_id_range_start  = {t.get("vm_id_range_start", 200)}',
-        f'clone_template_id  = {t.get("clone_template_id", 0)}',
-        f'ssh_public_key     = "{ssh_key}"',
-        f'domain_name        = {_hcl_str(domain_name)}',
+        f'vm_id_range_start      = {t.get("vm_id_range_start", 200)}',
+        f'clone_template_id      = {t.get("clone_template_id", 0)}',
+        f'ssh_public_key         = "{ssh_key}"',
+        f'domain_name            = {_hcl_str(domain_name)}',
     ]
 
     # PKI section — only emitted when services.pki is present in config
@@ -246,20 +342,26 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         iss_ca   = pki.get("issuing_ca", {})
 
         root_addr = root_ca.get("ip", "")
-        root_gw   = root_ca.get("gateway", "")
         iss_addr  = iss_ca.get("ip", "")
-        iss_gw    = iss_ca.get("gateway", "")
         lxc_tmpl  = iss_ca.get("lxc_template_file_id", "")
+
+        validate_cidr(root_addr, "services.pki.root_ca.ip")
+        validate_cidr(iss_addr, "services.pki.issuing_ca.ip")
+
+        root_net = resolve_network(root_ca, networks, default_network, "pki.root_ca")
+        iss_net  = resolve_network(iss_ca, networks, default_network, "pki.issuing_ca")
 
         lines += [
             f"",
             f"# PKI",
             f'root_ca_vm_id           = {root_ca.get("vm_id", 201)}',
             f'root_ca_ipv4_address    = {_hcl_str(root_addr)}',
-            f'root_ca_ipv4_gateway    = {_hcl_str(root_gw)}',
+            f'root_ca_ipv4_gateway    = {_hcl_str(root_net["gateway"])}',
+            f'root_ca_bridge          = "{root_net["bridge"]}"',
             f'issuing_ca_ct_id        = {iss_ca.get("ct_id", 202)}',
             f'issuing_ca_ipv4_address = {_hcl_str(iss_addr)}',
-            f'issuing_ca_ipv4_gateway = {_hcl_str(iss_gw)}',
+            f'issuing_ca_ipv4_gateway = {_hcl_str(iss_net["gateway"])}',
+            f'issuing_ca_bridge       = "{iss_net["bridge"]}"',
             f'cloud_init_template_id  = {root_ca.get("cloud_init_template_id", 9000)}',
             f'lxc_template_file_id    = {_hcl_str(lxc_tmpl)}',
         ]
@@ -271,22 +373,25 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         dist = dns.get("dist", {})
 
         auth_addr = auth.get("ip", "")
-        auth_gw   = auth.get("gateway", "")
         dist_addr = dist.get("ip", "")
-        dist_gw   = dist.get("gateway", "")
 
         validate_cidr(auth_addr, "services.dns.auth.ip")
         validate_cidr(dist_addr, "services.dns.dist.ip")
 
+        auth_net = resolve_network(auth, networks, default_network, "dns.auth")
+        dist_net = resolve_network(dist, networks, default_network, "dns.dist")
+
         lines += [
             f"",
             f"# DNS",
-            f'dns_auth_ct_id          = {auth.get("ct_id", 103)}',
-            f'dns_auth_ipv4_address   = {_hcl_str(auth_addr)}',
-            f'dns_auth_ipv4_gateway   = {_hcl_str(auth_gw)}',
-            f'dns_dist_ct_id          = {dist.get("ct_id", 104)}',
-            f'dns_dist_ipv4_address   = {_hcl_str(dist_addr)}',
-            f'dns_dist_ipv4_gateway   = {_hcl_str(dist_gw)}',
+            f'dns_auth_ct_id        = {auth.get("ct_id", 103)}',
+            f'dns_auth_ipv4_address = {_hcl_str(auth_addr)}',
+            f'dns_auth_ipv4_gateway = {_hcl_str(auth_net["gateway"])}',
+            f'dns_auth_bridge       = "{auth_net["bridge"]}"',
+            f'dns_dist_ct_id        = {dist.get("ct_id", 104)}',
+            f'dns_dist_ipv4_address = {_hcl_str(dist_addr)}',
+            f'dns_dist_ipv4_gateway = {_hcl_str(dist_net["gateway"])}',
+            f'dns_dist_bridge       = "{dist_net["bridge"]}"',
         ]
 
     return "\n".join(lines) + "\n"
@@ -300,6 +405,8 @@ def gen_inventory(cfg: dict, env: str) -> str:
     domain_name = cfg.get("domain_name", "")
     validate_domain_name(domain_name, "domain_name")
     infra = cfg.get("infrastructure", {})
+    networks = infra.get("networks", {})
+    default_network = infra.get("default_network")
 
     lines = [
         f"# Generated by scripts/generate-configs.py from config/{env}.yml",
@@ -361,13 +468,17 @@ def gen_inventory(cfg: dict, env: str) -> str:
                     if group == "dns_dist":
                         auth_sub = svc.get("auth", {})
                         recursor_ip = _strip_prefix(auth_sub.get("ip", ""))
-                        network_cidr = infra.get("network", {}).get("cidr", "")
+                        dist_net = resolve_network(sub, networks, default_network, "dns.dist")
+                        network_cidr = dist_net["cidr"]
                         client_cidrs = sub.get("client_cidrs", [])
+                        seen_cidrs: list[str] = []
+                        for cidr in [network_cidr] + list(client_cidrs):
+                            if cidr not in seen_cidrs:
+                                seen_cidrs.append(cidr)
                         lines.append(f"      vars:")
                         lines.append(f"        pdns_recursor_address: {recursor_ip}")
                         lines.append(f"        pdns_dnsdist_acl_cidrs:")
-                        lines.append(f'          - "{network_cidr}"')
-                        for cidr in client_cidrs:
+                        for cidr in seen_cidrs:
                             lines.append(f'          - "{cidr}"')
                     if group == "dns_auth":
                         _dns_records = _derive_dns_records(cfg.get("services", {}))
@@ -401,16 +512,29 @@ def gen_inventory(cfg: dict, env: str) -> str:
 
 def gen_allowed_cidrs(cfg: dict, env: str) -> str:
     infra = cfg.get("infrastructure", {})
-    n = infra.get("network", {})
+    networks = infra.get("networks", {})
+    default_network = infra.get("default_network")
     p = infra.get("proxmox", {})
     svcs = cfg.get("services", {}) or {}
-    minio = svcs.get("minio", {})
 
-    cidr = n.get("cidr", "")
     proxmox_cidr = f'{p.get("ip", "")}/32' if p.get("ip") else ""
-    minio_cidr   = f'{_strip_prefix(minio.get("ip", ""))}/32' if minio.get("ip") else ""
 
-    validate_cidr(cidr, "infrastructure.network.cidr")
+    # Collect the set of network names actually used by deployed services
+    used_network_names = set()
+    for svc_name, svc in svcs.items():
+        if not isinstance(svc, dict):
+            continue
+        if "ip" in svc:
+            net_name = svc.get("network") or default_network
+            resolve_network(svc, networks, default_network, svc_name)
+            used_network_names.add(net_name)
+        else:
+            for subkey, sub in svc.items():
+                if not isinstance(sub, dict) or "ip" not in sub:
+                    continue
+                net_name = sub.get("network") or default_network
+                resolve_network(sub, networks, default_network, f"{svc_name}.{subkey}")
+                used_network_names.add(net_name)
 
     lines = [
         f"# Generated by scripts/generate-configs.py from config/{env}.yml",
@@ -419,10 +543,22 @@ def gen_allowed_cidrs(cfg: dict, env: str) -> str:
         f"",
     ]
     seen = set()
-    for entry in [cidr, minio_cidr, proxmox_cidr]:
-        if entry and entry not in seen:
-            lines.append(entry)
-            seen.add(entry)
+
+    # Emit one CIDR per used network
+    for net_name in sorted(used_network_names):
+        if net_name not in networks:
+            continue
+        cidr = networks[net_name]["cidr"]
+        validate_cidr(cidr, f"infrastructure.networks.{net_name}.cidr")
+        if cidr and cidr not in seen:
+            lines.append(cidr)
+            seen.add(cidr)
+
+    # Proxmox /32 special case (unchanged)
+    if proxmox_cidr and proxmox_cidr not in seen:
+        lines.append(proxmox_cidr)
+        seen.add(proxmox_cidr)
+
     return "\n".join(lines) + "\n"
 
 
@@ -519,6 +655,9 @@ def main():
     print(f"Generating config for environment: {env}")
 
     cfg = load_config(env)
+
+    # Validate schema before generating any files
+    validate_schema(cfg)
 
     # 1. terraform/<env>.tfvars
     tfvars_path = os.path.join(REPO_ROOT, "terraform", f"{env}.tfvars")
