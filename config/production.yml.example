@@ -75,15 +75,18 @@ services:
       ansible_user: root
       hostname: dns-auth
       network: mgmt
+      dns_name: dns-auth        # DNS A record label; default would be "auth" (subkey) which is ambiguous
     dist:
       ip: "X.X.X.X/24"                    # CIDR notation required — management VLAN IPs
       ct_id: 104
       ansible_user: root
       hostname: dns-dist
       network: mgmt
-      # dns: false             # optional: set to false to exclude this host from DNS record generation
-      # client_cidrs:          # optional: CIDRs added to DNSdist ACL beyond the management subnet
-      #   - "X.X.X.X/24"     # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+      dns_name: dns-dist        # DNS A record label; default would be "dist" which is ambiguous
+      # dns: false              # optional: set to false to exclude this host from DNS record generation entirely
+      # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
+      # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the management subnet
+      #   - "X.X.X.X/24"      # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
 
 # Future services on LAN:
 # services:

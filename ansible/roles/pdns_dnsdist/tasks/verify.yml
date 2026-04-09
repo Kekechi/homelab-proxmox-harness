@@ -11,7 +11,7 @@
 
 - name: Verify external resolution via DNSdist
   ansible.builtin.command:
-    cmd: "dig @{{ ansible_host }} google.com A +short"
+    cmd: "dig @{{ ansible_host }} example.com A +short"
   register: pdns_dnsdist_verify_external
   changed_when: false
   failed_when: pdns_dnsdist_verify_external.rc != 0 or pdns_dnsdist_verify_external.stdout == ""

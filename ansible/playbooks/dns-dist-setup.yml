@@ -12,6 +12,11 @@
 #   pdns_recursor_address    — IP of PowerDNS Recursor (generator-emitted group var)
 #   pdns_dnsdist_acl_cidrs   — allowed client CIDRs (generator-emitted group var)
 #
+# Ordering dependency:
+#   dns-setup.yml must complete first — DNSdist forwards all queries to the
+#   PowerDNS Recursor on dns-auth; that service must be running before DNSdist
+#   health checks can pass.
+#
 # Usage:
 #   ansible-playbook ansible/playbooks/dns-dist-setup.yml
 

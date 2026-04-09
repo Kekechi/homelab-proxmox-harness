@@ -41,8 +41,8 @@ services:
     root_ca:   { ip, vm_id, ansible_user, hostname, cloud_init_template_id, network }
     issuing_ca: { ip, ct_id, ansible_user, hostname, lxc_template_file_id, network }
   dns:
-    auth: { ip, ct_id, ansible_user, hostname, network }
-    dist: { ip, ct_id, ansible_user, hostname, network }
+    auth: { ip, ct_id, ansible_user, hostname, network, dns_name? }
+    dist: { ip, ct_id, ansible_user, hostname, network, dns_name?, dns_ttl?, dns?, client_cidrs? }
 
 hosts:
   <group>:    # ad-hoc VMs not covered by a named service
@@ -73,6 +73,9 @@ make configure ENV=production
 - `services.minio.tls` → `minio_tls_enabled` group var in `hosts.yml`
 - `domain_name` → `minio_ca_url: https://ca.{domain_name}` group var in `hosts.yml` minio group
 - `services.*` with `ip` → Ansible inventory group auto-derived (no manual `hosts:` entry needed)
+- `services.*` with `dns_name` → overrides the DNS A record label (default: service key, underscores → hyphens)
+- `services.*` with `dns_ttl` → overrides TTL for that host's A record (default: 3600)
+- `services.*` with `dns: false` → excludes that host from DNS record generation entirely
 - `services.pki.*` sub-hosts → `pki_root_ca` / `pki_issuing_ca` Ansible groups
 - Per-service `network:` field → looked up in `infrastructure.networks`; `bridge` and `gateway` emitted as `<service>_bridge` and `<service>_ipv4_gateway` in tfvars
 - `infrastructure.networks.<name>.cidr` → one entry in `allowed-cidrs.conf` per network that has at least one deployed service
