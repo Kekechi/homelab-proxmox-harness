@@ -1,0 +1,272 @@
+---
+# bootstrap.yml — wait for Nexus ready, set password, disable anonymous, update blobstore, create repos
+
+- name: Wait for Nexus to become writable
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/status/writable"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: nexus_status_result
+  until: nexus_status_result.status | default(-1) == 200
+  retries: 36
+  delay: 10
+  failed_when: false
+
+- name: Fail if Nexus did not become writable within timeout
+  ansible.builtin.fail:
+    msg: "Nexus did not become writable within 360 seconds"
+  when: nexus_status_result.status | default(-1) != 200
+
+- name: Stat admin.password file
+  ansible.builtin.stat:
+    path: "{{ nexus_data_dir }}/admin.password"
+  register: nexus_admin_password_file
+
+- name: Read initial admin password from file
+  ansible.builtin.slurp:
+    src: "{{ nexus_data_dir }}/admin.password"
+  register: nexus_initial_password_raw
+  when: nexus_admin_password_file.stat.exists
+  no_log: true
+
+- name: Set current admin credential
+  ansible.builtin.set_fact:
+    nexus_current_password: >-
+      {{ (nexus_initial_password_raw.content | b64decode | trim)
+         if nexus_admin_password_file.stat.exists
+         else lookup('env', 'NEXUS_ADMIN_PASSWORD') }}
+  no_log: true
+
+- name: Change admin password
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users/admin/change-password"
+    method: PUT
+    user: admin
+    password: "{{ nexus_current_password }}"
+    force_basic_auth: true
+    body: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    headers:
+      Content-Type: "text/plain"
+    status_code: [200, 204, 401]
+    timeout: 60
+  register: nexus_password_change_result
+  failed_when: nexus_password_change_result.status | default(0) not in [200, 204, 401]
+  changed_when: nexus_admin_password_file.stat.exists
+  no_log: true
+
+- name: Fail if password change returned 401
+  ansible.builtin.fail:
+    msg: >
+      Password change returned 401. If admin.password was absent, the stored password
+      differs from NEXUS_ADMIN_PASSWORD. Correct the password and re-run.
+  when: nexus_password_change_result.status == 401
+
+- name: Disable anonymous access
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/anonymous"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      enabled: false
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  changed_when: false
+  no_log: true
+
+- name: Get default blobstore detail
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/blobstores/file/default"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_default_blobstore
+  no_log: true
+
+- name: Check if default blobstore has correct path
+  ansible.builtin.set_fact:
+    nexus_default_blobstore_correct: "{{ nexus_default_blobstore.json.path == nexus_blobs_dir + '/default' }}"
+
+- name: Update default blobstore path
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/blobstores/file/default"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      name: default
+      path: "{{ nexus_blobs_dir }}/default"
+      softQuota: null
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: not nexus_default_blobstore_correct
+  changed_when: true
+  no_log: true
+
+- name: Create APT proxy repo — apt-proxy-trixie
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: apt-proxy-trixie
+    repo_type: apt/proxy
+    repo_body:
+      name: apt-proxy-trixie
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "http://deb.debian.org/debian"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: trixie
+        flat: false
+
+- name: Create APT proxy repo — apt-proxy-trixie-security
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: apt-proxy-trixie-security
+    repo_type: apt/proxy
+    repo_body:
+      name: apt-proxy-trixie-security
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "http://security.debian.org/debian-security"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: trixie-security
+        flat: false
+
+- name: Create APT proxy repo — apt-proxy-trixie-updates
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: apt-proxy-trixie-updates
+    repo_type: apt/proxy
+    repo_body:
+      name: apt-proxy-trixie-updates
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "http://deb.debian.org/debian"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: trixie-updates
+        flat: false
+
+- name: Create Docker hosted repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-hosted
+    repo_type: docker/hosted
+    repo_body:
+      name: docker-hosted
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+        writePolicy: allow
+      docker:
+        v1Enabled: false
+        forceBasicAuth: true
+
+- name: Create Docker proxy repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-proxy
+    repo_type: docker/proxy
+    repo_body:
+      name: docker-proxy
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "https://registry-1.docker.io"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      docker:
+        v1Enabled: true
+        forceBasicAuth: true
+      dockerProxy:
+        indexType: "HUB"
+
+- name: Create Docker group repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-group
+    repo_type: docker/group
+    repo_body:
+      name: docker-group
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      group:
+        memberNames:
+          - docker-hosted
+          - docker-proxy
+      docker:
+        v1Enabled: false
+        forceBasicAuth: true
+        httpPort: 5001
+
+- name: Create Terraform proxy repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: terraform-proxy
+    repo_type: terraform/proxy
+    repo_body:
+      name: terraform-proxy
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "https://registry.terraform.io"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true

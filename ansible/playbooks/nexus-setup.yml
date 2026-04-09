@@ -1,0 +1,33 @@
+---
+# nexus-setup.yml — Deploy Sonatype Nexus Repository CE
+#
+# Nexus serves as the homelab artifact server: APT packages, Docker images,
+# Terraform providers. nginx terminates TLS on the same LXC; step-ca issues the cert.
+#
+# Required env vars (set in .envrc, then run: direnv allow):
+#   NEXUS_ADMIN_PASSWORD         — desired admin password after bootstrap
+#   STEP_CA_PROVISIONER_PASSWORD — JWK provisioner password for cert issuance
+#
+# Required variables (set in group_vars or passed via -e):
+#   nexus_domain                 — FQDN for TLS cert and nginx server_name
+#
+# Usage:
+#   ansible-playbook ansible/playbooks/nexus-setup.yml
+
+- name: Common setup for Nexus host
+  hosts: nexus
+  become: true
+  roles:
+    - common
+
+- name: Deploy step CLI client
+  hosts: nexus
+  become: true
+  roles:
+    - step_client
+
+- name: Deploy Nexus Repository CE
+  hosts: nexus
+  become: true
+  roles:
+    - nexus

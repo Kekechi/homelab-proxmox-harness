@@ -1,0 +1,81 @@
+---
+# nexus — deploy Sonatype Nexus Repository CE
+#
+# Required env vars (set in .envrc, then run: direnv allow):
+#   NEXUS_ADMIN_PASSWORD         — desired admin password after bootstrap
+#   STEP_CA_PROVISIONER_PASSWORD — JWK provisioner password for cert issuance
+#
+# Required variables (set in group_vars or passed via -e):
+#   nexus_domain                 — FQDN for TLS cert and nginx server_name
+
+- name: Assert nexus_domain is defined and non-empty
+  ansible.builtin.assert:
+    that:
+      - nexus_domain is defined
+      - nexus_domain | length > 0
+    fail_msg: >
+      nexus_domain must be set. Pass it via -e nexus_domain=<fqdn> or group_vars.
+
+- name: Assert NEXUS_ADMIN_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'NEXUS_ADMIN_PASSWORD') | length > 0
+    fail_msg: >
+      NEXUS_ADMIN_PASSWORD is not set. Add it to .envrc and run: direnv allow
+
+- name: Assert STEP_CA_PROVISIONER_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
+    fail_msg: >
+      STEP_CA_PROVISIONER_PASSWORD is not set. Add it to .envrc and run: direnv allow
+
+- name: Assert nexus_ca_url is set
+  ansible.builtin.assert:
+    that:
+      - nexus_ca_url is defined
+      - nexus_ca_url | length > 0
+    fail_msg: >
+      nexus_ca_url must be set. Pass it via -e nexus_ca_url=<url> or group_vars.
+
+- name: Assert nexus_checksum is set and not placeholder
+  ansible.builtin.assert:
+    that:
+      - nexus_checksum is defined
+      - nexus_checksum | length > 0
+      - "'PLACEHOLDER' not in nexus_checksum"
+    fail_msg: >
+      nexus_checksum must be set before running this role.
+      Fetch from: https://download.sonatype.com/nexus/3/nexus-{{ nexus_version }}-linux-x86_64.tar.gz.sha256
+      Set it in ansible/roles/nexus/defaults/main.yml.
+
+- name: Install Nexus (disk, tarball, user, dirs)
+  ansible.builtin.include_tasks: install.yml
+
+- name: Configure Nexus (vmoptions, nexus.rc, nexus.properties, systemd unit)
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start Nexus
+  ansible.builtin.systemd:
+    name: nexus
+    enabled: true
+    state: started
+
+- name: Configure nginx
+  ansible.builtin.include_tasks: nginx.yml
+
+- name: Issue TLS cert and deploy cert-renewer
+  ansible.builtin.include_tasks: tls.yml
+
+- name: Flush handlers (start nginx, apply any pending restarts)
+  ansible.builtin.meta: flush_handlers
+
+- name: Bootstrap Nexus (password, anonymous, blobstore, repos)
+  ansible.builtin.include_tasks: bootstrap.yml
+
+- name: Verify deployment
+  ansible.builtin.include_tasks: verify.yml

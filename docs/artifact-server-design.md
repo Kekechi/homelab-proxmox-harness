@@ -65,9 +65,16 @@ Per official documentation (`nexus.vmoptions`):
 - Run `make build` and reopen dev container
 
 **Implementation prerequisites (planner must include):**
-- Extend `proxmox-lxc` module with optional second disk (`mount_point` block, size/datastore/path variables)
-- Add Nexus section to `gen_tfvars()` and `gen_inventory()` in `generate-configs.py`
+- Extend `proxmox-lxc` module with optional second disk (`data_disk_size` string variable default null, `data_disk_path` string variable default `"/mnt/data"`); `dynamic "mount_point"` conditioned on `data_disk_size != null` with: `volume = var.datastore_id` (datastore name only — provider allocates the disk), `size = var.data_disk_size`, `path = var.data_disk_path`; `mount_options` omitted (Nexus tmpdir requires exec). Note: `volume` and `size` are separate provider arguments — do not combine them as `"datastore:size"`.
+- Migrate `lxc_template_file_id` from `services.pki.issuing_ca` to `infrastructure.storage` in generator and example configs; emit globally before service blocks (not inside PKI block); remove from PKI block
+- Add Nexus block to `gen_tfvars()` emitting `nexus_ct_id`, `nexus_ipv4_address`, `nexus_ipv4_gateway`, `nexus_bridge`; `gen_inventory()` handles Nexus automatically via the generic flat-service loop (no change needed)
 - Add `NEXUS_ADMIN_PASSWORD` to `gen_envrc()` and `_ENVRC_SECRET_VARS` in `generate-configs.py`
+- Add `nexus_ct_id` (default 205), `nexus_ipv4_address` (null), `nexus_ipv4_gateway` (null), `nexus_bridge` (no default — generator always emits it; Terraform will error at plan time if missing from tfvars) to `variables.tf`. Note: the `proxmox-lxc` module's internal `bridge` variable has a default of `"vmbr0"` but all callers pass it explicitly — the root variable having no default is the correct enforcement point.
+- Add `module "nexus"` call to `main.tf`: cores=2, memory_mb=8192, disk_size_gb=8, data_disk_size="20G", data_disk_path="/mnt/nexus-data", os_type="debian"
+- Update `sandbox.yml.example` (nexus ct_id=205) and `production.yml.example` (nexus ct_id=105); `lxc_template_file_id` moves to `infrastructure.storage` in both
+
+**IP notation rule (Terraform-provisioned vs externally-managed):**
+Nexus uses CIDR notation in config (`ip: "X.X.X.X/24"`). The rule is: Terraform-provisioned LXCs/VMs use CIDR (provider needs the prefix for cloud-init static IP assignment); externally-managed services (e.g. minio) use bare IP. This applies to all flat services that are provisioned by Terraform.
 
 **Before production deployment:**
 - MGMT VLAN multi-network config (`docs/mgmt-vlan-design.md`) must be implemented
@@ -89,16 +96,28 @@ Per official documentation (`nexus.vmoptions`):
 ## Ready for Planning
 
 Run `/infra-plan` with:
-> Deploy Nexus Repository CE LXC per `docs/artifact-server-design.md`.
-> Single LXC, 8 GB RAM, 8 GB OS disk, 20 GB separate data disk.
-> TLS via nginx reverse proxy on same LXC (port 8443 → localhost:8081);
-> cert from step-ca issuing CA.
-> Sandbox first. Scope includes:
-> (1) extending `proxmox-lxc` module with optional second disk,
-> (2) adding Nexus section to generator (`gen_tfvars`, `gen_inventory`, `gen_envrc`),
-> (3) Terraform LXC provisioning,
-> (4) Ansible role: install Nexus CE tarball, configure JVM via nexus.vmoptions,
->     systemd unit, nginx reverse proxy, step-ca TLS cert (step_client role
->     dependency), APT proxy repos, OCI registry, Terraform registry,
->     initial admin credential bootstrap.
+> Deploy Nexus Repository CE LXC per `docs/artifact-server-design.md`. Sandbox first.
+>
+> **Phase 1 — Terraform scope:**
+> (1) Extend `proxmox-lxc` module: add `data_disk_size` (string, null) and `data_disk_path`
+>     (string, "/mnt/data") variables; add `dynamic "mount_point"` conditioned on
+>     `data_disk_size != null`; `volume = var.datastore_id`, `mount_options` empty.
+> (2) Migrate `lxc_template_file_id` from `services.pki.issuing_ca` to
+>     `infrastructure.storage` in generator; emit globally before PKI/DNS blocks;
+>     remove from PKI block; update both example configs.
+> (3) Generator: add Nexus block to `gen_tfvars()` emitting `nexus_ct_id`,
+>     `nexus_ipv4_address`, `nexus_ipv4_gateway`, `nexus_bridge`; add
+>     `NEXUS_ADMIN_PASSWORD` to `gen_envrc()` and `_ENVRC_SECRET_VARS`.
+>     (`gen_inventory()` handles Nexus automatically — no change needed.)
+> (4) Add `nexus_ct_id` (default 205), `nexus_ipv4_address` (null),
+>     `nexus_ipv4_gateway` (null), `nexus_bridge` (required) to `variables.tf`.
+> (5) Add `module "nexus"` to `main.tf`: 2 cores, 8192 MB RAM, 8 GB OS disk,
+>     20 GB data disk at `/mnt/nexus-data`, os_type=debian.
+> (6) Update `sandbox.yml.example` (nexus ct_id=205) and
+>     `production.yml.example` (nexus ct_id=105).
+>
+> **Phase 2 — Ansible scope (separate session):**
+> Nexus CE tarball install, JVM config via nexus.vmoptions, systemd unit,
+> nginx reverse proxy, step-ca TLS cert (step_client role dependency),
+> APT proxy repos, OCI registry, Terraform registry, admin credential bootstrap.
 > Firewall egress rule is manual (operator-configured).

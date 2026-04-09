@@ -1,0 +1,94 @@
+---
+# tls.yml — issue TLS cert from step-ca, deploy cert-renewer timer
+
+- name: Stat Nexus TLS certificate
+  ansible.builtin.stat:
+    path: /etc/nginx/certs/nexus.crt
+  register: nexus_cert_stat
+
+- name: Issue Nexus TLS certificate
+  when: not nexus_cert_stat.stat.exists
+  block:
+    - name: Create temp file for provisioner password
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .pass
+      register: nexus_prov_pass_file
+
+    - name: Write provisioner password to temp file
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
+        dest: "{{ nexus_prov_pass_file.path }}"
+        mode: "0600"
+      no_log: true
+
+    - name: Issue certificate via step ca
+      ansible.builtin.command:
+        cmd: >-
+          step ca certificate {{ nexus_domain }}
+          /etc/nginx/certs/nexus.crt
+          /etc/nginx/certs/nexus.key
+          --provisioner {{ nexus_jwk_provisioner }}
+          --provisioner-password-file {{ nexus_prov_pass_file.path }}
+          --ca-url {{ nexus_ca_url }}
+          --root {{ nexus_ca_root }}
+          --kty EC
+          --curve P-256
+          --not-after 24h
+          --force
+      changed_when: true
+      no_log: true
+
+  always:
+    - name: Delete provisioner password temp file
+      ansible.builtin.file:
+        path: "{{ nexus_prov_pass_file.path }}"
+        state: absent
+      when: nexus_prov_pass_file is defined and nexus_prov_pass_file.path is defined
+
+- name: Re-stat certificate after issuance attempt
+  ansible.builtin.stat:
+    path: /etc/nginx/certs/nexus.crt
+  register: nexus_cert_post_stat
+
+- name: Harden certificate file permissions
+  ansible.builtin.file:
+    path: "/etc/nginx/certs/{{ item.name }}"
+    owner: "{{ nexus_nginx_user }}"
+    group: "{{ nexus_nginx_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: nexus.crt, mode: "0640" }
+    - { name: nexus.key, mode: "0600" }
+  when: nexus_cert_post_stat.stat.exists
+
+- name: Deploy cert-renewer and start nginx
+  when: nexus_cert_post_stat.stat.exists
+  block:
+    - name: Deploy cert-renewer service template
+      ansible.builtin.template:
+        src: cert-renewer@.service.j2
+        dest: /etc/systemd/system/cert-renewer@.service
+        mode: "0644"
+
+    - name: Deploy cert-renewer timer template
+      ansible.builtin.template:
+        src: cert-renewer@.timer.j2
+        dest: /etc/systemd/system/cert-renewer@.timer
+        mode: "0644"
+
+    - name: Reload systemd for cert-renewer units
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start cert-renewer@nginx timer
+      ansible.builtin.systemd:
+        name: cert-renewer@nginx.timer
+        enabled: true
+        state: started
+
+    - name: Ensure nginx is started before handler flush
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: started

@@ -62,6 +62,15 @@ resource "proxmox_virtual_environment_container" "this" {
     size         = var.disk_size_gb
   }
 
+  dynamic "mount_point" {
+    for_each = var.data_disk_size != null ? [1] : []
+    content {
+      volume = var.datastore_id
+      size   = var.data_disk_size
+      path   = var.data_disk_path
+    }
+  }
+
   lifecycle {
     precondition {
       condition     = var.root_password != null || length(var.ssh_public_keys) > 0

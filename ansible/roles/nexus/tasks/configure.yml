@@ -1,0 +1,54 @@
+---
+# configure.yml — nexus.vmoptions, nexus.rc, data-dir structure, nexus.properties, systemd unit
+
+- name: Deploy nexus.vmoptions
+  ansible.builtin.template:
+    src: nexus.vmoptions.j2
+    dest: "{{ nexus_install_dir }}/nexus/bin/nexus.vmoptions"
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0640"
+  notify: Restart nexus
+
+- name: Deploy nexus.rc
+  ansible.builtin.template:
+    src: nexus.rc.j2
+    dest: "{{ nexus_install_dir }}/nexus/bin/nexus.rc"
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0640"
+  notify: Restart nexus
+
+- name: Create data-dir etc directory
+  ansible.builtin.file:
+    path: "{{ nexus_data_dir }}/etc"
+    state: directory
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0750"
+
+- name: Create default blob store directory
+  ansible.builtin.file:
+    path: "{{ nexus_blobs_dir }}/default"
+    state: directory
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0750"
+
+- name: Deploy nexus.properties
+  ansible.builtin.template:
+    src: nexus.properties.j2
+    dest: "{{ nexus_data_dir }}/etc/nexus.properties"
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0640"
+  notify: Restart nexus
+
+- name: Deploy nexus systemd unit
+  ansible.builtin.template:
+    src: nexus.service.j2
+    dest: /etc/systemd/system/nexus.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart nexus

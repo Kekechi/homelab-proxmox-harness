@@ -1,0 +1,19 @@
+---
+nexus_version: "3.91.0-07"
+nexus_checksum: "sha256:0ea43b61949c8d882ec76e25a12c33fef95841f603adfe5445c7b943b049bd2a"
+# fetch from https://download.sonatype.com/nexus/3/nexus-3.91.0-07-linux-x86_64.tar.gz.sha256
+nexus_download_url: "https://download.sonatype.com/nexus/3/nexus-{{ nexus_version }}-linux-x86_64.tar.gz"
+nexus_install_dir: "/opt/sonatype"
+nexus_user: "nexus"
+nexus_data_dir: "/mnt/nexus-data/work"
+nexus_blobs_dir: "/mnt/nexus-data/blobs"
+nexus_data_mount: "/mnt/nexus-data"
+nexus_http_port: 8081
+nexus_https_port: 8443
+nexus_docker_external_port: 5000
+nexus_docker_connector_port: 5001
+nexus_nginx_user: "www-data"
+nexus_ca_url: ""
+nexus_ca_root: "/usr/local/share/ca-certificates/internal-root-ca.crt"
+nexus_jwk_provisioner: "acme"
+# nexus_domain must be set explicitly — asserted at top of main.yml

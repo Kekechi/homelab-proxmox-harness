@@ -1,0 +1,10 @@
+[Unit]
+Description=Certificate renewal timer for %i
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

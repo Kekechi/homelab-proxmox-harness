@@ -1,0 +1,29 @@
+---
+# nginx.yml — install nginx, deploy vhost, remove default site
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    cache_valid_time: 3600
+
+- name: Create nginx certs directory
+  ansible.builtin.file:
+    path: /etc/nginx/certs
+    state: directory
+    owner: "{{ nexus_nginx_user }}"
+    group: "{{ nexus_nginx_user }}"
+    mode: "0750"
+
+- name: Remove default nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Deploy Nexus nginx vhost
+  ansible.builtin.template:
+    src: nexus.conf.j2
+    dest: /etc/nginx/conf.d/nexus.conf
+    mode: "0644"
+  notify: Reload nginx

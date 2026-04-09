@@ -34,6 +34,7 @@ infrastructure:
   storage:
     datastore_id: local-lvm
     cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
+    lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
 
 terraform:
   pool_id: ""                              # Production resources are not pool-scoped
@@ -66,7 +67,6 @@ services:
       ct_id: 102
       ansible_user: root
       hostname: issuing-ca
-      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
       network: mgmt
   dns:
     auth:
@@ -87,6 +87,13 @@ services:
       # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
       # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the management subnet
       #   - "X.X.X.X/24"      # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+  nexus:
+    ip: "X.X.X.X/24"                  # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 105                         # must not conflict with existing containers
+    ansible_user: root
+    hostname: nexus-server
+    fqdn: "nexus.lab.example.com"      # FQDN for TLS cert and nginx server_name
+    network: mgmt
 
 # Future services on LAN:
 # services:

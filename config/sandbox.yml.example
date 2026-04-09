@@ -26,6 +26,7 @@ infrastructure:
   storage:
     datastore_id: local-lvm             # Proxmox storage ID for VM/LXC disks
     cloudinit_datastore_id: local-lvm   # Directory storage with Snippets content type enabled
+    lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
 
 terraform:
   pool_id: sandbox                       # Proxmox resource pool (operator creates this)
@@ -60,7 +61,6 @@ services:
       ct_id: 202
       ansible_user: root
       hostname: issuing-ca
-      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
   dns:
     auth:
       ip: "192.168.X.X/24"
@@ -78,6 +78,13 @@ services:
       # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
       # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the sandbox VLAN
       #   - "192.168.X.0/24"   # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+  nexus:
+    ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 205                         # must not conflict with existing containers
+    ansible_user: root
+    hostname: nexus-server
+    fqdn: "nexus.sandbox.example.com"  # FQDN for TLS cert and nginx server_name
+    network: sandbox
 
 # Ad-hoc hosts not covered by a named service above.
 # Each top-level key is an Ansible group; hosts within are inventory entries.

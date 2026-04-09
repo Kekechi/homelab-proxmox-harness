@@ -137,3 +137,36 @@ module "dns_dist" {
   ipv4_gateway     = var.dns_dist_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
 }
+
+# ---------------------------------------------------------------------------
+# Artifact Server — Nexus Repository CE
+#
+# Provides APT proxy, OCI registry, and Terraform provider registry.
+# Always-on on MGMT segment; LXC chosen over VM (JVM needs no virt).
+# Secondary disk (20G) holds Nexus data dir, karaf.data, and tmpdir.
+# ---------------------------------------------------------------------------
+
+module "nexus" {
+  source = "./modules/proxmox-lxc"
+
+  node_name        = var.proxmox_node
+  pool_id          = var.pool_id
+  hostname         = "nexus-server"
+  vm_id            = var.nexus_ct_id
+  template_file_id = var.lxc_template_file_id
+  os_type          = "debian"
+  unprivileged     = true
+  started          = true
+  start_on_boot    = true
+  cores            = 2
+  memory_mb        = 8192
+  disk_size_gb     = 8
+  data_disk_size   = "20G"
+  data_disk_path   = "/mnt/nexus-data"
+  datastore_id     = var.datastore_id
+  bridge           = var.nexus_bridge
+  vlan_id          = null
+  ipv4_address     = var.nexus_ipv4_address
+  ipv4_gateway     = var.nexus_ipv4_gateway
+  ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+}

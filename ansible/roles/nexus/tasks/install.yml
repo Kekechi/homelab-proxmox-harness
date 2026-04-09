@@ -1,0 +1,80 @@
+---
+# install.yml — tarball, service user, directory ownership
+#
+# Disk note: the Proxmox LXC mount_point resource pre-formats and mounts the
+# data volume at nexus_data_mount before the container starts. No format or
+# fstab management is needed here — just assert the mount is present.
+
+- name: Stat data mount point
+  ansible.builtin.stat:
+    path: "{{ nexus_data_mount }}"
+  register: nexus_data_mount_stat
+
+- name: Assert data mount point exists and is a directory
+  ansible.builtin.assert:
+    that:
+      - nexus_data_mount_stat.stat.exists
+      - nexus_data_mount_stat.stat.isdir
+    fail_msg: >
+      Data mount {{ nexus_data_mount }} not found.
+      Verify the Proxmox LXC mount_point was applied via Terraform.
+
+- name: Create install parent directory
+  ansible.builtin.file:
+    path: "{{ nexus_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Stat versioned install directory
+  ansible.builtin.stat:
+    path: "{{ nexus_install_dir }}/nexus-{{ nexus_version }}"
+  register: nexus_version_dir
+
+- name: Download Nexus tarball
+  ansible.builtin.get_url:
+    url: "{{ nexus_download_url }}"
+    dest: "/tmp/nexus-{{ nexus_version }}-linux-x86_64.tar.gz"
+    checksum: "{{ nexus_checksum }}"
+    mode: "0644"
+  when: not nexus_version_dir.stat.exists
+
+- name: Extract Nexus tarball
+  ansible.builtin.unarchive:
+    src: "/tmp/nexus-{{ nexus_version }}-linux-x86_64.tar.gz"
+    dest: "{{ nexus_install_dir }}"
+    remote_src: true
+    extra_opts:
+      - "--keep-directory-symlink"
+  when: not nexus_version_dir.stat.exists
+
+- name: Create nexus symlink
+  ansible.builtin.file:
+    src: "{{ nexus_install_dir }}/nexus-{{ nexus_version }}"
+    dest: "{{ nexus_install_dir }}/nexus"
+    state: link
+    force: true
+
+- name: Create nexus system user
+  ansible.builtin.user:
+    name: "{{ nexus_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ nexus_install_dir }}"
+    create_home: false
+
+- name: Set ownership of data mount
+  ansible.builtin.file:
+    path: "{{ nexus_data_mount }}"
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    mode: "0750"
+
+- name: Set ownership of versioned install directory
+  ansible.builtin.file:
+    path: "{{ nexus_install_dir }}/nexus-{{ nexus_version }}"
+    owner: "{{ nexus_user }}"
+    group: "{{ nexus_user }}"
+    recurse: true
+  when: not nexus_version_dir.stat.exists

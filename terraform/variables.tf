@@ -104,7 +104,7 @@ variable "cloud_init_template_id" {
 }
 
 variable "lxc_template_file_id" {
-  description = "LXC template file ID for the Issuing CA container. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'. Verify exact filename with: pveam available --section system | grep debian"
+  description = "LXC template file ID for all LXC containers. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'. Verify exact filename with: pveam available --section system | grep debian"
   type        = string
   # Default assumes the template has been downloaded to local storage. Download first:
   #   pveam update && pveam download local debian-13-standard_13.0-1_amd64.tar.zst
@@ -156,5 +156,32 @@ variable "dns_dist_ipv4_gateway" {
   description = "IPv4 gateway for the DNSdist LXC"
   type        = string
   default     = null
+}
+
+# ---------------------------------------------------------------------------
+# Artifact Server — Nexus Repository CE (LXC)
+# ---------------------------------------------------------------------------
+
+variable "nexus_ct_id" {
+  description = "Proxmox container ID for the Nexus Repository CE LXC"
+  type        = number
+  default     = 205
+}
+
+variable "nexus_ipv4_address" {
+  description = "Static IPv4 address (CIDR notation) for the Nexus LXC, e.g. '192.168.50.20/24'"
+  type        = string
+  default     = null
+}
+
+variable "nexus_ipv4_gateway" {
+  description = "IPv4 gateway for the Nexus LXC"
+  type        = string
+  default     = null
+}
+
+variable "nexus_bridge" {
+  description = "Proxmox VNet bridge for the Nexus LXC. No default — generator always emits this from infrastructure.networks config."
+  type        = string
 }
 

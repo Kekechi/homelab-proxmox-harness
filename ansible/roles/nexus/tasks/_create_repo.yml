@@ -1,0 +1,37 @@
+---
+# _create_repo.yml — idempotent repo creation helper
+# Called via include_tasks with vars: repo_name, repo_type, repo_body
+
+- name: "Check if repo exists — {{ repo_name }}"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/repositories/{{ repo_type }}/{{ repo_name }}"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+    timeout: 60
+  register: nexus_repo_check
+  failed_when: false
+  no_log: true
+
+- name: "Fail on unexpected GET status for repo {{ repo_name }}"
+  ansible.builtin.fail:
+    msg: "Unexpected status {{ nexus_repo_check.status }} checking repo {{ repo_name }} (expected 200 or 404)"
+  when: nexus_repo_check.status | default(-1) not in [200, 404]
+
+- name: "Create repo — {{ repo_name }}"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/repositories/{{ repo_type }}"
+    method: POST
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body: "{{ repo_body }}"
+    body_format: json
+    status_code: [201, 409]
+    timeout: 60
+  register: nexus_repo_result
+  when: nexus_repo_check.status | default(-1) == 404
+  changed_when: nexus_repo_result.status == 201
+  no_log: true

@@ -1,0 +1,18 @@
+[Unit]
+Description=Certificate renewer for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: needs to write cert files (owned by www-data) and reload nginx via systemctl.
+# ExecStartPost chowns cert files back to nginx user before the reload so nginx can read them.
+ExecCondition=/usr/bin/step certificate needs-renewal /etc/nginx/certs/%i.crt
+ExecStart=/usr/bin/step ca renew --force /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key \
+  --ca-url {{ nexus_ca_url }} \
+  --root {{ nexus_ca_root }}
+ExecStartPost=/usr/bin/chown {{ nexus_nginx_user }}:{{ nexus_nginx_user }} /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key
+ExecStartPost=/bin/systemctl try-reload-or-restart %i
+
+[Install]
+WantedBy=multi-user.target

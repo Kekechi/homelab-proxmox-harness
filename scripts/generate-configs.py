@@ -153,6 +153,7 @@ _ENVRC_SECRET_VARS = [
     "PDNS_AUTH_API_KEY",
     "PDNS_RECURSOR_API_KEY",
     "PDNS_DNSDIST_API_KEY",
+    "NEXUS_ADMIN_PASSWORD",
 ]
 
 
@@ -336,6 +337,14 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'domain_name            = {_hcl_str(domain_name)}',
     ]
 
+    # lxc_template_file_id — global, read from infrastructure.storage
+    lxc_tmpl = s.get("lxc_template_file_id", "")
+    if lxc_tmpl:
+        lines += [
+            f"",
+            f'lxc_template_file_id   = {_hcl_str(lxc_tmpl)}',
+        ]
+
     # PKI section — only emitted when services.pki is present in config
     if pki:
         root_ca  = pki.get("root_ca", {})
@@ -343,7 +352,11 @@ def gen_tfvars(cfg: dict, env: str) -> str:
 
         root_addr = root_ca.get("ip", "")
         iss_addr  = iss_ca.get("ip", "")
-        lxc_tmpl  = iss_ca.get("lxc_template_file_id", "")
+
+        if iss_ca.get("lxc_template_file_id"):
+            print("ERROR: lxc_template_file_id found in services.pki.issuing_ca. "
+                  "Move it to infrastructure.storage.lxc_template_file_id instead.", file=sys.stderr)
+            sys.exit(1)
 
         validate_cidr(root_addr, "services.pki.root_ca.ip")
         validate_cidr(iss_addr, "services.pki.issuing_ca.ip")
@@ -363,7 +376,6 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'issuing_ca_ipv4_gateway = {_hcl_str(iss_net["gateway"])}',
             f'issuing_ca_bridge       = "{iss_net["bridge"]}"',
             f'cloud_init_template_id  = {root_ca.get("cloud_init_template_id", 9000)}',
-            f'lxc_template_file_id    = {_hcl_str(lxc_tmpl)}',
         ]
 
     # DNS section — only emitted when services.dns is present in config
@@ -392,6 +404,21 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'dns_dist_ipv4_address = {_hcl_str(dist_addr)}',
             f'dns_dist_ipv4_gateway = {_hcl_str(dist_net["gateway"])}',
             f'dns_dist_bridge       = "{dist_net["bridge"]}"',
+        ]
+
+    # Nexus section — only emitted when services.nexus is present in config
+    nexus = svcs.get("nexus", {})
+    if nexus:
+        nexus_addr = nexus.get("ip", "")
+        validate_cidr(nexus_addr, "services.nexus.ip")
+        nexus_net = resolve_network(nexus, networks, default_network, "nexus")
+        lines += [
+            f"",
+            f"# Nexus",
+            f'nexus_ct_id           = {nexus.get("ct_id", 205)}',
+            f'nexus_ipv4_address    = {_hcl_str(nexus_addr)}',
+            f'nexus_ipv4_gateway    = {_hcl_str(nexus_net["gateway"])}',
+            f'nexus_bridge          = "{nexus_net["bridge"]}"',
         ]
 
     return "\n".join(lines) + "\n"
@@ -447,6 +474,15 @@ def gen_inventory(cfg: dict, env: str) -> str:
                         lines.append(f"        minio_domain: {minio_fqdn}")
                     if domain_name:
                         lines.append(f"        minio_ca_url: https://ca.{domain_name}")
+                # nexus: propagate domain and CA URL so role defaults stay deployment-agnostic
+                elif svc_name == "nexus":
+                    nexus_fqdn = svc.get("fqdn", "")
+                    if nexus_fqdn or domain_name:
+                        lines.append(f"      vars:")
+                        if nexus_fqdn:
+                            lines.append(f"        nexus_domain: {nexus_fqdn}")
+                        if domain_name:
+                            lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")
@@ -614,6 +650,9 @@ def gen_envrc(cfg: dict, env: str) -> str:
         export PDNS_AUTH_API_KEY="{CHANGE_ME}"          # Auth webserver/API key
         export PDNS_RECURSOR_API_KEY="{CHANGE_ME}"      # Recursor webserver/API key
         export PDNS_DNSDIST_API_KEY="{CHANGE_ME}"       # DNSdist webserver/API key
+
+        # Nexus admin credentials — used by Ansible nexus-setup.yml playbook
+        export NEXUS_ADMIN_PASSWORD="{CHANGE_ME}"  # Nexus admin account password
 
         # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
         # Go (Terraform) and curl pick this up; no container rebuild needed.

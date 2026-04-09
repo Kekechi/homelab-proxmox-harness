@@ -1,0 +1,43 @@
+---
+# verify.yml — post-deploy health checks
+
+- name: Verify Nexus API is writable
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/status/writable"
+    method: GET
+    status_code: [200]
+    timeout: 30
+  register: nexus_verify_status
+
+- name: Verify Docker registry v2 endpoint responds
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_docker_connector_port }}/v2/"
+    method: GET
+    status_code: [200, 401]
+    timeout: 30
+
+- name: Verify expected repositories exist
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/repositories"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 30
+  register: nexus_all_repos
+  no_log: true
+
+- name: Assert all expected repos are present
+  ansible.builtin.assert:
+    that:
+      - nexus_all_repos.json | selectattr('name', 'equalto', item) | list | length == 1
+    fail_msg: "Expected repository '{{ item }}' not found in Nexus"
+  loop:
+    - apt-proxy-trixie
+    - apt-proxy-trixie-security
+    - apt-proxy-trixie-updates
+    - docker-hosted
+    - docker-proxy
+    - docker-group
+    - terraform-proxy

@@ -120,3 +120,15 @@ variable "ssh_public_keys" {
   type        = list(string)
   default     = []
 }
+
+variable "data_disk_size" {
+  description = "Optional second disk size (e.g. '20G'). Null = no second disk."
+  type        = string
+  default     = null
+}
+
+variable "data_disk_path" {
+  description = "Mount path for the optional second disk"
+  type        = string
+  default     = "/mnt/data"
+}

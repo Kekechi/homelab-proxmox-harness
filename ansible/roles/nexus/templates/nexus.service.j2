@@ -1,0 +1,16 @@
+[Unit]
+Description=Sonatype Nexus Repository Manager
+After=network.target
+
+[Service]
+Type=forking
+LimitNOFILE=65536
+PIDFile={{ nexus_data_dir }}/nexus.pid
+ExecStart={{ nexus_install_dir }}/nexus/bin/nexus start
+ExecStop={{ nexus_install_dir }}/nexus/bin/nexus stop
+User={{ nexus_user }}
+Restart=on-failure
+TimeoutSec=600
+
+[Install]
+WantedBy=multi-user.target
