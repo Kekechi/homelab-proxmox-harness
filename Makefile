@@ -16,7 +16,8 @@ TF_PLANFILE ?= $(ENV).tfplan
 TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
-        ansible-lint ansible-env ansible-check ansible-minio bootstrap-minio docs-gen
+        ansible-lint ansible-env ansible-check ansible-minio ansible-pki ansible-dns \
+        ansible-nexus bootstrap-minio docs-gen
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -94,13 +95,22 @@ ansible-lint: ## Lint all playbooks
 	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
 ansible-env: ## Run site playbook against $(ENV) inventory group
-	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit $(ENV)
+	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml --limit $(ENV)
 
 ansible-check: ## Dry-run site playbook against $(ENV) inventory group
-	ansible-playbook -i ansible/inventory/ ansible/playbooks/site.yml --limit $(ENV) --check
+	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml --limit $(ENV) --check
 
-ansible-minio: ## Deploy MinIO via Ansible (runs minio-setup.yml against minio group)
-	ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
+ansible-minio: ## Deploy MinIO via Ansible
+	cd ansible && ansible-playbook -i inventory/ playbooks/minio-setup.yml --limit minio
+
+ansible-pki: ## Deploy PKI (root CA + issuing CA) via Ansible
+	cd ansible && ansible-playbook -i inventory/ playbooks/pki-setup.yml
+
+ansible-dns: ## Deploy DNS (auth + dist) via Ansible
+	cd ansible && ansible-playbook -i inventory/ playbooks/dns-setup.yml
+
+ansible-nexus: ## Deploy Nexus Repository CE via Ansible
+	cd ansible && ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus
 
 # ---------------------------------------------------------------------------
 # Bootstrap (one-time)
