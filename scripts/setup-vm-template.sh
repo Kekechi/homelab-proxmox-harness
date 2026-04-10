@@ -7,9 +7,16 @@
 # Usage:
 #   bash scripts/setup-vm-template.sh
 #
+# Default storage is 'nfs-shared' for cluster-wide template access. All cluster
+# nodes can clone from a template stored on shared NFS storage, so the script
+# only needs to be run once on any cluster node.
+#
+# Single-node override: STORAGE=local-lvm bash scripts/setup-vm-template.sh
+#
 # Environment variables (optional):
 #   TEMPLATE_VMID   VM ID for the template (default: 9000)
-#   STORAGE         Proxmox storage ID for the disk (default: local-lvm)
+#   STORAGE         Proxmox storage ID for the disk (default: nfs-shared)
+#                   Single-node setups: override with STORAGE=local-lvm
 #   TEMPLATE_POOL   Proxmox pool to assign the template VM to after creation.
 #                   Required when a scoped API token (e.g. terraform@pve!claude-sandbox)
 #                   needs to clone the template — the token can only see VMs in pools
@@ -29,7 +36,7 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 TEMPLATE_VMID="${TEMPLATE_VMID:-9000}"
-STORAGE="${STORAGE:-local-lvm}"
+STORAGE="${STORAGE:-nfs-shared}"
 TEMPLATE_POOL="${TEMPLATE_POOL:-}"
 # NOTE: Using the `latest` URL means the downloaded image may change on re-runs,
 # producing a different template than the first run. For reproducible environments,
@@ -48,6 +55,13 @@ DISK_SIZE="8G"
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
+if ! pvesm status "${STORAGE}" >/dev/null 2>&1; then
+  echo "ERROR: Storage '${STORAGE}' not found on this node." >&2
+  echo "       For single-node setups, run: STORAGE=local-lvm bash $0" >&2
+  echo "       For cluster setups, configure NFS storage first. See docs/cluster-setup.md" >&2
+  exit 1
+fi
+
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "ERROR: This script must be run as root on the Proxmox host." >&2
   exit 1

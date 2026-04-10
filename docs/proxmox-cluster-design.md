@@ -139,23 +139,30 @@ node_name = var.nexus_node       # module "nexus"
 
 ## Open Items (deferred, not forgotten)
 
-### Verify bpg/proxmox `node_name` ForceNew behavior
+### ~~Verify bpg/proxmox `node_name` ForceNew behavior~~ — Resolved
 
-If a VM or LXC is migrated via the Proxmox GUI, Terraform state will show `node_name`
-drift on the next plan. Whether the provider treats this as destroy+recreate (ForceNew)
-or an in-place migration depends on provider behavior — not yet verified. This
-determines what `cluster-setup.md` documents as the migration procedure.
+**Verified against bpg/proxmox v0.99.0 source:**
 
-Two workflows to document regardless:
+- **`proxmox_virtual_environment_container` (LXC):** `node_name` has `ForceNew: true`.
+  Changing `node_name` in Terraform state destroys and recreates the container.
+  No `migrate` argument exists on the container resource.
+- **`proxmox_virtual_environment_vm` (VM):** `node_name` does not have `ForceNew`.
+  The resource has a `migrate` argument (default `false`). With `migrate = false`,
+  changing `node_name` also destroys and recreates the VM.
 
-- **IaC-driven migration**: change `node:` in config → `terraform apply` (outcome depends on ForceNew behavior)
-- **GUI migration + reconciliation**: operator migrates via GUI → updates `node:` in config to match reality → `terraform plan` to verify only node change detected → proceeds accordingly
+**Implication:** LXC migrations should always be GUI-first (migrate in Proxmox UI,
+update `node:` in config to match). IaC-driven `node:` changes on LXCs are always
+destructive. For VMs, destroy+recreate is acceptable for stateless workloads like
+`root-ca`. The `migrate` argument is not exposed in the homelab modules
+(consistent with the "no live migration" design decision).
 
-### State migration for existing workloads
+See `docs/cluster-setup.md` for detailed migration procedures.
 
-Current Terraform state records `node_name = "pve"` for all resources. After cluster
-formation and node rename to `pve1`, state will drift. A one-time reconciliation
-procedure is needed before the first multi-node apply. Document in `cluster-setup.md`.
+### ~~State migration for existing workloads~~ — Resolved
+
+Documented in `docs/cluster-setup.md` § 6 (State Migration). The recommended procedure
+uses `terraform state rm` + `terraform import` per resource to reconcile `node_name`
+in state without destroying workloads. These are operator-executed commands.
 
 ## Ready for Planning
 

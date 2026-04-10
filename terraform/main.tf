@@ -41,7 +41,7 @@ provider "proxmox" {
 module "root_ca" {
   source = "./modules/proxmox-vm"
 
-  node_name              = var.proxmox_node
+  node_name              = var.root_ca_node
   pool_id                = var.pool_id
   vm_name                = "root-ca"
   vm_id                  = var.root_ca_vm_id
@@ -63,7 +63,7 @@ module "root_ca" {
 module "issuing_ca" {
   source = "./modules/proxmox-lxc"
 
-  node_name        = var.proxmox_node
+  node_name        = var.issuing_ca_node
   pool_id          = var.pool_id
   hostname         = "issuing-ca"
   vm_id            = var.issuing_ca_ct_id
@@ -95,7 +95,7 @@ module "issuing_ca" {
 module "dns_auth" {
   source = "./modules/proxmox-lxc"
 
-  node_name        = var.proxmox_node
+  node_name        = var.dns_auth_node
   pool_id          = var.pool_id
   hostname         = "dns-auth"
   vm_id            = var.dns_auth_ct_id
@@ -118,7 +118,7 @@ module "dns_auth" {
 module "dns_dist" {
   source = "./modules/proxmox-lxc"
 
-  node_name        = var.proxmox_node
+  node_name        = var.dns_dist_node
   pool_id          = var.pool_id
   hostname         = "dns-dist"
   vm_id            = var.dns_dist_ct_id
@@ -149,7 +149,7 @@ module "dns_dist" {
 module "nexus" {
   source = "./modules/proxmox-lxc"
 
-  node_name        = var.proxmox_node
+  node_name        = var.nexus_node
   pool_id          = var.pool_id
   hostname         = "nexus-server"
   vm_id            = var.nexus_ct_id

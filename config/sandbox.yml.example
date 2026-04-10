@@ -14,8 +14,15 @@ infrastructure:
   proxmox:
     ip: "192.168.X.X"                    # Proxmox host IP
     port: 8006                           # Proxmox API port
-    node: pve                            # Proxmox node name (run: pvesh get /nodes)
     insecure: true                       # true = accept self-signed TLS cert
+  nodes:
+    pve1:
+      ip: "192.168.X.X"   # Node management IP — added to Squid allowlist
+  # For multi-node clusters, uncomment and add additional nodes:
+  #   pve2:
+  #     ip: "192.168.X.X"
+  #   pve3:
+  #     ip: "192.168.X.X"
   networks:
     sandbox:
       bridge: vmbr0                      # Replace with your Proxmox VNet bridge name
@@ -27,6 +34,7 @@ infrastructure:
     datastore_id: local-lvm             # Proxmox storage ID for VM/LXC disks
     cloudinit_datastore_id: local-lvm   # Directory storage with Snippets content type enabled
     lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+    # Cluster setups: use "nfs-shared:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 
 terraform:
   pool_id: sandbox                       # Proxmox resource pool (operator creates this)
@@ -39,6 +47,7 @@ terraform:
 # group, Squid allowlist CIDR, and endpoint URLs — no duplication needed.
 services:
   minio:
+    node: pve1
     ip: "192.168.X.X"                    # MinIO server IP (bare IP, no prefix)
     port: 9000
     ansible_user: root
@@ -51,24 +60,28 @@ services:
     # dns: false               # optional: set to false to exclude from DNS record generation
   pki:
     root_ca:
+      node: pve1
       ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
       vm_id: 201                         # must not conflict with existing VMs
       ansible_user: debian
       hostname: root-ca
       cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
     issuing_ca:
+      node: pve1
       ip: "192.168.X.X/24"
       ct_id: 202
       ansible_user: root
       hostname: issuing-ca
   dns:
     auth:
+      node: pve1
       ip: "192.168.X.X/24"
       ct_id: 203
       ansible_user: root
       hostname: dns-auth
       dns_name: dns-auth        # DNS A record label; default would be "auth" (subkey) which is ambiguous
     dist:
+      node: pve1
       ip: "192.168.X.X/24"
       ct_id: 204
       ansible_user: root
@@ -79,6 +92,7 @@ services:
       # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the sandbox VLAN
       #   - "192.168.X.0/24"   # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
   nexus:
+    node: pve1
     ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
     ct_id: 205                         # must not conflict with existing containers
     ansible_user: root

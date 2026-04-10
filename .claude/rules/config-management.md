@@ -23,7 +23,8 @@ domain_name: "..."
 ssh: { public_key, default_user }
 
 infrastructure:
-  proxmox: { ip, port, node, insecure }
+  proxmox: { ip, port, insecure }
+  nodes: { <name>: { ip } }  # one entry per cluster node
   networks:
     <name>:         # named network; one per Proxmox VNet
       bridge: ...   # VNet bridge name
@@ -36,13 +37,14 @@ infrastructure:
 terraform: { pool_id, vm_id_range_start, clone_template_id, state_bucket }
 
 services:
-  minio:  { ip, port, ansible_user, hostname, network }
+  minio:  { node, ip, port, ansible_user, hostname, network }
   pki:
-    root_ca:   { ip, vm_id, ansible_user, hostname, cloud_init_template_id, network }
-    issuing_ca: { ip, ct_id, ansible_user, hostname, lxc_template_file_id, network }
+    root_ca:   { node, ip, vm_id, ansible_user, hostname, cloud_init_template_id, network }
+    issuing_ca: { node, ip, ct_id, ansible_user, hostname, network }
   dns:
-    auth: { ip, ct_id, ansible_user, hostname, network, dns_name? }
-    dist: { ip, ct_id, ansible_user, hostname, network, dns_name?, dns_ttl?, dns?, client_cidrs? }
+    auth: { node, ip, ct_id, ansible_user, hostname, network, dns_name? }
+    dist: { node, ip, ct_id, ansible_user, hostname, network, dns_name?, dns_ttl?, dns?, client_cidrs? }
+  nexus: { node, ip, ct_id, ansible_user, hostname, fqdn, network }
 
 hosts:
   <group>:    # ad-hoc VMs not covered by a named service
@@ -53,7 +55,7 @@ hosts:
 
 | Generated file | Source in config YAML |
 |---|---|
-| `terraform/<env>.tfvars` | `infrastructure.proxmox`, `infrastructure.networks` (per-service bridge/gateway resolved via service's `network:` reference), `infrastructure.storage`, `terraform`, `ssh`, `services.pki` |
+| `terraform/<env>.tfvars` | `infrastructure.nodes + per-service node:` → `*_node (root_ca_node, issuing_ca_node, dns_auth_node, dns_dist_node, nexus_node)`; `infrastructure.proxmox`, `infrastructure.networks` (per-service bridge/gateway resolved via service's `network:` reference), `infrastructure.storage`, `terraform`, `ssh`, `services.pki` |
 | `ansible/inventory/hosts.yml` | `services` (auto-derived groups) + `hosts` (manual/ad-hoc groups) |
 | `.devcontainer/squid/allowed-cidrs.conf` | one CIDR entry per named network that has at least one deployed service; `infrastructure.proxmox.ip` |
 | `.envrc` (non-secret portion) | `infrastructure.proxmox.ip/port/insecure`, `services.minio.ip/port` |

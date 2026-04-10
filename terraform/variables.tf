@@ -1,5 +1,25 @@
-variable "proxmox_node" {
-  description = "Proxmox node name to deploy resources on"
+variable "root_ca_node" {
+  description = "Proxmox node for the Root CA VM"
+  type        = string
+}
+
+variable "issuing_ca_node" {
+  description = "Proxmox node for the Issuing CA LXC"
+  type        = string
+}
+
+variable "dns_auth_node" {
+  description = "Proxmox node for the DNS Auth+Recursor LXC"
+  type        = string
+}
+
+variable "dns_dist_node" {
+  description = "Proxmox node for the DNSdist LXC"
+  type        = string
+}
+
+variable "nexus_node" {
+  description = "Proxmox node for the Nexus Repository CE LXC"
   type        = string
 }
 
@@ -104,11 +124,12 @@ variable "cloud_init_template_id" {
 }
 
 variable "lxc_template_file_id" {
-  description = "LXC template file ID for all LXC containers. Format: '<storage>:vztmpl/<filename>'. Override in tfvars if your template storage is not 'local'. Verify exact filename with: pveam available --section system | grep debian"
+  description = "LXC template file ID for all LXC containers. Format: '<storage>:vztmpl/<filename>'. Cluster setups override this via lxc_template_file_id in infrastructure.storage config (e.g. 'nfs-shared:vztmpl/...'). Single-node setups use the default 'local:vztmpl/...' value. Verify exact filename with: pveam available --section system | grep debian"
   type        = string
-  # Default assumes the template has been downloaded to local storage. Download first:
+  # Default is for single-node setups (template on local storage). Download first:
   #   pveam update && pveam download local debian-13-standard_13.0-1_amd64.tar.zst
-  # Override in sandbox.tfvars if the filename or storage differs on your node.
+  # Cluster setups: override via lxc_template_file_id in infrastructure.storage config.
+  #   pveam download nfs-shared debian-13-standard_13.0-1_amd64.tar.zst
   default = "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
 }
 
