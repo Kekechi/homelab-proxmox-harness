@@ -63,6 +63,7 @@ services:
       # Host ~/.claude mount — persists Claude Code session, memory, and settings
       # across container rebuilds without re-authentication
       - ~/.claude:/home/vscode/.claude:cached
+      - ~/.claude.json:/home/vscode/.claude.json:cached
     environment:
       # Proxy — ALL HTTP/HTTPS goes through Squid
       - http_proxy=http://squid-proxy:3128
