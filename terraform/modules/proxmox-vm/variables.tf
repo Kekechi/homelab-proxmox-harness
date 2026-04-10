@@ -95,3 +95,9 @@ variable "start_on_boot" {
   type        = bool
   default     = true
 }
+
+variable "dns_servers" {
+  description = "DNS server IPs to write into the VM's /etc/resolv.conf via cloud-init initialization. Empty list = inherit from Proxmox host defaults."
+  type        = list(string)
+  default     = []
+}

@@ -11,6 +11,9 @@ ssh:
   default_user: ubuntu                   # Default ansible_user for VMs
 
 infrastructure:
+  dns_server: ""                           # DNS server IP pushed to all LXC/VM resolv.conf via Terraform.
+                                           # Phase 1-2: set to router IP. Phase 3+: switch to DNSdist IP.
+                                           # Leave empty to inherit from Proxmox host defaults.
   proxmox:
     ip: "192.168.X.X"                    # Proxmox host IP
     port: 8006                           # Proxmox API port
@@ -59,6 +62,7 @@ services:
     # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
     # dns: false               # optional: set to false to exclude from DNS record generation
   pki:
+    enabled: false                         # Set true to deploy Issuing CA LXC + Root CA VM (Phase 4)
     root_ca:
       node: pve1
       ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
@@ -73,6 +77,7 @@ services:
       ansible_user: root
       hostname: issuing-ca
   dns:
+    enabled: false                         # Set true to deploy dns-auth + dns-dist LXCs (Phase 3)
     auth:
       node: pve1
       ip: "192.168.X.X/24"
@@ -92,6 +97,7 @@ services:
       # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the sandbox VLAN
       #   - "192.168.X.0/24"   # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
   nexus:
+    enabled: false                         # Set true to deploy Nexus Repository CE LXC (Phase 2)
     node: pve1
     ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
     ct_id: 205                         # must not conflict with existing containers

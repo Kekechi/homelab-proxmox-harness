@@ -39,6 +39,7 @@ provider "proxmox" {
 # ---------------------------------------------------------------------------
 
 module "root_ca" {
+  count  = var.enable_pki ? 1 : 0
   source = "./modules/proxmox-vm"
 
   node_name              = var.root_ca_node
@@ -58,9 +59,11 @@ module "root_ca" {
   ipv4_address           = var.root_ca_ipv4_address
   ipv4_gateway           = var.root_ca_ipv4_gateway
   ssh_public_key         = var.ssh_public_key
+  dns_servers            = var.dns_servers
 }
 
 module "issuing_ca" {
+  count  = var.enable_pki ? 1 : 0
   source = "./modules/proxmox-lxc"
 
   node_name        = var.issuing_ca_node
@@ -81,6 +84,7 @@ module "issuing_ca" {
   ipv4_address     = var.issuing_ca_ipv4_address
   ipv4_gateway     = var.issuing_ca_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+  dns_servers      = var.dns_servers
 }
 
 # ---------------------------------------------------------------------------
@@ -93,6 +97,7 @@ module "issuing_ca" {
 # ---------------------------------------------------------------------------
 
 module "dns_auth" {
+  count  = var.enable_dns ? 1 : 0
   source = "./modules/proxmox-lxc"
 
   node_name        = var.dns_auth_node
@@ -113,9 +118,11 @@ module "dns_auth" {
   ipv4_address     = var.dns_auth_ipv4_address
   ipv4_gateway     = var.dns_auth_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+  dns_servers      = var.dns_servers
 }
 
 module "dns_dist" {
+  count  = var.enable_dns ? 1 : 0
   source = "./modules/proxmox-lxc"
 
   node_name        = var.dns_dist_node
@@ -136,6 +143,7 @@ module "dns_dist" {
   ipv4_address     = var.dns_dist_ipv4_address
   ipv4_gateway     = var.dns_dist_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+  dns_servers      = var.dns_servers
 }
 
 # ---------------------------------------------------------------------------
@@ -147,6 +155,7 @@ module "dns_dist" {
 # ---------------------------------------------------------------------------
 
 module "nexus" {
+  count  = var.enable_nexus ? 1 : 0
   source = "./modules/proxmox-lxc"
 
   node_name        = var.nexus_node
@@ -169,4 +178,5 @@ module "nexus" {
   ipv4_address     = var.nexus_ipv4_address
   ipv4_gateway     = var.nexus_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+  dns_servers      = var.dns_servers
 }

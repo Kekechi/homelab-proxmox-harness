@@ -132,3 +132,9 @@ variable "data_disk_path" {
   type        = string
   default     = "/mnt/data"
 }
+
+variable "dns_servers" {
+  description = "DNS server IPs to write into the container's /etc/resolv.conf via Proxmox initialization. Empty list = inherit from Proxmox host defaults."
+  type        = list(string)
+  default     = []
+}

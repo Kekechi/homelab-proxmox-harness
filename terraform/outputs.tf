@@ -14,17 +14,17 @@
 # }
 
 # ---------------------------------------------------------------------------
-# PKI outputs
+# PKI outputs — null when enable_pki = false
 # ---------------------------------------------------------------------------
 
 output "root_ca_vm_id" {
-  description = "Proxmox VM ID of the offline Root CA"
-  value       = module.root_ca.vm_id
+  description = "Proxmox VM ID of the offline Root CA (null when enable_pki = false)"
+  value       = one(module.root_ca[*].vm_id)
 }
 
 output "issuing_ca_ct_id" {
-  description = "Proxmox container ID of the Issuing CA LXC"
-  value       = module.issuing_ca.vm_id
+  description = "Proxmox container ID of the Issuing CA LXC (null when enable_pki = false)"
+  value       = one(module.issuing_ca[*].vm_id)
 }
 
 output "pki_dns_records" {
@@ -42,15 +42,15 @@ output "pki_dns_records" {
 }
 
 # ---------------------------------------------------------------------------
-# DNS outputs
+# DNS outputs — null when enable_dns = false
 # ---------------------------------------------------------------------------
 
 output "dns_auth_ct_id" {
-  description = "Proxmox container ID of the DNS Auth+Recursor LXC"
-  value       = module.dns_auth.vm_id
+  description = "Proxmox container ID of the DNS Auth+Recursor LXC (null when enable_dns = false)"
+  value       = one(module.dns_auth[*].vm_id)
 }
 
 output "dns_dist_ct_id" {
-  description = "Proxmox container ID of the DNSdist LXC"
-  value       = module.dns_dist.vm_id
+  description = "Proxmox container ID of the DNSdist LXC (null when enable_dns = false)"
+  value       = one(module.dns_dist[*].vm_id)
 }

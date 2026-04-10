@@ -16,7 +16,8 @@ TF_PLANFILE ?= $(ENV).tfplan
 TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
-        ansible-lint ansible-env ansible-check ansible-minio ansible-pki ansible-dns \
+        ansible-lint ansible-env ansible-check ansible-minio ansible-pki \
+        ansible-dns ansible-dns-records ansible-dns-dist \
         ansible-nexus bootstrap-minio docs-gen
 
 help: ## Show this help
@@ -53,7 +54,8 @@ init: ## Initialize Terraform backend for $(ENV) (use -reconfigure to switch env
 		-backend-config="bucket=$(TF_BUCKET)" \
 		-backend-config="access_key=$$MINIO_ACCESS_KEY" \
 		-backend-config="secret_key=$$MINIO_SECRET_KEY" \
-		-backend-config="endpoints={s3=\"$$MINIO_ENDPOINT\"}"
+		-backend-config="endpoints={s3=\"$$MINIO_ENDPOINT\"}" \
+		-backend-config="insecure=true"
 
 validate: ## terraform validate
 	cd $(TF_DIR) && terraform validate
@@ -106,8 +108,14 @@ ansible-minio: ## Deploy MinIO via Ansible
 ansible-pki: ## Deploy PKI (root CA + issuing CA) via Ansible
 	cd ansible && ansible-playbook -i inventory/ playbooks/pki-setup.yml
 
-ansible-dns: ## Deploy DNS (auth + dist) via Ansible
+ansible-dns: ## Deploy PowerDNS Auth+Recursor via Ansible (dns-setup.yml only)
 	cd ansible && ansible-playbook -i inventory/ playbooks/dns-setup.yml
+
+ansible-dns-records: ## Populate DNS A records via PowerDNS API
+	cd ansible && ansible-playbook -i inventory/ playbooks/dns-records.yml
+
+ansible-dns-dist: ## Deploy DNSdist client-facing resolver
+	cd ansible && ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml
 
 ansible-nexus: ## Deploy Nexus Repository CE via Ansible
 	cd ansible && ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus

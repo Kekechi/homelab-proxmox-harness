@@ -206,3 +206,31 @@ variable "nexus_bridge" {
   type        = string
 }
 
+# ---------------------------------------------------------------------------
+# Deployment gating — incremental deployment control
+# ---------------------------------------------------------------------------
+
+variable "enable_nexus" {
+  description = "Deploy the Nexus Repository CE LXC. Set true in config (services.nexus.enabled) when ready for Phase 2."
+  type        = bool
+  default     = false
+}
+
+variable "enable_dns" {
+  description = "Deploy the PowerDNS Auth+Recursor and DNSdist LXCs. Set true in config (services.dns.enabled) when ready for Phase 3."
+  type        = bool
+  default     = false
+}
+
+variable "enable_pki" {
+  description = "Deploy the Issuing CA LXC and Root CA VM. Set true in config (services.pki.enabled) when ready for Phase 4."
+  type        = bool
+  default     = false
+}
+
+variable "dns_servers" {
+  description = "DNS server IPs injected into all LXC/VM initialization blocks. Set to router IP for Phases 1-3; switch to DNSdist IP after Phase 3 to flip all managed hosts to internal DNS in one plan+apply."
+  type        = list(string)
+  default     = []
+}
+
