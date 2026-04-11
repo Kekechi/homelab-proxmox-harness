@@ -29,14 +29,17 @@
       - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
     fail_msg: >
       STEP_CA_PROVISIONER_PASSWORD is not set. Add it to .envrc and run: direnv allow
+  when: nexus_tls_enabled | default(false)
 
-- name: Assert nexus_ca_url is set
+- name: Assert nexus_ca_url is set when TLS is enabled
   ansible.builtin.assert:
     that:
       - nexus_ca_url is defined
       - nexus_ca_url | length > 0
     fail_msg: >
-      nexus_ca_url must be set. Pass it via -e nexus_ca_url=<url> or group_vars.
+      nexus_ca_url must be set when nexus_tls_enabled is true.
+      Pass it via group_vars or -e nexus_ca_url=<url>.
+  when: nexus_tls_enabled | default(false)
 
 - name: Assert nexus_checksum is set and not placeholder
   ansible.builtin.assert:
@@ -67,9 +70,11 @@
 
 - name: Configure nginx
   ansible.builtin.include_tasks: nginx.yml
+  when: nexus_tls_enabled | default(false)
 
 - name: Issue TLS cert and deploy cert-renewer
   ansible.builtin.include_tasks: tls.yml
+  when: nexus_tls_enabled | default(false)
 
 - name: Flush handlers (start nginx, apply any pending restarts)
   ansible.builtin.meta: flush_handlers

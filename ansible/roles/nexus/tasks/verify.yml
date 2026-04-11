@@ -37,6 +37,10 @@
     - apt-proxy-trixie
     - apt-proxy-trixie-security
     - apt-proxy-trixie-updates
+    - apt-proxy-smallstep
+    - apt-proxy-powerdns-auth-50
+    - apt-proxy-powerdns-rec-54
+    - apt-proxy-dnsdist-21
     - docker-hosted
     - docker-proxy
     - docker-group

@@ -13,13 +13,15 @@
     group: root
     mode: "0755"
 
-- name: Download PowerDNS APT signing key
-  ansible.builtin.get_url:
-    url: "{{ pdns_auth_recursor_apt_key_url }}"
+- name: Copy PowerDNS APT signing key
+  ansible.builtin.copy:
+    src: pdns.asc
     dest: "{{ pdns_auth_recursor_apt_key_path }}"
+    owner: root
+    group: root
     mode: "0644"
 
-- name: Add PowerDNS Auth 5.0 APT repository (DEB822 format)
+- name: Add PowerDNS Auth 5.0 APT repository (direct)
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/pdns-auth-50.sources
     owner: root
@@ -31,8 +33,23 @@
       Suites: trixie-auth-50
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
+  when: nexus_apt_proxy | default('') | length == 0
 
-- name: Add PowerDNS Recursor 5.4 APT repository (DEB822 format)
+- name: Add PowerDNS Auth 5.0 APT repository (via Nexus proxy)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pdns-auth-50.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-powerdns-auth-50/
+      Suites: trixie-auth-50
+      Components: main
+      Signed-By: /etc/apt/keyrings/pdns.asc
+  when: nexus_apt_proxy | default('') | length > 0
+
+- name: Add PowerDNS Recursor 5.4 APT repository (direct)
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/pdns-rec-54.sources
     owner: root
@@ -44,6 +61,21 @@
       Suites: trixie-rec-54
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
+  when: nexus_apt_proxy | default('') | length == 0
+
+- name: Add PowerDNS Recursor 5.4 APT repository (via Nexus proxy)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/pdns-rec-54.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-powerdns-rec-54/
+      Suites: trixie-rec-54
+      Components: main
+      Signed-By: /etc/apt/keyrings/pdns.asc
+  when: nexus_apt_proxy | default('') | length > 0
 
 - name: Write APT pin to prefer PowerDNS packages from vendor repo
   ansible.builtin.copy:
@@ -55,6 +87,7 @@
       Package: pdns-*
       Pin: origin repo.powerdns.com
       Pin-Priority: 600
+  when: nexus_apt_proxy | default('') | length == 0
 
 - name: Install PowerDNS packages
   ansible.builtin.apt:

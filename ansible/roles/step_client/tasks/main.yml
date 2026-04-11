@@ -22,13 +22,15 @@
     group: root
     mode: "0755"
 
-- name: Download Smallstep APT signing key
-  ansible.builtin.get_url:
-    url: https://packages.smallstep.com/keys/apt/repo-signing-key.gpg
+- name: Copy Smallstep APT signing key
+  ansible.builtin.copy:
+    src: smallstep.asc
     dest: /etc/apt/keyrings/smallstep.asc
+    owner: root
+    group: root
     mode: "0644"
 
-- name: Add Smallstep APT repository (DEB822 format)
+- name: Add Smallstep APT repository (direct)
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/smallstep.sources
     owner: root
@@ -40,6 +42,21 @@
       Suites: debs
       Components: main
       Signed-By: /etc/apt/keyrings/smallstep.asc
+  when: nexus_apt_proxy | default('') | length == 0
+
+- name: Add Smallstep APT repository (via Nexus proxy)
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/smallstep.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-smallstep/
+      Suites: debs
+      Components: main
+      Signed-By: /etc/apt/keyrings/smallstep.asc
+  when: nexus_apt_proxy | default('') | length > 0
 
 - name: Install step-cli
   ansible.builtin.apt:

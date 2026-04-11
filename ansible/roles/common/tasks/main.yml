@@ -1,4 +1,42 @@
 ---
+- name: Configure apt to use Nexus proxy for base Debian repos
+  when:
+    - nexus_apt_proxy | default('') | length > 0
+    - inventory_hostname not in groups['nexus'] | default([])
+  block:
+    - name: Deploy Nexus-proxied Debian sources (DEB822)
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/debian-nexus.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie/
+          Suites: trixie
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-security/
+          Suites: trixie-security
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+          Types: deb
+          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-updates/
+          Suites: trixie-updates
+          Components: main contrib non-free non-free-firmware
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+    - name: Remove default Debian apt sources when using Nexus proxy
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list
+        - /etc/apt/sources.list.d/debian.sources
+
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true

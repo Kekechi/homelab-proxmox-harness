@@ -17,3 +17,4 @@ nexus_ca_url: ""
 nexus_ca_root: "/usr/local/share/ca-certificates/internal-root-ca.crt"
 nexus_jwk_provisioner: "acme"
 # nexus_domain must be set explicitly — asserted at top of main.yml
+nexus_tls_enabled: false
