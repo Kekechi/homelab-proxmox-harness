@@ -80,5 +80,9 @@ resource "proxmox_virtual_environment_vm" "this" {
     }
   }
 
+  agent {
+    enabled = var.agent_enabled
+  }
+
   stop_on_destroy = true
 }

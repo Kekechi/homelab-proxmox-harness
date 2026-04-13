@@ -50,6 +50,7 @@ module "root_ca" {
   cloudinit_datastore_id = var.cloudinit_datastore_id
   started                = false
   start_on_boot          = false
+  agent_enabled          = false
   cores                  = 1
   memory_mb              = 512
   disk_size_gb           = 8

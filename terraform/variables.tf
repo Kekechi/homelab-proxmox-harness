@@ -123,6 +123,7 @@ variable "cloud_init_template_id" {
   default     = 9000
 }
 
+
 variable "lxc_template_file_id" {
   description = "LXC template file ID for all LXC containers. Format: '<storage>:vztmpl/<filename>'. Cluster setups override this via lxc_template_file_id in infrastructure.storage config (e.g. 'nfs-shared:vztmpl/...'). Single-node setups use the default 'local:vztmpl/...' value. Verify exact filename with: pveam available --section system | grep debian"
   type        = string

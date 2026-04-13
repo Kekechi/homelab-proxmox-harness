@@ -75,6 +75,9 @@ services:
       ansible_user: debian
       hostname: root-ca
       cloud_init_template_id: 9000         # VMID of cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
+      # Cross-node clone note: template must be registered on the same node as root_ca.node.
+      # If template was created on a different node, migrate it first (GUI: right-click → Migrate).
+      # Disk stays on NFS — migration only moves the .conf, completes in seconds.
       network: mgmt
     issuing_ca:
       node: pve1

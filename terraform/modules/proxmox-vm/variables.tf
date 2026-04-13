@@ -24,6 +24,7 @@ variable "clone_template_id" {
   default     = 0
 }
 
+
 variable "cores" {
   description = "Number of CPU cores"
   type        = number
@@ -86,6 +87,12 @@ variable "ssh_public_key" {
 
 variable "started" {
   description = "Whether the VM should be started after creation"
+  type        = bool
+  default     = true
+}
+
+variable "agent_enabled" {
+  description = "Enable QEMU guest agent. Set to false for always-offline VMs (e.g. offline root CA) to suppress provider timeout waiting for agent network interface report."
   type        = bool
   default     = true
 }

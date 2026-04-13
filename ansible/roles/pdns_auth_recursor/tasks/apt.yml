@@ -85,9 +85,8 @@
     mode: "0644"
     content: |
       Package: pdns-*
-      Pin: origin repo.powerdns.com
+      Pin: version 5.*
       Pin-Priority: 600
-  when: nexus_apt_proxy | default('') | length == 0
 
 - name: Install PowerDNS packages
   ansible.builtin.apt:

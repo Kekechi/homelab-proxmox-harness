@@ -18,6 +18,12 @@
 # Usage:
 #   ansible-playbook ansible/playbooks/pki-setup.yml
 
+- name: Common baseline — APT credentials and base packages
+  hosts: pki_root_ca:pki_issuing_ca
+  become: true
+  roles:
+    - common
+
 - name: Common setup — install step packages and create step user
   hosts: pki_root_ca:pki_issuing_ca
   become: true

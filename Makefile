@@ -36,6 +36,7 @@ configure: ## Generate tfvars, inventory, envrc, and allowed-cidrs from config/$
 # ---------------------------------------------------------------------------
 
 build: ## Rebuild dev container images (run after make configure updates allowed-cidrs.conf)
+	@touch .devcontainer/squid/squid.conf.local
 	docker compose -f .devcontainer/docker-compose.yml build
 
 # ---------------------------------------------------------------------------
@@ -96,11 +97,11 @@ destroy: ## Terraform destroy for $(ENV) (requires confirmation — blocked by h
 ansible-lint: ## Lint all playbooks
 	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
-ansible-env: ## Run site playbook against $(ENV) inventory group
-	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml --limit $(ENV)
+ansible-env: ## Run site playbook against all hosts in the current inventory
+	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml
 
-ansible-check: ## Dry-run site playbook against $(ENV) inventory group
-	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml --limit $(ENV) --check
+ansible-check: ## Dry-run site playbook against all hosts in the current inventory
+	cd ansible && ansible-playbook -i inventory/ playbooks/site.yml --check
 
 ansible-minio: ## Deploy MinIO via Ansible
 	cd ansible && ansible-playbook -i inventory/ playbooks/minio-setup.yml --limit minio

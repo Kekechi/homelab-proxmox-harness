@@ -20,14 +20,14 @@
   roles:
     - common
 
-- name: Deploy step CLI client
-  hosts: nexus
-  become: true
-  roles:
-    - step_client
-
 - name: Deploy Nexus Repository CE
   hosts: nexus
   become: true
   roles:
     - nexus
+
+- name: Deploy step CLI client
+  hosts: nexus
+  become: true
+  roles:
+    - step_client

@@ -62,6 +62,69 @@
       differs from NEXUS_ADMIN_PASSWORD. Correct the password and re-run.
   when: nexus_password_change_result.status == 401
 
+# EULA and telemetry run after password change so NEXUS_ADMIN_PASSWORD is valid.
+# On first run the initial random password is active until the change-password task above.
+
+- name: Get EULA state
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/system/eula"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_eula_state
+
+- name: Accept Nexus CE End User License Agreement
+  # Body must echo back the exact disclaimer string from the GET response.
+  # Nexus returns 500 if the disclaimer is missing or does not match verbatim.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/system/eula"
+    method: POST
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      accepted: true
+      disclaimer: "{{ nexus_eula_state.json.disclaimer }}"
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: not nexus_eula_state.json.accepted
+  changed_when: true
+
+- name: Get Nexus capabilities
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/capabilities"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_capabilities
+
+- name: Locate OutreachManagementCapability
+  ansible.builtin.set_fact:
+    nexus_outreach_capability: "{{ nexus_capabilities.json | selectattr('type', 'equalto', 'OutreachManagementCapability') | list | first }}"
+
+- name: Disable telemetry (OutreachManagementCapability)
+  # PUT body must be the exact original capability object with enabled flipped —
+  # any extra fields cause a NullPointerException (500) in Nexus 3.91.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/capabilities/{{ nexus_outreach_capability.id }}"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body: "{{ nexus_outreach_capability | combine({'enabled': false}) }}"
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: nexus_outreach_capability.enabled
+  changed_when: true
+
 - name: Disable anonymous access
   ansible.builtin.uri:
     url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/anonymous"
@@ -71,9 +134,64 @@
     force_basic_auth: true
     body:
       enabled: false
+      userId: anonymous
+      realmName: NexusAuthorizingRealm
     body_format: json
     status_code: [200, 204]
     timeout: 60
+  changed_when: false
+  no_log: true
+
+- name: Check if nexus-reader user exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users?userId=nexus-reader"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_reader_check
+  no_log: true
+
+- name: Create nexus-reader user (read-only — APT proxy and artifact access)
+  # Assigned nx-anonymous role: browse + read on all repos.
+  # Anonymous access remains globally disabled — this user requires a password.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users"
+    method: POST
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      userId: nexus-reader
+      firstName: Nexus
+      lastName: Reader
+      emailAddress: nexus-reader@localhost
+      password: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
+      status: active
+      roles:
+        - nx-anonymous
+    body_format: json
+    status_code: [200, 201]
+    timeout: 60
+  when: nexus_reader_check.json | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Update nexus-reader password
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users/nexus-reader/change-password"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
+    headers:
+      Content-Type: "text/plain"
+    status_code: [200, 204]
+    timeout: 60
+  when: nexus_reader_check.json | length > 0
   changed_when: false
   no_log: true
 

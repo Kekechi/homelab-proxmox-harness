@@ -18,14 +18,14 @@
           Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 
           Types: deb
-          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-security/
-          Suites: trixie-security
+          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-updates/
+          Suites: trixie-updates
           Components: main contrib non-free non-free-firmware
           Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 
           Types: deb
-          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-updates/
-          Suites: trixie-updates
+          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-security/
+          Suites: trixie-security
           Components: main contrib non-free non-free-firmware
           Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 
@@ -37,10 +37,21 @@
         - /etc/apt/sources.list
         - /etc/apt/sources.list.d/debian.sources
 
+- name: Configure Nexus APT credentials
+  ansible.builtin.copy:
+    dest: /etc/apt/auth.conf.d/nexus.conf
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      machine {{ nexus_apt_proxy }} login nexus-reader password {{ lookup('env', 'NEXUS_READER_PASSWORD') }}
+  when:
+    - nexus_apt_proxy | default('') | length > 0
+    - lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
+
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
-    cache_valid_time: 3600
 
 - name: Install base packages
   ansible.builtin.apt:

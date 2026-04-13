@@ -70,6 +70,9 @@ services:
       ansible_user: debian
       hostname: root-ca
       cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
+      # Cross-node clone note: template must be registered on the same node as root_ca.node.
+      # If template was created on a different node, migrate it first (GUI: right-click → Migrate).
+      # Disk stays on NFS — migration only moves the .conf, completes in seconds.
     issuing_ca:
       node: pve1
       ip: "192.168.X.X/24"
@@ -104,6 +107,7 @@ services:
     ansible_user: root
     hostname: nexus-server
     fqdn: "nexus.sandbox.example.com"  # FQDN for TLS cert and nginx server_name
+    tls: false                         # Set true (Phase 5) to issue cert from internal CA and enable nginx HTTPS
     network: sandbox
 
 # Ad-hoc hosts not covered by a named service above.

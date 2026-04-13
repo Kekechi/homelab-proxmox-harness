@@ -55,7 +55,7 @@ DISK_SIZE="8G"
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
-if ! pvesm status "${STORAGE}" >/dev/null 2>&1; then
+if ! pvesm status 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${STORAGE}"; then
   echo "ERROR: Storage '${STORAGE}' not found on this node." >&2
   echo "       For single-node setups, run: STORAGE=local-lvm bash $0" >&2
   echo "       For cluster setups, configure NFS storage first. See docs/cluster-setup.md" >&2

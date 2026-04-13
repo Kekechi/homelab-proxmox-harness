@@ -23,6 +23,13 @@
     fail_msg: >
       NEXUS_ADMIN_PASSWORD is not set. Add it to .envrc and run: direnv allow
 
+- name: Assert NEXUS_READER_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
+    fail_msg: >
+      NEXUS_READER_PASSWORD is not set. Add it to .envrc and run: direnv allow
+
 - name: Assert STEP_CA_PROVISIONER_PASSWORD is set
   ansible.builtin.assert:
     that:

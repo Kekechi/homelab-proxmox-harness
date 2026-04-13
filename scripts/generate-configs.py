@@ -154,6 +154,7 @@ _ENVRC_SECRET_VARS = [
     "PDNS_RECURSOR_API_KEY",
     "PDNS_DNSDIST_API_KEY",
     "NEXUS_ADMIN_PASSWORD",
+    "NEXUS_READER_PASSWORD",
 ]
 
 
@@ -560,24 +561,22 @@ def gen_inventory(cfg: dict, env: str) -> str:
                 if svc_name == "minio":
                     minio_tls = svc.get("tls", False)
                     minio_fqdn = svc.get("fqdn", "")
-                    # minio_ca_url: use issuing CA IP directly — MinIO host is not TF-managed
-                    # and may not have DNS resolution for internal FQDNs. IP-based CA URL
-                    # works regardless of DNS state (Decision 3.6 in assessment).
-                    pki_svc = svcs.get("pki", {})
-                    issuing_ca_ip = _strip_prefix(pki_svc.get("issuing_ca", {}).get("ip", ""))
+                    # minio_ca_url: use domain-based CA URL — DNS is required to be deployed
+                    # before the TLS phase, so ca.<domain> is resolvable by this point.
+                    # IP-based URL cannot work because the CA cert has only DNS SANs.
                     lines.append(f"      vars:")
                     lines.append(f"        minio_tls_enabled: {str(bool(minio_tls)).lower()}")
                     if minio_fqdn:
                         lines.append(f"        minio_domain: {minio_fqdn}")
-                    if issuing_ca_ip:
-                        lines.append(f"        minio_ca_url: https://{issuing_ca_ip}")
-                    elif domain_name:
+                    if domain_name:
                         lines.append(f"        minio_ca_url: https://ca.{domain_name}")
                 # nexus: propagate domain and CA URL so role defaults stay deployment-agnostic
                 elif svc_name == "nexus":
                     nexus_fqdn = svc.get("fqdn", "")
-                    if nexus_fqdn or domain_name:
+                    nexus_tls = svc.get("tls", False)
+                    if nexus_fqdn or domain_name or nexus_tls:
                         lines.append(f"      vars:")
+                        lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
                         if nexus_fqdn:
                             lines.append(f"        nexus_domain: {nexus_fqdn}")
                         if domain_name:
@@ -761,8 +760,9 @@ def gen_envrc(cfg: dict, env: str) -> str:
         export PDNS_RECURSOR_API_KEY="{CHANGE_ME}"      # Recursor webserver/API key
         export PDNS_DNSDIST_API_KEY="{CHANGE_ME}"       # DNSdist webserver/API key
 
-        # Nexus admin credentials — used by Ansible nexus-setup.yml playbook
-        export NEXUS_ADMIN_PASSWORD="{CHANGE_ME}"  # Nexus admin account password
+        # Nexus credentials — used by Ansible nexus-setup.yml playbook
+        export NEXUS_ADMIN_PASSWORD="{CHANGE_ME}"   # Nexus admin account password
+        export NEXUS_READER_PASSWORD="{CHANGE_ME}"  # nexus-reader account (read-only APT/artifact access)
 
         # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
         # Go (Terraform) and curl pick this up; no container rebuild needed.
