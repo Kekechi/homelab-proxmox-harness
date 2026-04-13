@@ -74,6 +74,7 @@ services:
       vm_id: 101
       ansible_user: debian
       hostname: root-ca
+      ca_name: "Homelab Root CA"           # CN written into the root certificate
       cloud_init_template_id: 9000         # VMID of cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
       # Cross-node clone note: template must be registered on the same node as root_ca.node.
       # If template was created on a different node, migrate it first (GUI: right-click → Migrate).
@@ -85,6 +86,7 @@ services:
       ct_id: 102
       ansible_user: root
       hostname: issuing-ca
+      ca_name: "Homelab Issuing CA"        # CN written into the intermediate certificate
       network: mgmt
   dns:
     enabled: false                         # Set true to deploy dns-auth + dns-dist LXCs (Phase 3)
