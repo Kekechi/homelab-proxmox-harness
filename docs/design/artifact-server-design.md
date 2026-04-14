@@ -54,7 +54,7 @@ Per official documentation (`nexus.vmoptions`):
 | APT packages | Debian repo | Native in Nexus CE |
 | OCI/container images | Container registry | Native in Nexus CE |
 | Terraform providers | Terraform registry | Native in Nexus CE (v3.89+); v3.88 had Pro-only auth, v3.89 fixed for CE |
-| LXC templates / ISOs | Generic HTTP | Phase 2 — Nexus Raw proxy (evaluate pveam configurability) |
+| LXC templates / ISOs | Generic HTTP | Out of Nexus scope — `pveam` has no mirror URL override; `datacenter.cfg http_proxy` can route downloads through a forward proxy (Squid/Varnish), but that is a separate service from Nexus |
 | Ansible Galaxy | Galaxy protocol | Explicitly out of scope |
 
 ## Prerequisites
@@ -81,7 +81,7 @@ Nexus uses CIDR notation in config (`ip: "X.X.X.X/24"`). The rule is: Terraform-
 
 ## Open Items (deferred, not forgotten)
 
-- **pveam configurability** — verify whether LXC template download source URL is overridable; determines Phase 2 effort for generic HTTP
+- **pveam configurability** — RESOLVED 2026-04-14: `pveam` has no mirror URL override. `datacenter.cfg http_proxy` can route pveam traffic through a standard forward proxy, but this is out of Nexus scope — separate infrastructure decision
 - **Firewall egress domain list** — derived from which upstream repos are enabled in Nexus; finalized during Ansible configuration
 - **Consumer onboarding** — apt source config per host is incremental; no fixed timeline
 

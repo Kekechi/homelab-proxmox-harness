@@ -168,3 +168,115 @@ the issuing CA also has a JWK provisioner. This requires the `step` CLI and the
 `STEP_CA_PROVISIONER_PASSWORD` from `.envrc`. Renewal is manual.
 
 See `ansible/roles/minio/tasks/tls.yml` for a reference implementation.
+
+---
+
+## Step 4 — Configure Nexus as APT source (Trixie hosts)
+
+Skip this step if the host does not use Nexus as its APT proxy (e.g. it has direct internet
+access or is onboarding before Nexus is deployed).
+
+Step 2 (CA trust) must be completed before using the HTTPS endpoint.
+
+### Phase note — HTTP vs HTTPS
+
+| Phase | URL | When |
+|---|---|---|
+| Phase 2–4 | `http://<nexus-ip>:8081` | Before TLS is issued for Nexus |
+| Phase 5+ | `https://<nexus-fqdn>:8443` | After `make ansible-nexus` TLS pass |
+
+Use the HTTP URL if Nexus TLS is not yet deployed. Switch to HTTPS after Phase 5 — the
+internal root CA must be trusted (Step 2) before the HTTPS URL will work.
+
+### APT credentials
+
+Nexus requires authentication (anonymous access is disabled). Create an auth file:
+
+```bash
+cat > /etc/apt/auth.conf.d/nexus.conf << 'EOF'
+machine <nexus-apt-proxy-url> login nexus-reader password <NEXUS_READER_PASSWORD>
+EOF
+chmod 0600 /etc/apt/auth.conf.d/nexus.conf
+```
+
+Replace `<nexus-apt-proxy-url>` with the full base URL (e.g. `http://192.168.X.X:8081` or
+`https://nexus.<your-domain>:8443`). APT matches the machine directive as a URL prefix —
+one entry covers all repos on that host.
+
+`NEXUS_READER_PASSWORD` is in `.envrc` on the Ansible controller.
+
+### Base Debian Trixie sources
+
+Create `/etc/apt/sources.list.d/debian-nexus.sources`:
+
+```
+Types: deb
+URIs: <nexus-apt-proxy-url>/repository/apt-proxy-trixie/
+Suites: trixie
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: <nexus-apt-proxy-url>/repository/apt-proxy-trixie-updates/
+Suites: trixie-updates
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: <nexus-apt-proxy-url>/repository/apt-proxy-trixie-security/
+Suites: trixie-security
+Components: main contrib non-free non-free-firmware
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+```
+
+Remove the default sources to avoid duplicate fetches:
+
+```bash
+rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
+```
+
+### Additional sources for PVE nodes
+
+PVE 9 nodes need the Proxmox package repositories. Append to the same file or create a
+separate `/etc/apt/sources.list.d/proxmox-nexus.sources`:
+
+```
+Types: deb
+URIs: <nexus-apt-proxy-url>/repository/apt-proxy-proxmox-pve/
+Suites: trixie
+Components: pve-no-subscription
+Signed-By: /etc/apt/keyrings/proxmox-release-trixie.gpg
+
+Types: deb
+URIs: <nexus-apt-proxy-url>/repository/apt-proxy-proxmox-ceph-squid/
+Suites: trixie
+Components: main
+Signed-By: /etc/apt/keyrings/proxmox-release-trixie.gpg
+```
+
+> **Signing key path:** The path `/etc/apt/keyrings/proxmox-release-trixie.gpg` is standard
+> on a fresh PVE 9 install. Verify on your node before deploying:
+> `ls /etc/apt/keyrings/proxmox-release-*.gpg`
+
+Disable the enterprise repo to prevent unauthenticated errors (requires a subscription key
+that is not in scope for this setup):
+
+```bash
+rm -f /etc/apt/sources.list.d/pve-enterprise.list
+rm -f /etc/apt/sources.list.d/ceph.list
+```
+
+> **Unvalidated assumption:** Nexus APT proxy for the Proxmox no-subscription repo uses
+> `distribution: trixie` (the suite) and `pve-no-subscription` as the client-side component.
+> This mirrors how the upstream repo is structured (`/dists/trixie/pve-no-subscription/`).
+> Verify with `apt-get update` on first deploy and check for 404s in Nexus proxy logs.
+
+### Verify
+
+```bash
+apt-get update
+```
+
+A clean update (no 404s or auth errors) confirms the configuration is working.
+If using HTTPS, a TLS error indicates Step 2 (CA trust) was not completed — run
+`update-ca-certificates` and retry.

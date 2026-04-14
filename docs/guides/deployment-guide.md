@@ -93,6 +93,7 @@ make plan             # expect: 0 resources to add/change/destroy (all enables a
 Fill in `.envrc`:
 ```
 NEXUS_ADMIN_PASSWORD    # admin password you choose
+NEXUS_READER_PASSWORD   # read-only account password you choose (used by managed hosts for APT access)
 ```
 
 Enable Nexus in `config/sandbox.yml`:
@@ -124,11 +125,14 @@ After verifying, tighten the firewall to block direct internet from the MGMT VLA
 
 ## Phase 3 — DNS
 
-Fill in `.envrc`:
+Generate API keys and fill in `.envrc`:
+```bash
+openssl rand -hex 32    # run once per key — paste output into .envrc
 ```
-PDNS_AUTH_API_KEY       # any strong string
-PDNS_RECURSOR_API_KEY   # any strong string
-PDNS_DNSDIST_API_KEY    # any strong string
+```
+PDNS_AUTH_API_KEY       # generated above
+PDNS_RECURSOR_API_KEY   # generated above (separate value)
+PDNS_DNSDIST_API_KEY    # generated above (separate value)
 ```
 
 Enable DNS in `config/sandbox.yml`:
@@ -232,10 +236,12 @@ sandbox-ssh root@<issuing-ca-ip> "step ca health --ca-url https://ca.<domain> --
 
 ## Phase 5 — TLS upgrade
 
-Enable MinIO TLS in `config/sandbox.yml`:
+Enable TLS for MinIO and Nexus in `config/sandbox.yml`:
 ```yaml
 services:
   minio:
+    tls: true
+  nexus:
     tls: true
 ```
 
@@ -250,6 +256,7 @@ make configure
 make ansible-minio    # issues TLS cert from Issuing CA, restarts MinIO on HTTPS
 make init             # re-initialize Terraform backend (MinIO endpoint now HTTPS)
 make ansible-nexus    # TLS pass: Issuing CA now reachable, issues Nexus cert, wires nginx
+make ansible-env      # update APT sources on all managed hosts to HTTPS (nexus_apt_proxy switches to https://<fqdn>:8443)
 ```
 
 Final verification:

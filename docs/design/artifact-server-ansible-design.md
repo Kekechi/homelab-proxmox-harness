@@ -211,7 +211,7 @@ then `nexus` roles.
 | Consumer onboarding (APT source config per host) | After Phase 1 stable |
 | Nexus Base URL capability | Post-deploy config if email notifications needed |
 | Additional APT distributions (Ubuntu, etc.) | When workstations onboard |
-| Generic HTTP proxy for LXC templates/ISOs | Phase 2 — pending pveam configurability check |
+| Generic HTTP proxy for LXC templates/ISOs | Out of Nexus scope — `pveam` has no mirror URL; `datacenter.cfg http_proxy` supports a forward proxy, but that is separate infrastructure |
 | Blob store quota configuration | Post-deploy tuning |
 | Hosted Terraform registry | Only if custom providers are written (unlikely) |
 
