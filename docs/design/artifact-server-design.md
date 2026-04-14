@@ -77,7 +77,7 @@ Per official documentation (`nexus.vmoptions`):
 Nexus uses CIDR notation in config (`ip: "X.X.X.X/24"`). The rule is: Terraform-provisioned LXCs/VMs use CIDR (provider needs the prefix for cloud-init static IP assignment); externally-managed services (e.g. minio) use bare IP. This applies to all flat services that are provisioned by Terraform.
 
 **Before production deployment:**
-- MGMT VLAN multi-network config (`docs/mgmt-vlan-design.md`) must be implemented
+- MGMT VLAN multi-network config (`docs/design/mgmt-vlan-design.md`) must be implemented
 
 ## Open Items (deferred, not forgotten)
 
@@ -96,7 +96,7 @@ Nexus uses CIDR notation in config (`ip: "X.X.X.X/24"`). The rule is: Terraform-
 ## Ready for Planning
 
 Run `/infra-plan` with:
-> Deploy Nexus Repository CE LXC per `docs/artifact-server-design.md`. Sandbox first.
+> Deploy Nexus Repository CE LXC per `docs/design/artifact-server-design.md`. Sandbox first.
 >
 > **Phase 1 — Terraform scope:**
 > (1) Extend `proxmox-lxc` module: add `data_disk_size` (string, null) and `data_disk_path`

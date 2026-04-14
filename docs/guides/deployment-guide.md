@@ -4,7 +4,7 @@ Step-by-step walkthrough for deploying a fresh sandbox from scratch.
 Services are brought up in dependency order across five phases.
 
 **Prerequisites:** Proxmox cluster (or single node) ready with bridges, storage, and
-templates in place — see `docs/cluster-setup.md`. IAM (pool, service account token)
+templates in place — see `docs/guides/cluster-setup.md`. IAM (pool, service account token)
 configured — see `docs/proxmox-iam.md`.
 
 ---
@@ -20,7 +20,7 @@ Fill in `config/sandbox.yml`:
 | Field | What to set |
 |---|---|
 | `domain_name` | Internal domain (e.g. `lab.example.com`) |
-| `ssh.public_key` | SSH public key from `docs/minio-setup.md` Step 0 |
+| `ssh.public_key` | SSH public key from `docs/guides/minio-setup.md` Step 0 |
 | `infrastructure.proxmox.ip` | Proxmox API IP |
 | `infrastructure.nodes.*` | Node name → IP for each cluster node |
 | `infrastructure.networks.*` | Bridge name, subnet CIDR, gateway |
@@ -66,7 +66,7 @@ MINIO_ROOT_PASSWORD     # admin password you choose
 MinIO is not a Terraform resource — it is created manually and bootstrapped via Ansible.
 It must be running before `make init` can initialize the Terraform state backend.
 
-Follow **all steps** in `docs/minio-setup.md`:
+Follow **all steps** in `docs/guides/minio-setup.md`:
 
 | Step | Action |
 |---|---|

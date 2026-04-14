@@ -80,7 +80,7 @@ These are not design decisions but constraints the role implementation must sati
 
 ## Ready for Planning
 
-Design is complete. Run `/infra-plan` with this document and `docs/dns-design.md` as input.
+Design is complete. Run `/infra-plan` with this document and `docs/design/dns-design.md` as input.
 
 The plan should produce:
 1. `ansible/roles/pdns_auth_recursor/` — full role

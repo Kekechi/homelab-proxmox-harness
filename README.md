@@ -37,7 +37,7 @@ Infrastructure-as-Code harness for a self-hosted Proxmox homelab. Terraform prov
 - Proxmox VE cluster (tested on PVE 8.x)
 - Docker + Dev Containers (VS Code or compatible)
 - [direnv](https://direnv.net/) for `.envrc` management
-- MinIO instance running as an LXC on Proxmox (see `docs/minio-setup.md`)
+- MinIO instance running as an LXC on Proxmox (see `docs/guides/minio-setup.md`)
 - Proxmox API tokens for sandbox and production (see `docs/proxmox-iam.md`)
 
 ## Quick Start
@@ -106,7 +106,7 @@ make apply               # terraform apply sandbox.tfplan
 | Doc | Contents |
 |-----|----------|
 | `docs/proxmox-iam.md` | IAM setup — API tokens, roles, ACL paths |
-| `docs/minio-setup.md` | MinIO LXC setup and bucket bootstrap |
+| `docs/guides/minio-setup.md` | MinIO LXC setup and bucket bootstrap |
 | `docs/network-policy.md` | Squid proxy allowlist and SSH tunnel architecture |
 | `docs/threat-model.md` | What the isolation model protects against (and what it doesn't) |
 

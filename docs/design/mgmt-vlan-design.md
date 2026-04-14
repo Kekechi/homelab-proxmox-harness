@@ -164,7 +164,7 @@ after production deployment before enabling services for LAN clients.
 
 This design is complete. Hand to `/infra-plan` with:
 
-> Implement Management VLAN multi-network support per `docs/mgmt-vlan-design.md`.
+> Implement Management VLAN multi-network support per `docs/design/mgmt-vlan-design.md`.
 > Changes span: `scripts/generate-configs.py`, `config/sandbox.yml.example`,
 > `config/production.yml.example`, `terraform/variables.tf`, `terraform/main.tf`,
 > `.claude/rules/config-management.md`.

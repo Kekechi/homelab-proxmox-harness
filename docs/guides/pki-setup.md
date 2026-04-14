@@ -44,7 +44,7 @@ DNS output hints after apply.
 Before starting, ensure the following are in place:
 
 - [ ] Proxmox node is accessible and the sandbox pool exists
-- [ ] MinIO is running and `tfstate-sandbox` bucket exists (see `docs/minio-setup.md`)
+- [ ] MinIO is running and `tfstate-sandbox` bucket exists (see `docs/guides/minio-setup.md`)
 - [ ] Sandbox VLAN is trunked on the bridge and routed on your firewall
 - [ ] Sandbox hosts can reach each other within the VLAN (east-west traffic allowed)
 - [ ] Dev container is running with `direnv allow` applied
@@ -274,7 +274,7 @@ cd ansible
 ansible-playbook playbooks/site.yml
 ```
 
-For personal devices and browsers, see `docs/trust-root-ca.md` for per-platform
+For personal devices and browsers, see `docs/guides/trust-root-ca.md` for per-platform
 installation instructions.
 
 ---

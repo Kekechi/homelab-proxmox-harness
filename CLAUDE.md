@@ -62,7 +62,9 @@ scripts/
   generate-configs.py     Generates tfvars/inventory/envrc/allowed-cidrs from config YAML
   bootstrap-minio.sh      One-time MinIO bucket + IAM setup
   verify-isolation.sh     Network isolation verification
-docs/                     proxmox-iam.md, minio-setup.md, network-policy.md, threat-model.md
+docs/                     proxmox-iam.md, network-policy.md, threat-model.md, vision.md
+  design/                 design records (dns-design.md, artifact-server-design.md, etc.)
+  guides/                 operational how-to (deployment-guide.md, pki-setup.md, etc.)
 .claude/
   agents/                 iac-planner, iac-generator, tf-reviewer
   skills/

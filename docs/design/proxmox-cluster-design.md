@@ -134,7 +134,7 @@ node_name = var.nexus_node       # module "nexus"
 
 ### New / updated files
 
-- `docs/cluster-setup.md` — operator guide: cluster formation, NFS LXC setup, Proxmox datacenter storage config, template upload to NFS, pool and IAM setup, config migration guide for existing `sandbox.yml`
+- `docs/guides/cluster-setup.md` — operator guide: cluster formation, NFS LXC setup, Proxmox datacenter storage config, template upload to NFS, pool and IAM setup, config migration guide for existing `sandbox.yml`
 - `scripts/setup-vm-template.sh` — update storage target to `nfs-shared` so VM template 9000 is accessible cluster-wide (any node can clone from it)
 
 ## Open Items (deferred, not forgotten)
@@ -156,11 +156,11 @@ destructive. For VMs, destroy+recreate is acceptable for stateless workloads lik
 `root-ca`. The `migrate` argument is not exposed in the homelab modules
 (consistent with the "no live migration" design decision).
 
-See `docs/cluster-setup.md` for detailed migration procedures.
+See `docs/guides/cluster-setup.md` for detailed migration procedures.
 
 ### ~~State migration for existing workloads~~ — Resolved
 
-Documented in `docs/cluster-setup.md` § 6 (State Migration). The recommended procedure
+Documented in `docs/guides/cluster-setup.md` § 6 (State Migration). The recommended procedure
 uses `terraform state rm` + `terraform import` per resource to reconcile `node_name`
 in state without destroying workloads. These are operator-executed commands.
 
@@ -171,7 +171,7 @@ Hand to `/infra-plan` with the following scope:
 1. Config schema changes (`config/sandbox.yml.example`, `config/production.yml.example`)
 2. Generator changes (`scripts/generate-configs.py`)
 3. Terraform root changes (`terraform/variables.tf`, `terraform/main.tf`)
-4. New `docs/cluster-setup.md`
+4. New `docs/guides/cluster-setup.md`
 5. Update `scripts/setup-vm-template.sh` guidance for NFS storage target
 
 **Prerequisite before planning**: verify bpg/proxmox `node_name` ForceNew behavior on

@@ -217,7 +217,7 @@ then `nexus` roles.
 
 ## Ready for Planning
 
-Design is complete. Run `/infra-plan` with `docs/artifact-server-design.md` (Terraform scope)
+Design is complete. Run `/infra-plan` with `docs/design/artifact-server-design.md` (Terraform scope)
 and this document (Ansible scope) as input.
 
 The plan should produce:
