@@ -229,19 +229,19 @@
   changed_when: true
   no_log: true
 
-- name: Create APT proxy repo — apt-proxy-trixie
+- name: "Create APT proxy repos (flat: false)"
   ansible.builtin.include_tasks: _create_repo.yml
   vars:
-    repo_name: apt-proxy-trixie
+    repo_name: "{{ item.name }}"
     repo_type: apt/proxy
     repo_body:
-      name: apt-proxy-trixie
+      name: "{{ item.name }}"
       online: true
       storage:
         blobStoreName: default
         strictContentTypeValidation: true
       proxy:
-        remoteUrl: "http://deb.debian.org/debian"
+        remoteUrl: "{{ item.remote_url }}"
         contentMaxAge: 1440
         metadataMaxAge: 1440
       negativeCache:
@@ -251,22 +251,25 @@
         blocked: false
         autoBlock: true
       apt:
-        distribution: trixie
+        distribution: "{{ item.distribution }}"
         flat: false
+  loop: "{{ nexus_apt_proxy_repos | rejectattr('flat', 'sameas', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
 
-- name: Create APT proxy repo — apt-proxy-trixie-security
+- name: "Create APT proxy repos (flat: true)"
   ansible.builtin.include_tasks: _create_repo.yml
   vars:
-    repo_name: apt-proxy-trixie-security
+    repo_name: "{{ item.name }}"
     repo_type: apt/proxy
     repo_body:
-      name: apt-proxy-trixie-security
+      name: "{{ item.name }}"
       online: true
       storage:
         blobStoreName: default
         strictContentTypeValidation: true
       proxy:
-        remoteUrl: "http://security.debian.org/debian-security"
+        remoteUrl: "{{ item.remote_url }}"
         contentMaxAge: 1440
         metadataMaxAge: 1440
       negativeCache:
@@ -276,133 +279,11 @@
         blocked: false
         autoBlock: true
       apt:
-        distribution: trixie-security
-        flat: false
-
-- name: Create APT proxy repo — apt-proxy-trixie-updates
-  ansible.builtin.include_tasks: _create_repo.yml
-  vars:
-    repo_name: apt-proxy-trixie-updates
-    repo_type: apt/proxy
-    repo_body:
-      name: apt-proxy-trixie-updates
-      online: true
-      storage:
-        blobStoreName: default
-        strictContentTypeValidation: true
-      proxy:
-        remoteUrl: "http://deb.debian.org/debian"
-        contentMaxAge: 1440
-        metadataMaxAge: 1440
-      negativeCache:
-        enabled: true
-        timeToLive: 1440
-      httpClient:
-        blocked: false
-        autoBlock: true
-      apt:
-        distribution: trixie-updates
-        flat: false
-
-- name: Create APT proxy repo — apt-proxy-smallstep
-  ansible.builtin.include_tasks: _create_repo.yml
-  vars:
-    repo_name: apt-proxy-smallstep
-    repo_type: apt/proxy
-    repo_body:
-      name: apt-proxy-smallstep
-      online: true
-      storage:
-        blobStoreName: default
-        strictContentTypeValidation: true
-      proxy:
-        remoteUrl: "https://packages.smallstep.com/stable/debian"
-        contentMaxAge: 1440
-        metadataMaxAge: 1440
-      negativeCache:
-        enabled: true
-        timeToLive: 1440
-      httpClient:
-        blocked: false
-        autoBlock: true
-      apt:
-        distribution: debs
+        distribution: "{{ item.distribution }}"
         flat: true
-
-- name: Create APT proxy repo — apt-proxy-powerdns-auth-50
-  ansible.builtin.include_tasks: _create_repo.yml
-  vars:
-    repo_name: apt-proxy-powerdns-auth-50
-    repo_type: apt/proxy
-    repo_body:
-      name: apt-proxy-powerdns-auth-50
-      online: true
-      storage:
-        blobStoreName: default
-        strictContentTypeValidation: true
-      proxy:
-        remoteUrl: "https://repo.powerdns.com/debian"
-        contentMaxAge: 1440
-        metadataMaxAge: 1440
-      negativeCache:
-        enabled: true
-        timeToLive: 1440
-      httpClient:
-        blocked: false
-        autoBlock: true
-      apt:
-        distribution: trixie-auth-50
-        flat: false
-
-- name: Create APT proxy repo — apt-proxy-powerdns-rec-54
-  ansible.builtin.include_tasks: _create_repo.yml
-  vars:
-    repo_name: apt-proxy-powerdns-rec-54
-    repo_type: apt/proxy
-    repo_body:
-      name: apt-proxy-powerdns-rec-54
-      online: true
-      storage:
-        blobStoreName: default
-        strictContentTypeValidation: true
-      proxy:
-        remoteUrl: "https://repo.powerdns.com/debian"
-        contentMaxAge: 1440
-        metadataMaxAge: 1440
-      negativeCache:
-        enabled: true
-        timeToLive: 1440
-      httpClient:
-        blocked: false
-        autoBlock: true
-      apt:
-        distribution: trixie-rec-54
-        flat: false
-
-- name: Create APT proxy repo — apt-proxy-dnsdist-21
-  ansible.builtin.include_tasks: _create_repo.yml
-  vars:
-    repo_name: apt-proxy-dnsdist-21
-    repo_type: apt/proxy
-    repo_body:
-      name: apt-proxy-dnsdist-21
-      online: true
-      storage:
-        blobStoreName: default
-        strictContentTypeValidation: true
-      proxy:
-        remoteUrl: "https://repo.powerdns.com/debian"
-        contentMaxAge: 1440
-        metadataMaxAge: 1440
-      negativeCache:
-        enabled: true
-        timeToLive: 1440
-      httpClient:
-        blocked: false
-        autoBlock: true
-      apt:
-        distribution: trixie-dnsdist-21
-        flat: false
+  loop: "{{ nexus_apt_proxy_repos | selectattr('flat', 'sameas', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
 
 - name: Create Docker hosted repo
   ansible.builtin.include_tasks: _create_repo.yml

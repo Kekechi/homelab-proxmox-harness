@@ -119,6 +119,37 @@ services:
     hostname: nexus-server
     fqdn: "nexus.lab.example.com"      # FQDN for TLS cert and nginx server_name
     network: mgmt
+    apt_proxy_repos:
+      # --- IaC-required: do not remove ---
+      - name: apt-proxy-trixie
+        remote_url: "http://deb.debian.org/debian"
+        distribution: trixie
+      - name: apt-proxy-trixie-security
+        remote_url: "http://security.debian.org/debian-security"
+        distribution: trixie-security
+      - name: apt-proxy-trixie-updates
+        remote_url: "http://deb.debian.org/debian"
+        distribution: trixie-updates
+      - name: apt-proxy-smallstep
+        remote_url: "https://packages.smallstep.com/stable/debian"
+        distribution: debs
+        flat: true
+      - name: apt-proxy-powerdns-auth-50
+        remote_url: "https://repo.powerdns.com/debian"
+        distribution: trixie-auth-50
+      - name: apt-proxy-powerdns-rec-54
+        remote_url: "https://repo.powerdns.com/debian"
+        distribution: trixie-rec-54
+      - name: apt-proxy-dnsdist-21
+        remote_url: "https://repo.powerdns.com/debian"
+        distribution: trixie-dnsdist-21
+      # --- Optional: add when PVE nodes use Nexus as APT source ---
+      - name: apt-proxy-proxmox-pve
+        remote_url: "http://download.proxmox.com/debian/pve"
+        distribution: trixie
+      - name: apt-proxy-proxmox-ceph-squid
+        remote_url: "http://download.proxmox.com/debian/ceph-squid"
+        distribution: trixie
 
 # Future services on LAN:
 # services:

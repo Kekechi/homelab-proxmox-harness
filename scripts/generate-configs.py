@@ -364,6 +364,49 @@ def _hcl_str(val: str) -> str:
     return f'"{val}"' if val else "null"
 
 
+_NEXUS_REQUIRED_APT_REPOS = {
+    "apt-proxy-trixie",
+    "apt-proxy-trixie-security",
+    "apt-proxy-trixie-updates",
+    "apt-proxy-smallstep",
+    "apt-proxy-powerdns-auth-50",
+    "apt-proxy-powerdns-rec-54",
+    "apt-proxy-dnsdist-21",
+}
+
+
+def validate_nexus_apt_proxy_repos(repos: list, field: str) -> None:
+    """Assert all IaC-required APT proxy repo names are present and field values are safe."""
+    _UNSAFE = {'"', "\n", "\r", "}", ","}
+    for i, repo in enumerate(repos):
+        if not isinstance(repo, dict):
+            sys.exit(
+                f"Config error: '{field}[{i}]' must be a mapping (got "
+                f"{type(repo).__name__!r}). Each entry needs name, remote_url, "
+                "and distribution keys."
+            )
+        for key in ("name", "remote_url", "distribution"):
+            val = repo.get(key, "")
+            if any(c in val for c in _UNSAFE):
+                sys.exit(
+                    f"Config error: '{field}[{i}].{key}' contains a character not allowed "
+                    f"in generated YAML flow-mapping (\", }}, ,, or newline). Remove it and re-run."
+                )
+        if "flat" in repo and not isinstance(repo["flat"], bool):
+            sys.exit(
+                f"Config error: '{field}[{i}].flat' must be a boolean (true or false), "
+                f"got {type(repo['flat']).__name__!r}."
+            )
+    present = {r["name"] for r in repos if isinstance(r, dict) and "name" in r}
+    missing = _NEXUS_REQUIRED_APT_REPOS - present
+    if missing:
+        sys.exit(
+            f"Config error: '{field}' is missing IaC-required repos: "
+            f"{', '.join(sorted(missing))}. "
+            "These repos are referenced by Ansible roles and must be present."
+        )
+
+
 def gen_tfvars(cfg: dict, env: str) -> str:
     infra = cfg.get("infrastructure", {})
     p = infra.get("proxmox", {})
@@ -570,17 +613,29 @@ def gen_inventory(cfg: dict, env: str) -> str:
                         lines.append(f"        minio_domain: {minio_fqdn}")
                     if domain_name:
                         lines.append(f"        minio_ca_url: https://ca.{domain_name}")
-                # nexus: propagate domain and CA URL so role defaults stay deployment-agnostic
+                # nexus: propagate domain, CA URL, and APT proxy repo list
                 elif svc_name == "nexus":
                     nexus_fqdn = svc.get("fqdn", "")
                     nexus_tls = svc.get("tls", False)
-                    if nexus_fqdn or domain_name or nexus_tls:
-                        lines.append(f"      vars:")
-                        lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
-                        if nexus_fqdn:
-                            lines.append(f"        nexus_domain: {nexus_fqdn}")
-                        if domain_name:
-                            lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
+                    apt_proxy_repos = svc.get("apt_proxy_repos", [])
+                    if nexus_enabled:
+                        validate_nexus_apt_proxy_repos(apt_proxy_repos, "services.nexus.apt_proxy_repos")
+                    lines.append(f"      vars:")
+                    lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
+                    if nexus_fqdn:
+                        lines.append(f"        nexus_domain: {nexus_fqdn}")
+                    if domain_name:
+                        lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
+                    if apt_proxy_repos:
+                        lines.append(f"        nexus_apt_proxy_repos:")
+                        for repo in apt_proxy_repos:
+                            entry = f'{{name: "{repo["name"]}", remote_url: "{repo["remote_url"]}", distribution: "{repo["distribution"]}"'
+                            if repo.get("flat") is True:
+                                entry += ", flat: true"
+                            entry += "}"
+                            lines.append(f"          - {entry}")
+                    else:
+                        lines.append(f"        nexus_apt_proxy_repos: []")
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")
