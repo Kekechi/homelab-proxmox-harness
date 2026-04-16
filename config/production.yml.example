@@ -151,6 +151,15 @@ services:
         remote_url: "http://download.proxmox.com/debian/ceph-squid"
         distribution: trixie
 
+  log_server:
+    enabled: false                         # Set true to deploy OTel Collector log aggregation LXC
+    node: pve1
+    ip: "X.X.X.X/24"                  # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 106                         # must not conflict with existing containers (101–105 occupied)
+    ansible_user: root
+    hostname: log-server
+    network: mgmt
+
 # Future services on LAN:
 # services:
 #   kubernetes:

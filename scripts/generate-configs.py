@@ -456,17 +456,19 @@ def gen_tfvars(cfg: dict, env: str) -> str:
     ]
 
     # Deployment gating — derived from services.<svc>.enabled (default false)
-    enable_pki   = bool(svcs.get("pki", {}).get("enabled", False))
-    enable_dns   = bool(svcs.get("dns", {}).get("enabled", False))
-    enable_nexus = bool(svcs.get("nexus", {}).get("enabled", False))
+    enable_pki        = bool(svcs.get("pki", {}).get("enabled", False))
+    enable_dns        = bool(svcs.get("dns", {}).get("enabled", False))
+    enable_nexus      = bool(svcs.get("nexus", {}).get("enabled", False))
+    enable_log_server = bool(svcs.get("log_server", {}).get("enabled", False))
     dns_server   = infra.get("dns_server", "").strip()
     dns_servers_hcl = f'["{dns_server}"]' if dns_server else "[]"
     lines += [
         f"",
         f"# Deployment gating — set services.<svc>.enabled: true in config to unlock each phase",
-        f'enable_pki   = {str(enable_pki).lower()}',
-        f'enable_dns   = {str(enable_dns).lower()}',
-        f'enable_nexus = {str(enable_nexus).lower()}',
+        f'enable_pki        = {str(enable_pki).lower()}',
+        f'enable_dns        = {str(enable_dns).lower()}',
+        f'enable_nexus      = {str(enable_nexus).lower()}',
+        f'enable_log_server = {str(enable_log_server).lower()}',
         f"",
         f"# DNS resolver injected into all LXC/VM initialization blocks",
         f'dns_servers = {dns_servers_hcl}',
@@ -546,6 +548,22 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'nexus_ipv4_address = {_hcl_str(nexus_addr)}',
             f'nexus_ipv4_gateway = {_hcl_str(nexus_net["gateway"])}',
             f'nexus_bridge       = "{nexus_net["bridge"]}"',
+        ]
+
+    # Log Server section — only emitted when services.log_server is present in config
+    log_server = svcs.get("log_server", {})
+    if log_server:
+        log_server_addr = log_server.get("ip", "")
+        validate_cidr(log_server_addr, "services.log_server.ip")
+        log_server_net = resolve_network(log_server, networks, default_network, "log_server")
+        lines += [
+            f"",
+            f"# Log Server",
+            f'log_server_node         = "{log_server["node"]}"',
+            f'log_server_ct_id        = {log_server.get("ct_id", 206)}',
+            f'log_server_ipv4_address = {_hcl_str(log_server_addr)}',
+            f'log_server_ipv4_gateway = {_hcl_str(log_server_net["gateway"])}',
+            f'log_server_bridge       = "{log_server_net["bridge"]}"',
         ]
 
     return "\n".join(lines) + "\n"
