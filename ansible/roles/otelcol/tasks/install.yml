@@ -5,6 +5,10 @@
   failed_when: false
   changed_when: false
 
+# TODO(nexus-raw-repo): This task fetches the DEB directly from GitHub and runs on the target
+# LXC. MGMT VLAN hosts have no direct internet access in production — this will fail outside
+# sandbox. Fix: upload the DEB to a Nexus raw hosted repo and change this url to the Nexus
+# raw repo URL. Implement when adding Nexus raw repo support (Session 2 / Splunk phase).
 - name: Download otelcol-contrib DEB
   ansible.builtin.get_url:
     url: >-

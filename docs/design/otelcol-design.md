@@ -212,6 +212,7 @@ mcli ls homelab-minio-otelcol/otelcol-logs/   # alias created by bucket.yml
 | Source-side configuration (OPNsense, rsyslog, DNSdist) | Session 2.1 / 2.2 |
 | MinIO bucket lifecycle policy (365-day expiry) | Session 2.3 or standalone Day-2 ops: `mcli ilm add --expiry-days 365 local/otelcol-logs` |
 | APT repo verification (`packages.opentelemetry.io`) | Verify at role-writing time; prefer APT over DEB download if confirmed stable |
+| **DEB download requires internet on target LXC** — `install.yml` fetches from GitHub directly; MGMT VLAN hosts have no outbound internet in production; fix: upload DEB to Nexus raw hosted repo and point `get_url` url at Nexus | Session 2 — implement alongside Nexus raw repo (also needed for Splunk) |
 | TF-managed MinIO for log storage | Post-GitLab migration decision |
 | resourcedetection attribute verification on unprivileged LXC | Verify at deployment — fall back to `host.name` + `os.type` only if others fail |
 
