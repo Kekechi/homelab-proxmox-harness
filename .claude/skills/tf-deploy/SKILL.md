@@ -16,6 +16,10 @@ Follow the `infra-plan` skill with the user's request.
 
 **Checkpoint:** Stop and wait for explicit user approval of the plan before proceeding. Accept revisions and re-plan if requested.
 
+The `infra-plan` skill will write the approved plan to `.claude/session/plan-<name>.md`.
+
+> **Context reset point:** After the plan is approved and written, say: "Plan written to `.claude/session/plan-<name>.md`. If context is getting long, run `/compact` now — Step 2 reads the plan from that file."
+
 ### Step 2: Generate
 
 Follow the `generate` skill with the approved plan from Step 1.
@@ -24,12 +28,15 @@ Continues automatically when `terraform validate` passes. If validation fails, s
 
 ### Step 3: Review
 
-Follow the `review` skill on all files modified in Step 2.
+Follow the `polish` skill with `code` on all files modified in Step 2.
 
-**Checkpoint:**
-- BLOCK — present blocking issues, stop. Do not proceed until fixed and re-reviewed.
-- WARN — present warnings and ask the user whether to proceed.
+The polish skill runs the tf-reviewer subagent, fixes any blocking issues in a fixer subagent, and loops until APPROVE. All fix+re-review cycles stay in subagents — the main session only sees the final verdict.
+
+**After polish resolves:**
 - APPROVE — continue.
+- WARN — present warnings and ask the user whether to proceed.
+
+> **Context reset point:** After Step 3 APPROVE, say: "Review passed. If context is getting long, run `/compact` now — Steps 4 and 5 are self-contained shell commands."
 
 ### Step 4: Terraform Plan
 

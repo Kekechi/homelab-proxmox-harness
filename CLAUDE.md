@@ -73,6 +73,7 @@ docs/                     proxmox-iam.md, network-policy.md, threat-model.md, vi
     infra-plan/           Plan infrastructure changes (iac-planner, Opus)
     generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
     review/               Review code for security and correctness (tf-reviewer, Sonnet)
+    polish/               Iterative review-fix loop for design, plan, or code — until APPROVE
     tf-deploy/            Full PGE pipeline for Terraform: plan → generate → review → apply
     ansible-deploy/       Full PGE pipeline for Ansible: plan → generate → review → run
     ansible-run/          Pre-flight + run + verify for Ansible (code already written)
@@ -120,7 +121,8 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 | `/retro` | Retrospective on a completed session — surfaces prompting lessons, recommends no action / memory / skill update / new skill |
 | `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
 | `/generate` | Write code from an approved plan using iac-generator |
-| `/review [files]` | Review Terraform/Ansible code with tf-reviewer |
+| `/review [files]` | Review Terraform/Ansible code with tf-reviewer (single pass) |
+| `/polish [code\|plan\|design] [name]` | Iterative review-fix loop until APPROVE — all cycles in subagents |
 | `/tf-deploy <description>` | Full pipeline for Terraform infrastructure changes |
 | `/ansible-deploy <description>` | Full pipeline for Ansible role/playbook deployments |
 | `/ansible-run` | Pre-flight + run + verify (code already written and reviewed) |

@@ -33,7 +33,17 @@ If the user requests changes to the plan, relaunch iac-planner with the revised 
 
 ## Artifact
 
-The plan document produced by iac-planner lives in conversation context. Downstream skills (`generate`, `deploy`) read it from there. No file is written.
+Once the user approves the plan, write it to:
+
+```
+.claude/session/plan-<name>.md
+```
+
+Use a short slug for `<name>` derived from the plan subject (e.g. `plan-log-server.md`). Include the full plan text — every section the iac-planner produced.
+
+Then say:
+
+> "Plan written to `.claude/session/plan-<name>.md`. If context is getting long, run `/compact` now — `/generate` will read the plan from that file."
 
 ## Constraints
 

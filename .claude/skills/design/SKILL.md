@@ -22,6 +22,71 @@ Facilitate a structured design discussion for net-new infrastructure. The goal i
 - User already knows what they want to build → use `/infra-plan` directly
 - User wants to evaluate existing infrastructure → use `/assess`
 
+## Session Document
+
+Design sessions are long. At the end of Phase 1 and after every decision in Phase 2, write (or update) a session document at:
+
+```
+.claude/session/design-<topic-slug>.md
+```
+
+This document is the source of truth for the session. If context is compacted or cleared, the user re-invokes `/design` with this file as context and nothing is lost.
+
+**Format:**
+
+```markdown
+# Design Session: [Topic]
+Status: In Progress | Phase: [Orient / Explore / Audit / Complete]
+Resume: run `/design` and reference this file as context
+Last decision: [brief label]
+
+## Scope & Boundaries
+In scope: ...
+Deferred (not forgotten): ...
+
+## Decision Axes
+1. ...
+2. ...
+
+## Research Findings
+### [Topic]
+- **Known** (from official docs / direct observation, [URL if available]): ...
+- **Inferred** (from training knowledge / community sources — verify before acting): ...
+
+## Decisions Made
+| # | Decision | Choice | Rationale | Evidence basis |
+|---|---|---|---|---|
+| 1 | ... | ... | ... | Known / Inferred |
+
+## In Consideration
+| Decision | Options on the table | Current lean |
+|---|---|---|
+
+## Audit Results (Phase 3)
+Unvalidated assumptions: ...
+Missing decisions: ...
+Likely fine, worth confirming: ...
+
+## Open Items (deferred)
+...
+```
+
+**Known vs Inferred rule:** anything from official docs, a live test, or a direct API/config observation is **Known**. Anything from training knowledge, community posts, or reasoning from general principles is **Inferred**. Never promote an inferred finding to Known without a citation or live verification. This mirrors the repo's debugging discipline in CLAUDE.md.
+
+**When to write/update the session document:**
+- End of Phase 1: write the initial doc (scope, axes)
+- After each Phase 2 decision: update Decisions Made, In Consideration, and Research Findings
+- After Phase 3 audit: update Audit Results
+- Phase 4: the session doc becomes the source for the final design record
+
+## Context Reset Guidance
+
+After writing the session document, if the conversation has grown long (post Phase 1, or after 3+ decisions), say:
+
+> "SESSION.md is up to date at `.claude/session/design-<topic>.md`. If context is getting long, run `/clear` now — then re-invoke `/design` with: 'Continue from `.claude/session/design-<topic>.md`.' Everything needed to resume is in that file."
+
+Do not say this after every single decision — only when it would be genuinely useful (context is long, or a natural phase boundary has just passed).
+
 ## Pre-flight: Squid allowlist check
 
 Before starting any design session involving new software, check whether that software's documentation domain is in the Squid allowed-domains list:
@@ -44,6 +109,8 @@ State the decision axes to the user upfront so the session feels structured, not
 
 4. **Establish scope boundaries** — identify what is adjacent to this design and explicitly defer it. Design one layer at a time: if this session is about infrastructure, defer software deployment decisions; if it's about software deployment, defer consumer-side integration. The order isn't fixed — sometimes software architecture must be sketched first to know what infrastructure to provision (e.g., "one-tier or two-tier?" determines "one host or two?"). What matters is not mixing both layers mid-session. Name the deferred layer explicitly so the user knows it's deferred, not forgotten.
 
+**After Phase 1:** write the session document with scope and decision axes. Offer the context reset if the conversation already has significant prior context.
+
 ## Phase 2: Explore decisions one layer at a time
 
 Work through decision axes in dependency order — don't discuss sizing before topology, don't discuss DNS before network placement.
@@ -62,6 +129,8 @@ Work through decision axes in dependency order — don't discuss sizing before t
 6. **Frame configuration methods to match the tool's deployment model** — if the tool's standalone/self-hosted mode is designed around a config file, present config-file editing as the native approach, not a workaround. "Edit ca.json" and "edit nginx.conf" are native operations. Framing them as "hand-editing" or inferior to a CLI implies they're fallbacks, which triggers unnecessary exploration of alternative interfaces. Reserve API/CLI framing for deployment modes where those are the primary interface.
 7. Make a recommendation if you have one — say why
 7. Wait for the user to decide before moving on
+
+**After each decision:** update the session document — add a row to Decisions Made (with Evidence basis: Known/Inferred), update In Consideration with the next open question, and record any research findings. Offer the context reset at natural pauses (every 3 decisions, or after a research-heavy decision).
 
 **Rules:**
 - One decision at a time. Do not bundle multiple open questions in a single turn.
@@ -92,6 +161,8 @@ Before declaring the design ready, run an explicit audit. Present these to the u
 
 Don't skip this phase. It's where the most useful corrections happen.
 
+**After Phase 3:** update the session document Audit Results section.
+
 ## Phase 4: Design Record
 
 Once the user confirms the design is ready, produce a concise design record:
@@ -116,6 +187,8 @@ One paragraph: what this infrastructure does and why.
 ## Ready for planning
 [Explicit statement that design is complete and what to hand to /infra-plan]
 ```
+
+Save this as `docs/design/<topic>.md` (committed). The session document at `.claude/session/design-<topic>.md` is not committed — it's session state that can be discarded once the design record is written.
 
 ## Handoff
 

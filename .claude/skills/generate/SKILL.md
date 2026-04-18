@@ -10,7 +10,10 @@ Launch the **iac-generator** agent to translate an approved infrastructure plan 
 
 ## Instructions
 
-1. Check that an approved plan exists in the conversation context. If no plan is present, ask the user to run `/infra-plan` first or provide the plan directly.
+1. **Locate the approved plan.** Check in order:
+   - Conversation context (plan text present from a recent `/infra-plan` run)
+   - `.claude/session/plan-*.md` — if context was cleared or compacted after planning, read the plan file and pass it to the agent
+   - If no plan is found in either location, ask the user to run `/infra-plan` first or provide the plan directly.
 2. Launch the `iac-generator` agent (defined in `.claude/agents/iac-generator.md`) with the approved plan as context
 3. The agent will write code to the appropriate files
 4. Run `make lint` after generation completes — this catches mechanical issues

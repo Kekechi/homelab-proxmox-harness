@@ -18,21 +18,17 @@ Follow the `infra-plan` skill with the user's request.
 
 **Checkpoint:** Stop and wait for explicit user approval of the plan before proceeding. Accept revisions and re-plan if requested.
 
+The `infra-plan` skill will write the approved plan to `.claude/session/plan-<name>.md`.
+
 ### Step 1b: Plan Review
 
-After the user approves the plan, launch a general-purpose subagent to review it for runtime correctness before any code is written. The planner produces structurally sound plans but does not always think through Ansible runtime mechanics.
+After the user approves the plan, follow the `polish` skill with `plan` on the plan file written in Step 1.
 
-Check for:
-- Missing module arguments that cause silent failures (`headers:` on `uri`, `status_code:` lists, `changed_when:` on `shell` tasks)
-- Idempotency gaps (unguarded commands, missing `stat` checks before init tasks, `when:` conditions that skip cleanup)
-- Service ordering dependencies (handler flush timing, `wait_for` placement before API calls)
-- Template correctness (YAML quoting, config key names matching the target software version)
-- String format mismatches between tool input syntax and tool output syntax (e.g. `setcap` uses `+ep`, `getcap` outputs `=ep`)
-- JSON body type fidelity: when `uri` uses `body_format: json`, verify that Jinja2-templated values land as the correct JSON type (int, bool, list). Quoted YAML scalars (`"{{ x }}"`) pass through `to_text()` — `| int` alone does not guarantee a JSON integer unless `jinja2_native = true` is set in `ansible.cfg`. Verify the target API accepts string values, or restructure to avoid the ambiguity.
+The polish skill reviews the plan for Ansible runtime correctness, fixes any blocking issues in a fixer subagent, and loops until APPROVE. This step is cheap — bugs caught in plan text cost nothing; the same bugs caught after code generation require fixing across multiple files.
 
-Fix issues found, re-review until the subagent confirms no blocking issues remain. This step is cheap — bugs caught in plan text cost nothing; the same bugs caught after code generation require fixing across multiple files.
+**Do not proceed to Step 2 until polish returns APPROVE.**
 
-**Do not proceed to Step 2 until the plan review is clean.**
+> **Context reset point:** After Step 1b passes, say: "Plan review is clean. If context is getting long, run `/compact` now — Step 2 reads the plan from `.claude/session/plan-<name>.md`."
 
 ### Step 2: Generate
 
@@ -42,12 +38,15 @@ Continues automatically when `ansible-lint` passes (if configured). If lint fail
 
 ### Step 3: Review
 
-Follow the `review` skill on all files modified in Step 2.
+Follow the `polish` skill with `code` on all files modified in Step 2.
 
-**Checkpoint:**
-- BLOCK — present blocking issues, stop. Do not proceed until fixed and re-reviewed.
-- WARN — present warnings and ask the user whether to proceed.
+The polish skill runs the tf-reviewer subagent, fixes any blocking issues in a fixer subagent, and loops until APPROVE. All fix+re-review cycles stay in subagents — the main session only sees the final verdict.
+
+**After polish resolves:**
 - APPROVE — continue.
+- WARN — present warnings and ask the user whether to proceed.
+
+> **Context reset point:** After Step 3 APPROVE, say: "Review passed. If context is getting long, run `/compact` before running the playbook — Step 4 doesn't need prior context."
 
 ### Step 4: Run
 
