@@ -1,0 +1,111 @@
+---
+# otelcol_minio_access_key / otelcol_minio_secret_key are set in main.yml before this file runs.
+- name: Set MinIO admin credentials as facts
+  ansible.builtin.set_fact:
+    otelcol_minio_root_user: "{{ lookup('env', 'MINIO_ROOT_USER') }}"
+    otelcol_minio_root_password: "{{ lookup('env', 'MINIO_ROOT_PASSWORD') }}"
+    otelcol_minio_admin_endpoint: "{{ lookup('env', 'MINIO_ENDPOINT') }}"
+  no_log: true
+
+# Credentials are written to a temp config file so they never appear on the
+# command line (ps exposure). The block/always ensures cleanup even on failure.
+- name: Create temporary mcli config directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: .mcli
+  register: otelcol_mcli_tmpdir
+  delegate_to: localhost
+  become: false
+
+- name: Provision MinIO bucket and IAM
+  block:
+    - name: Write mcli config for MinIO admin access
+      ansible.builtin.template:
+        src: mcli-config.json.j2
+        dest: "{{ otelcol_mcli_tmpdir.path }}/config.json"
+        mode: "0600"
+      no_log: true
+      delegate_to: localhost
+      become: false
+
+    - name: Create otelcol-logs bucket
+      ansible.builtin.command: >
+        mcli --config-dir {{ otelcol_mcli_tmpdir.path }}
+        mb --ignore-existing homelab-minio-otelcol/{{ otelcol_minio_bucket }}
+      register: otelcol_mb_result
+      delegate_to: localhost
+      become: false
+      # --ignore-existing always returns rc=0 and "created successfully"; no way to distinguish
+      # first-create from no-op, so changed_when: false for idempotent reporting.
+      failed_when: >
+        'error' in (otelcol_mb_result.stderr | lower) or
+        'denied' in (otelcol_mb_result.stderr | lower) or
+        'unable' in (otelcol_mb_result.stderr | lower)
+      changed_when: false
+
+    - name: Create otelcol MinIO IAM policy
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo '{
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+              ],
+              "Resource": [
+                "arn:aws:s3:::{{ otelcol_minio_bucket }}",
+                "arn:aws:s3:::{{ otelcol_minio_bucket }}/*"
+              ]
+            }
+          ]
+        }' | mcli --config-dir {{ otelcol_mcli_tmpdir.path }} admin policy create homelab-minio-otelcol otelcol-logs-policy /dev/stdin
+      args:
+        executable: /bin/bash
+      register: otelcol_policy_result
+      delegate_to: localhost
+      become: false
+      failed_when: >
+        otelcol_policy_result.rc != 0 and
+        'already' not in (otelcol_policy_result.stderr + otelcol_policy_result.stdout) | lower
+      changed_when: false
+
+    - name: Create otelcol MinIO IAM user
+      ansible.builtin.command: >
+        mcli --config-dir {{ otelcol_mcli_tmpdir.path }}
+        admin user add homelab-minio-otelcol
+        {{ otelcol_minio_access_key }}
+        {{ otelcol_minio_secret_key }}
+      register: otelcol_user_add_result
+      no_log: true
+      delegate_to: localhost
+      become: false
+      failed_when: >
+        otelcol_user_add_result.rc != 0 and
+        'already' not in (otelcol_user_add_result.stderr + otelcol_user_add_result.stdout) | lower
+      changed_when: false
+
+    - name: Attach IAM policy to otelcol MinIO user
+      ansible.builtin.command: >
+        mcli --config-dir {{ otelcol_mcli_tmpdir.path }}
+        admin policy attach homelab-minio-otelcol otelcol-logs-policy
+        --user {{ otelcol_minio_access_key }}
+      register: otelcol_attach_result
+      delegate_to: localhost
+      become: false
+      failed_when: >
+        otelcol_attach_result.rc != 0 and
+        'already' not in (otelcol_attach_result.stderr + otelcol_attach_result.stdout) | lower
+      changed_when: false
+
+  always:
+    - name: Remove temporary mcli config directory
+      ansible.builtin.file:
+        path: "{{ otelcol_mcli_tmpdir.path }}"
+        state: absent
+      when: otelcol_mcli_tmpdir is defined
+      delegate_to: localhost
+      become: false

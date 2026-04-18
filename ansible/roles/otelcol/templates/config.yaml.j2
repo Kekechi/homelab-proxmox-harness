@@ -1,0 +1,44 @@
+# Managed by Ansible — do not edit manually
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
+receivers:
+  syslog:
+    tcp:
+      listen_address: "0.0.0.0:1514"
+    protocol: rfc5424
+
+processors:
+  memory_limiter:
+    check_interval: "{{ otelcol_memory_check_interval }}"
+    limit_mib: {{ otelcol_memory_limit_mib }}
+    spike_limit_mib: {{ otelcol_memory_spike_limit_mib }}
+  batch:
+    timeout: "{{ otelcol_batch_timeout }}"
+    send_batch_size: {{ otelcol_batch_size }}
+  resourcedetection:
+    detectors: [system]
+    system:
+      resource_attributes:
+        host.name:
+          enabled: true
+        os.type:
+          enabled: true
+
+exporters:
+  awss3:
+    s3uploader:
+      endpoint: "{{ otelcol_minio_endpoint }}"
+      s3_bucket: "{{ otelcol_minio_bucket }}"
+      s3_force_path_style: true
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      region: "us-east-1"
+
+service:
+  extensions: [health_check]
+  pipelines:
+    logs:
+      receivers: [syslog]
+      processors: [memory_limiter, batch, resourcedetection]
+      exporters: [awss3]

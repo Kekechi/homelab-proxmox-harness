@@ -1,0 +1,48 @@
+---
+# lookup('env', ...) always resolves on the Ansible controller, regardless of which host the task runs on.
+- name: Assert otelcol_checksum is set
+  ansible.builtin.assert:
+    that:
+      - otelcol_checksum != "CHANGE_ME"
+      - otelcol_checksum | length > 0
+    fail_msg: "otelcol_checksum is CHANGE_ME. Set it in defaults/main.yml using the SHA256 from the checksums.txt at the GitHub releases URL in that file."
+
+- name: Assert otelcol_minio_endpoint is set
+  ansible.builtin.assert:
+    that:
+      - otelcol_minio_endpoint | length > 0
+    fail_msg: "otelcol_minio_endpoint is empty. Ensure services.log_server is in config/<env>.yml and run make configure."
+
+- name: Assert OTELCOL_MINIO_ACCESS_KEY is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'OTELCOL_MINIO_ACCESS_KEY') | length > 0
+    fail_msg: "OTELCOL_MINIO_ACCESS_KEY is not set. Add it to .envrc and run: source .envrc"
+
+- name: Assert OTELCOL_MINIO_SECRET_KEY is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'OTELCOL_MINIO_SECRET_KEY') | length > 0
+    fail_msg: "OTELCOL_MINIO_SECRET_KEY is not set. Add it to .envrc and run: source .envrc"
+
+# Set once here so configure.yml and bucket.yml share the same facts without duplication.
+- name: Set otelcol MinIO credentials as facts
+  ansible.builtin.set_fact:
+    otelcol_minio_access_key: "{{ lookup('env', 'OTELCOL_MINIO_ACCESS_KEY') }}"
+    otelcol_minio_secret_key: "{{ lookup('env', 'OTELCOL_MINIO_SECRET_KEY') }}"
+  no_log: true
+
+- name: Install otelcol-contrib
+  ansible.builtin.include_tasks: install.yml
+
+- name: Configure otelcol-contrib
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Provision MinIO bucket and IAM
+  ansible.builtin.include_tasks: bucket.yml
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Manage otelcol-contrib service
+  ansible.builtin.include_tasks: service.yml

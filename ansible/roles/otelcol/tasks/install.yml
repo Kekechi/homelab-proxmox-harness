@@ -1,0 +1,29 @@
+---
+- name: Check installed otelcol-contrib version
+  ansible.builtin.command: dpkg-query -W -f='${Version}' otelcol-contrib
+  register: otelcol_installed_version
+  failed_when: false
+  changed_when: false
+
+- name: Download otelcol-contrib DEB
+  ansible.builtin.get_url:
+    url: >-
+      https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{
+      otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb
+    dest: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+    checksum: "sha256:{{ otelcol_checksum }}"
+    mode: "0644"
+  when: otelcol_installed_version.rc != 0 or otelcol_installed_version.stdout != otelcol_version
+
+- name: Install otelcol-contrib DEB
+  ansible.builtin.apt:
+    deb: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+  when: otelcol_installed_version.rc != 0 or otelcol_installed_version.stdout != otelcol_version
+  notify:
+    - Reload systemd
+    - Restart otelcol-contrib
+
+- name: Remove downloaded otelcol-contrib DEB
+  ansible.builtin.file:
+    path: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+    state: absent

@@ -1,0 +1,13 @@
+---
+# IMPORTANT: "Reload systemd" must remain before "Restart otelcol-contrib".
+# Ansible fires handlers in definition order; systemd must reload the unit
+# files before the service restarts, otherwise the drop-in EnvironmentFile
+# changes are not picked up.
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart otelcol-contrib
+  ansible.builtin.systemd:
+    name: otelcol-contrib
+    state: restarted

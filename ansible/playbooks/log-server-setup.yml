@@ -1,0 +1,35 @@
+---
+- name: Pre-flight — verify controller tools
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Verify mcli is available on controller
+      ansible.builtin.command: mcli --version
+      changed_when: false
+      register: mcli_version_check
+      failed_when: mcli_version_check.rc != 0
+
+    - name: Verify MINIO_ENDPOINT is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'MINIO_ENDPOINT') | length > 0
+        fail_msg: "MINIO_ENDPOINT is not set. Add it to .envrc and run: source .envrc"
+
+    - name: Verify MINIO_ROOT_USER is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'MINIO_ROOT_USER') | length > 0
+        fail_msg: "MINIO_ROOT_USER is not set. Add it to .envrc and run: source .envrc"
+
+    - name: Verify MINIO_ROOT_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'MINIO_ROOT_PASSWORD') | length > 0
+        fail_msg: "MINIO_ROOT_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+- name: Deploy OTel Collector on Log Server
+  hosts: log_server
+  become: true
+  roles:
+    - otelcol

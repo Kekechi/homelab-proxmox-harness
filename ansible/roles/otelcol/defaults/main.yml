@@ -1,0 +1,24 @@
+---
+# otelcol-contrib version to install (pinned for reproducibility)
+otelcol_version: "0.150.1"
+
+# SHA256 checksum for the version above.
+# Get from: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v<version>/otelcol-contrib_<version>_checksums.txt
+# Must be updated whenever otelcol_version changes.
+otelcol_checksum: "c8ded6c8dbe38e63b63fbfb86b5eff485ba91616254b58ae21dc71d03ba1b922"
+
+# MinIO bucket for log storage
+otelcol_minio_bucket: "otelcol-logs"
+
+# MinIO endpoint — overridden by gen_inventory for the log_server group.
+# Empty default: main.yml asserts non-empty before continuing.
+otelcol_minio_endpoint: ""
+
+# Memory limiter processor
+otelcol_memory_limit_mib: 400
+otelcol_memory_spike_limit_mib: 100
+otelcol_memory_check_interval: "1s"
+
+# Batch processor
+otelcol_batch_timeout: "60s"
+otelcol_batch_size: 1000

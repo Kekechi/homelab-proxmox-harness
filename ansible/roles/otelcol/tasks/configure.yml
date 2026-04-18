@@ -1,0 +1,50 @@
+---
+- name: Create otelcol-contrib config directory
+  ansible.builtin.file:
+    path: /etc/otelcol-contrib
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template OTel Collector config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/otelcol-contrib/config.yaml
+    owner: root
+    group: otelcol-contrib
+    mode: "0640"
+  notify: Restart otelcol-contrib
+
+- name: Create otelcol-contrib systemd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/otelcol-contrib.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Template otelcol-contrib credentials environment file
+  ansible.builtin.template:
+    src: otelcol-contrib.env.j2
+    dest: /etc/otelcol-contrib/otelcol-contrib.env
+    owner: root
+    group: otelcol-contrib
+    mode: "0640"
+  no_log: true
+  notify:
+    - Reload systemd
+    - Restart otelcol-contrib
+
+- name: Install otelcol-contrib systemd drop-in for EnvironmentFile
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/otelcol-contrib.service.d/credentials.conf
+    content: |
+      [Service]
+      EnvironmentFile=/etc/otelcol-contrib/otelcol-contrib.env
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart otelcol-contrib

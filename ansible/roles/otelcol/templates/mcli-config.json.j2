@@ -1,0 +1,12 @@
+{
+  "version": "10",
+  "aliases": {
+    "homelab-minio-otelcol": {
+      "url": "{{ otelcol_minio_admin_endpoint }}",
+      "accessKey": "{{ otelcol_minio_root_user }}",
+      "secretKey": "{{ otelcol_minio_root_password }}",
+      "api": "S3v4",
+      "path": "auto"
+    }
+  }
+}

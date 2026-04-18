@@ -1,0 +1,6 @@
+---
+- name: Enable and start otelcol-contrib
+  ansible.builtin.systemd:
+    name: otelcol-contrib
+    enabled: true
+    state: started
