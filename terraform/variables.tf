@@ -23,6 +23,11 @@ variable "nexus_node" {
   type        = string
 }
 
+variable "log_server_node" {
+  description = "Proxmox node for the Log Server LXC"
+  type        = string
+}
+
 variable "pool_id" {
   description = "Proxmox resource pool ID. Use 'sandbox' for sandbox deployments (Claude-scoped token only has ACL on /pool/sandbox). Set to '' if the target environment does not use pool isolation."
   type        = string
@@ -208,6 +213,33 @@ variable "nexus_bridge" {
 }
 
 # ---------------------------------------------------------------------------
+# Log Server — OTel Collector (LXC)
+# ---------------------------------------------------------------------------
+
+variable "log_server_ct_id" {
+  description = "Proxmox container ID for the Log Server LXC"
+  type        = number
+  default     = 206
+}
+
+variable "log_server_ipv4_address" {
+  description = "Static IPv4 address (CIDR notation) for the Log Server LXC"
+  type        = string
+  default     = null
+}
+
+variable "log_server_ipv4_gateway" {
+  description = "IPv4 gateway for the Log Server LXC"
+  type        = string
+  default     = null
+}
+
+variable "log_server_bridge" {
+  description = "Proxmox VNet bridge for the Log Server LXC. No default — generator always emits this from infrastructure.networks config."
+  type        = string
+}
+
+# ---------------------------------------------------------------------------
 # Deployment gating — incremental deployment control
 # ---------------------------------------------------------------------------
 
@@ -225,6 +257,12 @@ variable "enable_dns" {
 
 variable "enable_pki" {
   description = "Deploy the Issuing CA LXC and Root CA VM. Set true in config (services.pki.enabled) when ready for Phase 4."
+  type        = bool
+  default     = false
+}
+
+variable "enable_log_server" {
+  description = "Deploy the Log Server LXC. Set true in config (services.log_server.enabled) when ready."
   type        = bool
   default     = false
 }

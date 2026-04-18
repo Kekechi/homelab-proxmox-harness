@@ -181,3 +181,36 @@ module "nexus" {
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
 }
+
+# ---------------------------------------------------------------------------
+# Log Server — OTel Collector
+#
+# Permanent always-on LXC for centralized log aggregation.
+# Syslog receiver listens on port 1514 (not 514 — unprivileged LXC
+# cannot bind ports < 1024). All syslog sources target port 1514.
+# ---------------------------------------------------------------------------
+
+module "log_server" {
+  count  = var.enable_log_server ? 1 : 0
+  source = "./modules/proxmox-lxc"
+
+  node_name        = var.log_server_node
+  pool_id          = var.pool_id
+  hostname         = "log-server"
+  vm_id            = var.log_server_ct_id
+  template_file_id = var.lxc_template_file_id
+  os_type          = "debian"
+  unprivileged     = true
+  started          = true
+  start_on_boot    = true
+  cores            = 1
+  memory_mb        = 1024
+  disk_size_gb     = 100
+  datastore_id     = var.datastore_id
+  bridge           = var.log_server_bridge
+  vlan_id          = null
+  ipv4_address     = var.log_server_ipv4_address
+  ipv4_gateway     = var.log_server_ipv4_gateway
+  ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
+  dns_servers      = var.dns_servers
+}

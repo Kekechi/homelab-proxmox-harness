@@ -155,6 +155,8 @@ _ENVRC_SECRET_VARS = [
     "PDNS_DNSDIST_API_KEY",
     "NEXUS_ADMIN_PASSWORD",
     "NEXUS_READER_PASSWORD",
+    "OTELCOL_MINIO_ACCESS_KEY",
+    "OTELCOL_MINIO_SECRET_KEY",
 ]
 
 
@@ -663,6 +665,29 @@ def gen_inventory(cfg: dict, env: str) -> str:
                             lines.append(f"          - {entry}")
                     else:
                         lines.append(f"        nexus_apt_proxy_repos: []")
+                elif svc_name == "log_server":
+                    minio_svc = svcs.get("minio", {})
+                    minio_tls = minio_svc.get("tls", False)
+                    minio_fqdn = minio_svc.get("fqdn", "")
+                    minio_ip = _strip_prefix(minio_svc.get("ip", ""))
+                    minio_port = minio_svc.get("port", 9000)
+                    if minio_tls and minio_fqdn:
+                        otelcol_endpoint = f"https://{minio_fqdn}:{minio_port}"
+                    elif minio_ip:
+                        otelcol_endpoint = f"http://{minio_ip}:{minio_port}"
+                    else:
+                        otelcol_endpoint = ""
+                    if otelcol_endpoint:
+                        lines.append(f"      vars:")
+                        lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
+                    else:
+                        print(
+                            "ERROR: services.log_server is present but otelcol_minio_endpoint "
+                            "cannot be derived — set services.minio.ip (or services.minio.fqdn "
+                            "when tls: true) in config/<env>.yml and re-run make configure.",
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")
@@ -805,10 +830,11 @@ def gen_envrc(cfg: dict, env: str) -> str:
         print("ERROR: services.minio.tls is true but services.minio.fqdn is not set.", file=sys.stderr)
         sys.exit(1)
     if m.get("ip"):
-        # Always use IP — dev container cannot resolve internal FQDNs through Squid.
-        # MinIO TLS cert includes the IP as a SAN so TLS validates against the IP.
-        scheme = "https" if minio_tls else "http"
-        minio_endpoint = f'{scheme}://{_strip_prefix(m["ip"])}:{m.get("port", 9000)}'
+        if minio_tls and minio_fqdn:
+            minio_endpoint = f"https://{minio_fqdn}:{m.get('port', 9000)}"
+        else:
+            scheme = "https" if minio_tls else "http"
+            minio_endpoint = f'{scheme}://{_strip_prefix(m["ip"])}:{m.get("port", 9000)}'
     else:
         minio_endpoint = CHANGE_ME
 
@@ -845,6 +871,10 @@ def gen_envrc(cfg: dict, env: str) -> str:
         # Nexus credentials — used by Ansible nexus-setup.yml playbook
         export NEXUS_ADMIN_PASSWORD="{CHANGE_ME}"   # Nexus admin account password
         export NEXUS_READER_PASSWORD="{CHANGE_ME}"  # nexus-reader account (read-only APT/artifact access)
+
+        # OTel Collector credentials — used by Ansible log-server-setup.yml playbook
+        export OTELCOL_MINIO_ACCESS_KEY="{CHANGE_ME}"  # write-scoped key for otelcol-logs bucket
+        export OTELCOL_MINIO_SECRET_KEY="{CHANGE_ME}"  # write-scoped secret
 
         # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
         # Go (Terraform) and curl pick this up; no container rebuild needed.

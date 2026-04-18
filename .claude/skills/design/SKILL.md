@@ -36,7 +36,7 @@ If the domain is missing, ask the operator to add it **now** — before design b
 
 Before asking anything, do three things:
 
-1. **Check if the goal is clear enough** — if the technology and rough purpose are stated, that's enough to start. Don't demand a fully-formed spec.
+1. **Check if the goal is clear enough** — if the technology and rough purpose are stated, that's enough to start. Don't demand a fully-formed spec. If a prior document is provided as context, treat it as a brainstorm: surface its claims as assumptions to evaluate, not as decisions already made.
 2. **Identify the key decision axes** — what are the 3-5 design dimensions that will shape this infrastructure? (e.g., topology, network placement, operations, security, extensibility)
 3. **Flag any false constraints** — if the user has stated a blocker, ask yourself: is it real? Name it early if it isn't.
 
@@ -78,6 +78,7 @@ Work through decision axes in dependency order — don't discuss sizing before t
 | Environment asymmetry | Note when sandbox and production designs diverge and whether that's intentional |
 | Operational debt | Flag complexity that feels clever now but will hurt during incidents |
 | Premature extensibility | Call it out — design for what's needed, note the extension path |
+| Prior document bias | Treat any context document (brainstorm, prior design, session notes) as unvalidated input — no decision in it is locked. Challenge claims with the same rigor as new proposals. Committed docs (finalized design records) are different; brainstorms and hackpad notes are not. |
 
 ## Phase 3: Audit
 
