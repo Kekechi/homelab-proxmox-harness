@@ -17,6 +17,23 @@
 - name: Common setup for Nexus host
   hosts: nexus
   become: true
+  pre_tasks:
+    # Nexus is its own APT proxy — it must not depend on itself for the packages
+    # needed to deploy itself (circular dependency). Direct upstream avoids this
+    # for all stages: first install, TLS deployment, and re-runs. The step_client
+    # role in Play 3 is overridden (nexus_apt_proxy: "") to stay consistent.
+    - name: Pin smallstep APT sources to direct upstream on Nexus host
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/smallstep.sources
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Types: deb
+          URIs: https://packages.smallstep.com/stable/debian
+          Suites: debs
+          Components: main
+          Signed-By: /etc/apt/keyrings/smallstep.asc
   roles:
     - common
 
@@ -26,8 +43,10 @@
   roles:
     - nexus
 
-- name: Deploy step CLI client
+- name: Deploy step CLI client (direct upstream — Nexus must not proxy its own deps)
   hosts: nexus
   become: true
   roles:
-    - step_client
+    - role: step_client
+      vars:
+        nexus_apt_proxy: ""  # noqa: var-naming — shared infra var, not step_client-specific

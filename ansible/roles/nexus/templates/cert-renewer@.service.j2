@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Runs as root: needs to write cert files (owned by www-data) and reload nginx via systemctl.
+# Runs as root: needs to write cert files (owned by www-data) and reload the service via systemctl.
+# %i is both the cert filename base (/etc/nginx/certs/%i.crt) and the service to reload.
 # ExecStartPost chowns cert files back to nginx user before the reload so nginx can read them.
 ExecCondition=/usr/bin/step certificate needs-renewal /etc/nginx/certs/%i.crt
 ExecStart=/usr/bin/step ca renew --force /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key \

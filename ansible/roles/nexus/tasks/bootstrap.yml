@@ -369,3 +369,20 @@
       httpClient:
         blocked: false
         autoBlock: true
+
+- name: Create raw hosted repos
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: "{{ item.name }}"
+    repo_type: raw/hosted
+    repo_body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+        writePolicy: allow
+  loop: "{{ nexus_raw_hosted_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: nexus_raw_hosted_repos | default([]) | length > 0

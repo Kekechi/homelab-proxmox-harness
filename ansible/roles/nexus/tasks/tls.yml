@@ -24,7 +24,7 @@
   block:
     - name: Stat Nexus TLS certificate
       ansible.builtin.stat:
-        path: /etc/nginx/certs/nexus.crt
+        path: /etc/nginx/certs/nginx.crt
       register: nexus_cert_stat
 
     - name: Issue Nexus TLS certificate
@@ -47,8 +47,8 @@
           ansible.builtin.command:
             cmd: >-
               step ca certificate {{ nexus_domain }}
-              /etc/nginx/certs/nexus.crt
-              /etc/nginx/certs/nexus.key
+              /etc/nginx/certs/nginx.crt
+              /etc/nginx/certs/nginx.key
               --provisioner {{ nexus_jwk_provisioner }}
               --provisioner-password-file {{ nexus_prov_pass_file.path }}
               --ca-url {{ nexus_ca_url }}
@@ -69,7 +69,7 @@
 
     - name: Re-stat certificate after issuance attempt
       ansible.builtin.stat:
-        path: /etc/nginx/certs/nexus.crt
+        path: /etc/nginx/certs/nginx.crt
       register: nexus_cert_post_stat
 
     - name: Harden certificate file permissions
@@ -79,8 +79,8 @@
         group: "{{ nexus_nginx_user }}"
         mode: "{{ item.mode }}"
       loop:
-        - { name: nexus.crt, mode: "0640" }
-        - { name: nexus.key, mode: "0600" }
+        - { name: nginx.crt, mode: "0640" }
+        - { name: nginx.key, mode: "0600" }
       when: nexus_cert_post_stat.stat.exists
 
     - name: Deploy cert-renewer and start nginx
