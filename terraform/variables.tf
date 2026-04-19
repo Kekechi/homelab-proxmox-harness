@@ -28,6 +28,11 @@ variable "log_server_node" {
   type        = string
 }
 
+variable "splunk_node" {
+  description = "Proxmox node for the Splunk Enterprise VM"
+  type        = string
+}
+
 variable "pool_id" {
   description = "Proxmox resource pool ID. Use 'sandbox' for sandbox deployments (Claude-scoped token only has ACL on /pool/sandbox). Set to '' if the target environment does not use pool isolation."
   type        = string
@@ -240,6 +245,38 @@ variable "log_server_bridge" {
 }
 
 # ---------------------------------------------------------------------------
+# Splunk Enterprise — AI Hackathon VM
+# ---------------------------------------------------------------------------
+
+variable "splunk_vm_id" {
+  description = "Proxmox VM ID for the Splunk Enterprise VM"
+  type        = number
+  default     = 207
+}
+
+variable "splunk_ipv4_address" {
+  description = "Static IPv4 address (CIDR notation) for the Splunk VM"
+  type        = string
+  default     = null
+}
+
+variable "splunk_ipv4_gateway" {
+  description = "IPv4 gateway for the Splunk VM"
+  type        = string
+  default     = null
+}
+
+variable "splunk_bridge" {
+  description = "Proxmox VNet bridge for the Splunk VM. No default — generator always emits this from infrastructure.networks config."
+  type        = string
+}
+
+variable "splunk_cloud_init_template_id" {
+  description = "VMID of the Ubuntu 24.04 cloud-init VM template used to clone the Splunk VM. Distinct from the global cloud_init_template_id (Debian 13, used by PKI root CA) — must not collide."
+  type        = number
+}
+
+# ---------------------------------------------------------------------------
 # Deployment gating — incremental deployment control
 # ---------------------------------------------------------------------------
 
@@ -263,6 +300,12 @@ variable "enable_pki" {
 
 variable "enable_log_server" {
   description = "Deploy the Log Server LXC. Set true in config (services.log_server.enabled) when ready."
+  type        = bool
+  default     = false
+}
+
+variable "enable_splunk" {
+  description = "Deploy the Splunk Enterprise VM. Set true in config (services.splunk.enabled) when ready."
   type        = bool
   default     = false
 }

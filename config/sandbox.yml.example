@@ -142,6 +142,8 @@ services:
       - name: apt-proxy-proxmox-ceph-squid
         remote_url: "http://download.proxmox.com/debian/ceph-squid"
         distribution: trixie
+    raw_hosted_repos:
+      - name: splunkbase               # Splunk app packages (.tgz) — operator uploads post-Phase-1-step-1
 
   log_server:
     enabled: false                         # Set true to deploy OTel Collector log aggregation LXC
@@ -151,6 +153,17 @@ services:
     ansible_user: root
     hostname: log-server
     network: sandbox
+
+  splunk:
+    enabled: false                         # Set true to deploy Splunk Enterprise VM (hackathon lifecycle)
+    node: pve1
+    ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
+    vm_id: 207                         # must not conflict (201–206 occupied)
+    ansible_user: ubuntu               # Ubuntu 24.04 default user
+    hostname: splunk-server
+    cloud_init_template_id: 9001       # VMID of Ubuntu 24.04 cloud-init template — operator creates pre-phase
+    network: sandbox
+    # hec_port: 8088                  # optional: Splunk HEC ingest port (default 8088); used to emit otelcol_splunk_hec_url
 
 # Ad-hoc hosts not covered by a named service above.
 # Each top-level key is an Ansible group; hosts within are inventory entries.

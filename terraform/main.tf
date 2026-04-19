@@ -214,3 +214,37 @@ module "log_server" {
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
 }
+
+# ---------------------------------------------------------------------------
+# Splunk Enterprise — AI Hackathon
+#
+# Ubuntu 24.04 VM for Splunk Enterprise development instance.
+# started = true for initial software install; start_on_boot = false
+# so operator starts it manually when actively developing.
+# Sized to Splunk Enterprise single-instance minimums: 4 vCPU, 12 GB RAM, 150 GB disk.
+# ---------------------------------------------------------------------------
+
+module "splunk" {
+  count  = var.enable_splunk ? 1 : 0
+  source = "./modules/proxmox-vm"
+
+  node_name              = var.splunk_node
+  pool_id                = var.pool_id
+  vm_name                = "splunk"
+  vm_id                  = var.splunk_vm_id
+  clone_template_id      = var.splunk_cloud_init_template_id
+  cloudinit_datastore_id = var.cloudinit_datastore_id
+  started                = true
+  start_on_boot          = false
+  agent_enabled          = true
+  cores                  = 4
+  memory_mb              = 12288
+  disk_size_gb           = 150
+  datastore_id           = var.datastore_id
+  bridge                 = var.splunk_bridge
+  vlan_id                = null
+  ipv4_address           = var.splunk_ipv4_address
+  ipv4_gateway           = var.splunk_ipv4_gateway
+  ssh_public_key         = var.ssh_public_key
+  dns_servers            = var.dns_servers
+}

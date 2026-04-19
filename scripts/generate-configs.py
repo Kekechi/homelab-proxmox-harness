@@ -377,6 +377,25 @@ _NEXUS_REQUIRED_APT_REPOS = {
 }
 
 
+def validate_nexus_raw_hosted_repos(repos: list, field: str) -> None:
+    """Validate raw hosted repo entries — each must be a dict with a name field."""
+    _UNSAFE = {'"', "\n", "\r", "}", ","}
+    for i, repo in enumerate(repos):
+        if not isinstance(repo, dict):
+            sys.exit(
+                f"Config error: '{field}[{i}]' must be a mapping (got "
+                f"{type(repo).__name__!r}). Each entry needs a name key."
+            )
+        name = repo.get("name", "")
+        if not name:
+            sys.exit(f"Config error: '{field}[{i}]' is missing required 'name' key.")
+        if any(c in name for c in _UNSAFE):
+            sys.exit(
+                f"Config error: '{field}[{i}].name' contains a character not allowed "
+                f"in generated YAML flow-mapping (\", }}, ,, or newline). Remove it and re-run."
+            )
+
+
 def validate_nexus_apt_proxy_repos(repos: list, field: str) -> None:
     """Assert all IaC-required APT proxy repo names are present and field values are safe."""
     _UNSAFE = {'"', "\n", "\r", "}", ","}
@@ -462,6 +481,7 @@ def gen_tfvars(cfg: dict, env: str) -> str:
     enable_dns        = bool(svcs.get("dns", {}).get("enabled", False))
     enable_nexus      = bool(svcs.get("nexus", {}).get("enabled", False))
     enable_log_server = bool(svcs.get("log_server", {}).get("enabled", False))
+    enable_splunk     = bool(svcs.get("splunk", {}).get("enabled", False))
     dns_server   = infra.get("dns_server", "").strip()
     dns_servers_hcl = f'["{dns_server}"]' if dns_server else "[]"
     lines += [
@@ -471,6 +491,7 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'enable_dns        = {str(enable_dns).lower()}',
         f'enable_nexus      = {str(enable_nexus).lower()}',
         f'enable_log_server = {str(enable_log_server).lower()}',
+        f'enable_splunk     = {str(enable_splunk).lower()}',
         f"",
         f"# DNS resolver injected into all LXC/VM initialization blocks",
         f'dns_servers = {dns_servers_hcl}',
@@ -566,6 +587,28 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'log_server_ipv4_address = {_hcl_str(log_server_addr)}',
             f'log_server_ipv4_gateway = {_hcl_str(log_server_net["gateway"])}',
             f'log_server_bridge       = "{log_server_net["bridge"]}"',
+        ]
+
+    # Splunk section — only emitted when services.splunk is present in config
+    splunk = svcs.get("splunk", {})
+    if splunk:
+        if "cloud_init_template_id" not in splunk:
+            sys.exit(
+                "Config error: 'services.splunk.cloud_init_template_id' is required. "
+                "Set it to the VMID of the Ubuntu 24.04 cloud-init template on your Proxmox host."
+            )
+        splunk_addr = splunk.get("ip", "")
+        validate_cidr(splunk_addr, "services.splunk.ip")
+        splunk_net = resolve_network(splunk, networks, default_network, "splunk")
+        lines += [
+            f"",
+            f"# Splunk",
+            f'splunk_node                   = "{splunk["node"]}"',
+            f'splunk_vm_id                  = {splunk.get("vm_id", 207)}',
+            f'splunk_ipv4_address           = {_hcl_str(splunk_addr)}',
+            f'splunk_ipv4_gateway           = {_hcl_str(splunk_net["gateway"])}',
+            f'splunk_bridge                 = "{splunk_net["bridge"]}"',
+            f'splunk_cloud_init_template_id = {splunk["cloud_init_template_id"]}',
         ]
 
     return "\n".join(lines) + "\n"
@@ -665,6 +708,15 @@ def gen_inventory(cfg: dict, env: str) -> str:
                             lines.append(f"          - {entry}")
                     else:
                         lines.append(f"        nexus_apt_proxy_repos: []")
+                    raw_hosted_repos = svc.get("raw_hosted_repos", [])
+                    if nexus_enabled and raw_hosted_repos:
+                        validate_nexus_raw_hosted_repos(raw_hosted_repos, "services.nexus.raw_hosted_repos")
+                    if raw_hosted_repos:
+                        lines.append(f"        nexus_raw_hosted_repos:")
+                        for repo in raw_hosted_repos:
+                            lines.append(f'          - {{name: "{repo["name"]}"}}'  )
+                    else:
+                        lines.append(f"        nexus_raw_hosted_repos: []")
                 elif svc_name == "log_server":
                     minio_svc = svcs.get("minio", {})
                     minio_tls = minio_svc.get("tls", False)
@@ -677,9 +729,14 @@ def gen_inventory(cfg: dict, env: str) -> str:
                         otelcol_endpoint = f"http://{minio_ip}:{minio_port}"
                     else:
                         otelcol_endpoint = ""
+                    splunk_svc = svcs.get("splunk", {})
+                    splunk_ip = _strip_prefix(splunk_svc.get("ip", ""))
+                    splunk_hec_port = splunk_svc.get("hec_port", 8088)
                     if otelcol_endpoint:
                         lines.append(f"      vars:")
                         lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
+                        if splunk_ip:
+                            lines.append(f"        otelcol_splunk_hec_url: \"http://{splunk_ip}:{splunk_hec_port}\"")
                     else:
                         print(
                             "ERROR: services.log_server is present but otelcol_minio_endpoint "
