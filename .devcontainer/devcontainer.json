@@ -14,7 +14,8 @@
         "mkhl.direnv",
         "tamasfe.even-better-toml",
         "ms-azuretools.vscode-docker",
-        "github.vscode-github-actions"
+        "github.vscode-github-actions",
+        "anthropic.claude-code"
       ],
       "settings": {
         "terraform.experimentalFeatures.validateOnSave": true,
