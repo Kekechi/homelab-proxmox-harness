@@ -1,7 +1,7 @@
 ---
 name: iac-planner
 description: Plans infrastructure changes for Proxmox homelab — creates implementation plans before any Terraform/Ansible code is written
-tools: ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"]
+tools: ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "Write"]
 model: opus
 ---
 
@@ -31,6 +31,8 @@ You plan infrastructure changes before any code is written. Your output is a str
 4. Assess risk: what is destructive? what is reversible?
 
 ### Phase 4: Output Plan
+
+**Before returning**, write the plan to `.claude/session/plan-<name>.md` where `<name>` is a short slug derived from the plan subject (e.g. `plan-log-server.md`). Add a `Status: Awaiting Approval` line at the top. This ensures the plan survives a context compact or clear before the operator approves it.
 
 Produce a structured plan with this format:
 

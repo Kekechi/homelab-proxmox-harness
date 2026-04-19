@@ -27,23 +27,19 @@ Resolve these in conversation first, then hand a complete brief to the agent.
 
 ## Human Checkpoint
 
-After the plan is produced, **stop and wait for explicit user approval**. Do not proceed to code generation until the user approves (words like "approved", "looks good", "proceed", or equivalent).
+The iac-planner writes the plan directly to `.claude/session/plan-<name>.md` (Status: Awaiting Approval) before returning. After presenting the plan to the user, say:
 
-If the user requests changes to the plan, relaunch iac-planner with the revised requirements and repeat the checkpoint.
+> "Plan saved to `.claude/session/plan-<name>.md`. If context is getting long, you can `/compact` or `/clear` now — the plan is already on disk. Approve when ready."
+
+Then **stop and wait for explicit user approval**. Do not proceed to code generation until the user approves (words like "approved", "looks good", "proceed", or equivalent).
+
+If the user requests changes to the plan, relaunch iac-planner with the revised requirements and repeat the checkpoint. The agent will overwrite the session file with the updated plan.
 
 ## Artifact
 
-Once the user approves the plan, write it to:
+The iac-planner writes the plan file. Once the user approves, update the status header in `.claude/session/plan-<name>.md` from `Status: Awaiting Approval` to `Status: Approved`. Then say:
 
-```
-.claude/session/plan-<name>.md
-```
-
-Use a short slug for `<name>` derived from the plan subject (e.g. `plan-log-server.md`). Include the full plan text — every section the iac-planner produced.
-
-Then say:
-
-> "Plan written to `.claude/session/plan-<name>.md`. If context is getting long, run `/compact` now — `/generate` will read the plan from that file."
+> "Plan approved. Run `/generate` — it will read the plan from `.claude/session/plan-<name>.md`."
 
 ## Constraints
 
