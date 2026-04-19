@@ -21,6 +21,11 @@
 #                   Required when a scoped API token (e.g. terraform@pve!claude-sandbox)
 #                   needs to clone the template — the token can only see VMs in pools
 #                   it has ACL access to. Leave unset to skip pool assignment.
+#   NEXUS_APT_URL   Base URL of a Nexus apt proxy repo for the Ubuntu noble suite,
+#                   e.g. http://nexus.home.lab:8081/repository/ubuntu-noble-proxy
+#                   When set, the image installs qemu-guest-agent from Nexus instead
+#                   of Ubuntu's CDN — required when the Proxmox host has no direct
+#                   internet access. Leave unset for internet-connected environments.
 #
 # The template is created with NO network interface. Terraform adds the correct
 # bridge (net0) after cloning, keeping the template environment-agnostic and
@@ -38,6 +43,7 @@ set -euo pipefail
 TEMPLATE_VMID="${TEMPLATE_VMID:-9001}"
 STORAGE="${STORAGE:-nfs-shared}"
 TEMPLATE_POOL="${TEMPLATE_POOL:-}"
+NEXUS_APT_URL="${NEXUS_APT_URL:-}"
 # NOTE: Using the `current` URL means the downloaded image may change on re-runs,
 # producing a different template than the first run. For reproducible environments,
 # pin to a specific release:
@@ -72,6 +78,12 @@ if ! command -v qm &>/dev/null; then
   exit 1
 fi
 
+if ! command -v virt-customize &>/dev/null; then
+  echo "ERROR: 'virt-customize' not found — install libguestfs-tools:" >&2
+  echo "       apt install libguestfs-tools" >&2
+  exit 1
+fi
+
 if qm status "${TEMPLATE_VMID}" &>/dev/null; then
   echo "ERROR: VM ${TEMPLATE_VMID} already exists. Choose a different TEMPLATE_VMID or" >&2
   echo "       destroy the existing VM first:  qm destroy ${TEMPLATE_VMID}" >&2
@@ -79,18 +91,19 @@ if qm status "${TEMPLATE_VMID}" &>/dev/null; then
 fi
 
 echo "=== Ubuntu 24.04 cloud-init template setup ==="
-echo "  VMID   : ${TEMPLATE_VMID}"
-echo "  Storage: ${STORAGE}"
-echo "  Network: none (NIC added by Terraform after clone)"
+echo "  VMID      : ${TEMPLATE_VMID}"
+echo "  Storage   : ${STORAGE}"
+echo "  Network   : none (NIC added by Terraform after clone)"
+echo "  APT source: ${NEXUS_APT_URL:-"Ubuntu CDN (direct internet)"}"
 echo ""
 
 # ---------------------------------------------------------------------------
 # Download image
 # ---------------------------------------------------------------------------
 if [[ -f "${IMAGE_FILE}" ]]; then
-  echo "[1/7] Image already present at ${IMAGE_FILE}, skipping download."
+  echo "[1/8] Image already present at ${IMAGE_FILE}, skipping download."
 else
-  echo "[1/7] Downloading Ubuntu 24.04 server cloud image..."
+  echo "[1/8] Downloading Ubuntu 24.04 server cloud image..."
   wget -q --show-progress -O "${IMAGE_FILE}" "${IMAGE_URL}"
 fi
 
@@ -98,7 +111,7 @@ fi
 # Optional checksum verification
 # ---------------------------------------------------------------------------
 if [[ -n "${IMAGE_CHECKSUM}" ]]; then
-  echo "[1/7+] Verifying image checksum..."
+  echo "[1/8+] Verifying image checksum..."
   ALGO="${IMAGE_CHECKSUM%%:*}"
   EXPECTED="${IMAGE_CHECKSUM#*:}"
   ACTUAL=$(${ALGO}sum "${IMAGE_FILE}" | awk '{print $1}')
@@ -113,9 +126,35 @@ if [[ -n "${IMAGE_CHECKSUM}" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Install qemu-guest-agent into image
+#
+# virt-customize runs the image's own Ubuntu apt inside a SLIRP network
+# namespace, so the image reaches the network through the Proxmox host's
+# stack — no separate internet connection is needed inside the VM.
+#
+# NEXUS_APT_URL: when set, replaces sources.list before installing so apt
+# fetches from the Nexus proxy instead of Ubuntu's CDN. The override is
+# temporary — cloud-init overwrites sources.list on every VM's first boot,
+# so clones are not affected.
+# ---------------------------------------------------------------------------
+echo "[2/8] Installing qemu-guest-agent into image..."
+if [[ -n "${NEXUS_APT_URL}" ]]; then
+  virt-customize -a "${IMAGE_FILE}" \
+    --network \
+    --run-command "echo 'deb ${NEXUS_APT_URL} noble main' > /etc/apt/sources.list" \
+    --install qemu-guest-agent \
+    --quiet
+else
+  virt-customize -a "${IMAGE_FILE}" \
+    --network \
+    --install qemu-guest-agent \
+    --quiet
+fi
+
+# ---------------------------------------------------------------------------
 # Create base VM
 # ---------------------------------------------------------------------------
-echo "[2/7] Creating VM ${TEMPLATE_VMID}..."
+echo "[3/8] Creating VM ${TEMPLATE_VMID}..."
 qm create "${TEMPLATE_VMID}" \
   --name "ubuntu-2404-cloudinit" \
   --memory 2048 \
@@ -128,10 +167,10 @@ qm create "${TEMPLATE_VMID}" \
 # ---------------------------------------------------------------------------
 # Import and attach disk
 # ---------------------------------------------------------------------------
-echo "[3/7] Importing disk image into ${STORAGE}..."
+echo "[4/8] Importing disk image into ${STORAGE}..."
 qm importdisk "${TEMPLATE_VMID}" "${IMAGE_FILE}" "${STORAGE}"
 
-echo "[4/7] Attaching disk as scsi0..."
+echo "[5/8] Attaching disk as scsi0..."
 DISK_REF=$(qm config "${TEMPLATE_VMID}" | awk -F': ' '/^unused0:/{print $2}')
 if [[ -z "${DISK_REF}" ]]; then
   echo "ERROR: Could not find imported disk in VM ${TEMPLATE_VMID} config." >&2
@@ -147,14 +186,14 @@ qm set "${TEMPLATE_VMID}" \
 # ---------------------------------------------------------------------------
 # Cloud-init drive
 # ---------------------------------------------------------------------------
-echo "[5/7] Adding cloud-init drive on ide2..."
+echo "[6/8] Adding cloud-init drive on ide2..."
 qm set "${TEMPLATE_VMID}" \
   --ide2 "${STORAGE}:cloudinit"
 
 # ---------------------------------------------------------------------------
 # Boot and resize
 # ---------------------------------------------------------------------------
-echo "[6/7] Configuring boot order and resizing disk to ${DISK_SIZE}..."
+echo "[7/8] Configuring boot order and resizing disk to ${DISK_SIZE}..."
 qm set "${TEMPLATE_VMID}" \
   --boot "order=scsi0" \
   --citype nocloud
@@ -164,7 +203,7 @@ qm resize "${TEMPLATE_VMID}" scsi0 "${DISK_SIZE}"
 # ---------------------------------------------------------------------------
 # Convert to template
 # ---------------------------------------------------------------------------
-echo "[7/7] Converting to template..."
+echo "[8/8] Converting to template..."
 qm template "${TEMPLATE_VMID}"
 
 # ---------------------------------------------------------------------------
