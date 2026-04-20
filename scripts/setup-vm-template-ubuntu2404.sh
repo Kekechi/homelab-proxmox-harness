@@ -21,6 +21,11 @@
 #                   Required when a scoped API token (e.g. terraform@pve!claude-sandbox)
 #                   needs to clone the template — the token can only see VMs in pools
 #                   it has ACL access to. Leave unset to skip pool assignment.
+#   INJECT_AGENT    Set to 'false' to skip qemu-guest-agent injection via virt-customize.
+#                   Useful when libguestfs-tools is unavailable or the image already
+#                   has the agent installed. The VM is still created with --agent enabled=1
+#                   so Terraform expects the agent to be present at runtime.
+#                   (default: true)
 #   NEXUS_APT_URL   Base URL of a Nexus apt proxy repo for the Ubuntu noble suite,
 #                   e.g. http://nexus.home.lab:8081/repository/ubuntu-noble-proxy
 #                   When set, the image installs qemu-guest-agent from Nexus instead
@@ -44,6 +49,9 @@ TEMPLATE_VMID="${TEMPLATE_VMID:-9001}"
 STORAGE="${STORAGE:-nfs-shared}"
 TEMPLATE_POOL="${TEMPLATE_POOL:-}"
 NEXUS_APT_URL="${NEXUS_APT_URL:-}"
+NEXUS_APT_USER="${NEXUS_APT_USER:-}"
+NEXUS_APT_PASS="${NEXUS_APT_PASS:-}"
+INJECT_AGENT="${INJECT_AGENT:-true}"   # set to 'false' to skip qemu-guest-agent injection
 # NOTE: Using the `current` URL means the downloaded image may change on re-runs,
 # producing a different template than the first run. For reproducible environments,
 # pin to a specific release:
@@ -78,7 +86,7 @@ if ! command -v qm &>/dev/null; then
   exit 1
 fi
 
-if ! command -v virt-customize &>/dev/null; then
+if [[ "${INJECT_AGENT}" == "true" ]] && ! command -v virt-customize &>/dev/null; then
   echo "ERROR: 'virt-customize' not found — install libguestfs-tools:" >&2
   echo "       apt install libguestfs-tools" >&2
   exit 1
@@ -94,6 +102,7 @@ echo "=== Ubuntu 24.04 cloud-init template setup ==="
 echo "  VMID      : ${TEMPLATE_VMID}"
 echo "  Storage   : ${STORAGE}"
 echo "  Network   : none (NIC added by Terraform after clone)"
+echo "  Agent     : ${INJECT_AGENT}"
 echo "  APT source: ${NEXUS_APT_URL:-"Ubuntu CDN (direct internet)"}"
 echo ""
 
@@ -138,10 +147,19 @@ fi
 # so clones are not affected.
 # ---------------------------------------------------------------------------
 echo "[2/8] Installing qemu-guest-agent into image..."
-if [[ -n "${NEXUS_APT_URL}" ]]; then
-  virt-customize -a "${IMAGE_FILE}" \
+if [[ "${INJECT_AGENT}" != "true" ]]; then
+  echo "       Skipping (INJECT_AGENT=false)."
+elif [[ -n "${NEXUS_APT_URL}" ]]; then
+  # Embed credentials directly in the source URL instead of auth.conf:
+  # virt-customize --write uses the first colon as FILENAME:CONTENT separator,
+  # which conflicts with the http:// in the URL.
+  # Credentials in the URL are safe here — cloud-init overwrites sources.list on
+  # first boot, so they are never present in cloned VMs.
+  NEXUS_AUTH_URL="http://${NEXUS_APT_USER}:${NEXUS_APT_PASS}@${NEXUS_APT_URL#*://}"
+  virt-customize -v -x -a "${IMAGE_FILE}" \
     --network \
-    --run-command "echo 'deb ${NEXUS_APT_URL} noble main' > /etc/apt/sources.list" \
+    --run-command "rm -f /etc/apt/sources.list.d/ubuntu.sources" \
+    --run-command "echo \"deb ${NEXUS_AUTH_URL} noble main universe\" > /etc/apt/sources.list" \
     --install qemu-guest-agent \
     --quiet
 else
