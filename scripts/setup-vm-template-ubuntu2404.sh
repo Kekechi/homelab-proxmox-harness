@@ -156,7 +156,7 @@ elif [[ -n "${NEXUS_APT_URL}" ]]; then
   # Credentials in the URL are safe here — cloud-init overwrites sources.list on
   # first boot, so they are never present in cloned VMs.
   NEXUS_AUTH_URL="http://${NEXUS_APT_USER}:${NEXUS_APT_PASS}@${NEXUS_APT_URL#*://}"
-  virt-customize -v -x -a "${IMAGE_FILE}" \
+  virt-customize -a "${IMAGE_FILE}" \
     --network \
     --run-command "rm -f /etc/apt/sources.list.d/ubuntu.sources" \
     --run-command "echo \"deb ${NEXUS_AUTH_URL} noble main universe\" > /etc/apt/sources.list" \
