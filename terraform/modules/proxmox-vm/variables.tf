@@ -31,6 +31,12 @@ variable "cores" {
   default     = 2
 }
 
+variable "cpu_type" {
+  description = "CPU type passed to the Proxmox cpu block (e.g. x86-64-v2-AES, x86-64-v3)"
+  type        = string
+  default     = "x86-64-v2-AES"
+}
+
 variable "memory_mb" {
   description = "Dedicated RAM in MB"
   type        = number

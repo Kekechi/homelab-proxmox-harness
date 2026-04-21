@@ -238,6 +238,7 @@ module "splunk" {
   start_on_boot          = false
   agent_enabled          = true
   cores                  = 4
+  cpu_type               = "x86-64-v3"
   memory_mb              = 12288
   disk_size_gb           = 150
   datastore_id           = var.datastore_id
