@@ -1,0 +1,9 @@
+[http]
+disabled = 0
+port = {{ splunk_hec_port }}
+enableSSL = 0
+
+[http://otelcol-hec]
+disabled = 0
+token = {{ splunk_hec_token }}
+index = main

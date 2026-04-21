@@ -1,0 +1,32 @@
+---
+# Splunk Enterprise version to install (pinned for reproducibility)
+splunk_version: "10.2.2"
+
+# DEB package filename and SHA256 checksum for the version above.
+# Get checksum from: https://www.splunk.com/en_us/download/splunk-enterprise.html
+splunk_deb_filename: "splunk-10.2.2-80b90d638de6-linux-amd64.deb"
+splunk_deb_checksum: "sha256:55565af222ca6bd1fc389ba48fcb27614a8c43760fff66a678bcf6f9ed8ed9b3"
+
+# App filenames and SHA256 checksums (must be uploaded to Nexus splunk raw repo before deployment)
+# Compute checksums with: sha256sum <filename>
+splunk_app_mcp_filename: "splunk-mcp-server_110.tgz"
+splunk_app_mcp_checksum: "sha256:6d2a3f50aa387b06b276e254c459d940bc9e9fa1b85d891ec8df01c2623b433a"
+splunk_app_aitoolkit_filename: "splunk-ai-toolkit_572.tgz"
+splunk_app_aitoolkit_checksum: "sha256:2cf88f5196fca37b91a27b93971a98f372f164e26b55dc59570e573287b75fe8"
+
+# Path to a Splunk Enterprise license .xml file on the Ansible controller.
+# Leave empty to skip license installation.
+splunk_license_file: ""
+
+# Network ports
+splunk_hec_port: 8088
+splunk_mgmt_port: 8089
+
+# Secrets — resolved from environment variables on the Ansible controller.
+# Set these in .envrc before running the playbook.
+splunk_admin_password: "{{ lookup('env', 'SPLUNK_ADMIN_PASSWORD') }}"
+splunk_hec_token: "{{ lookup('env', 'SPLUNK_HEC_TOKEN') }}"
+splunk_mcp_password: "{{ lookup('env', 'SPLUNK_MCP_PASSWORD') }}"
+
+# nexus_apt_proxy and nexus_reader_password are shared infrastructure variables.
+# They must be supplied by the caller (playbook vars: or group_vars) — not defined here.

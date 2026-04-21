@@ -1,0 +1,76 @@
+---
+# lookup('env', ...) always resolves on the Ansible controller, regardless of which host the task runs on.
+
+- name: Assert SPLUNK_ADMIN_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - splunk_admin_password | length > 0
+    fail_msg: "SPLUNK_ADMIN_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+- name: Assert SPLUNK_HEC_TOKEN is set
+  ansible.builtin.assert:
+    that:
+      - splunk_hec_token | length > 0
+    fail_msg: "SPLUNK_HEC_TOKEN is not set. Add it to .envrc and run: source .envrc"
+
+- name: Assert SPLUNK_MCP_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - splunk_mcp_password | length > 0
+    fail_msg: "SPLUNK_MCP_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+- name: Assert NEXUS_READER_PASSWORD is set
+  ansible.builtin.assert:
+    that:
+      - (nexus_reader_password | default('')) | length > 0
+    fail_msg: "NEXUS_READER_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+- name: Assert nexus_apt_proxy is set
+  ansible.builtin.assert:
+    that:
+      - nexus_apt_proxy | length > 0
+    fail_msg: "nexus_apt_proxy is empty. Ensure the splunk host has nexus_apt_proxy set in inventory group_vars or host_vars."
+
+- name: Assert splunk_deb_checksum is populated
+  ansible.builtin.assert:
+    that:
+      - splunk_deb_checksum != 'sha256:CHANGE_ME'
+    fail_msg: "splunk_deb_checksum must be set. Get the SHA256 from https://www.splunk.com/en_us/download/splunk-enterprise.html"
+
+- name: Assert splunk_app_mcp_checksum is populated
+  ansible.builtin.assert:
+    that:
+      - splunk_app_mcp_checksum != 'sha256:CHANGE_ME'
+    fail_msg: "splunk_app_mcp_checksum must be set. Compute: sha256sum {{ splunk_app_mcp_filename }}"
+
+- name: Assert splunk_app_aitoolkit_checksum is populated
+  ansible.builtin.assert:
+    that:
+      - splunk_app_aitoolkit_checksum != 'sha256:CHANGE_ME'
+    fail_msg: "splunk_app_aitoolkit_checksum must be set. Compute: sha256sum {{ splunk_app_aitoolkit_filename }}"
+
+- name: Install Splunk Enterprise
+  ansible.builtin.include_tasks: install.yml
+
+- name: Install Splunk license
+  ansible.builtin.include_tasks: license.yml
+
+- name: Install Splunk apps
+  ansible.builtin.include_tasks: apps.yml
+
+- name: Configure Splunk inputs
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Flush handlers (single restart covers license, apps, inputs.conf)
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify Splunk is healthy
+  ansible.builtin.include_tasks: verify.yml
+
+# RBAC tasks depend on verify.yml having confirmed API readiness — keep this after verify.yml.
+# Apps must also be loaded before rbac.yml so the mcp_tool_execute capability is registered.
+- name: Configure RBAC
+  ansible.builtin.include_tasks: rbac.yml
+
+- name: Print post-deployment instructions
+  ansible.builtin.include_tasks: debug.yml

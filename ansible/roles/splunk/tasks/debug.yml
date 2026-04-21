@@ -1,0 +1,20 @@
+---
+- name: Print MCP token generation instructions
+  ansible.builtin.debug:
+    msg: |
+      Splunk deployment complete.
+
+      To generate an MCP authentication token for the mcp user, run the following
+      command on the Splunk host (or via the Splunk Web UI under Settings > Tokens):
+
+        /opt/splunk/bin/splunk create-authtokens \
+          -user mcp \
+          -auth admin:<SPLUNK_ADMIN_PASSWORD>
+
+      Alternatively, generate a token via the REST API:
+
+        curl -k -u admin:<SPLUNK_ADMIN_PASSWORD> \
+          -X POST https://localhost:{{ splunk_mgmt_port }}/services/authorization/tokens \
+          -d "name=mcp&user=mcp&audience=mcp-server"
+
+      Store the returned token securely. It is required to authenticate MCP Server requests.

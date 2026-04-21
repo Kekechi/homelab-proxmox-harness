@@ -1,0 +1,11 @@
+---
+- name: Deploy inputs.conf (HEC configuration)
+  ansible.builtin.template:
+    src: inputs.conf.j2
+    dest: /opt/splunk/etc/system/local/inputs.conf
+    owner: splunk
+    group: splunk
+    mode: "0644"
+  # no_log suppresses the diff because inputs.conf contains splunk_hec_token
+  no_log: true
+  notify: Restart Splunk

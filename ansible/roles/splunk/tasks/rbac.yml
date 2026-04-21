@@ -1,0 +1,72 @@
+---
+# Capabilities registered by the MCP Server app (mcp_tool_execute) are not Splunk built-ins.
+# To avoid a 400 if the capability string is not yet known at role-creation time, the role is
+# created without capabilities first, then updated in a second call after the app is loaded.
+- name: Create mcp-user role
+  ansible.builtin.uri:
+    url: "https://localhost:{{ splunk_mgmt_port }}/services/authorization/roles"
+    method: POST
+    url_username: admin
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: form-urlencoded
+    body:
+      name: mcp-user
+    status_code:
+      - 201
+      - 409
+  register: splunk_role_result
+  changed_when: splunk_role_result.status == 201
+  no_log: true
+
+- name: Add mcp_tool_execute capability to mcp-user role
+  ansible.builtin.uri:
+    url: "https://localhost:{{ splunk_mgmt_port }}/services/authorization/roles/mcp-user"
+    method: POST
+    url_username: admin
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: form-urlencoded
+    body:
+      capabilities: mcp_tool_execute
+    status_code:
+      - 200
+  # changed_when: false — capability POST is idempotent but always returns 200; no reliable diff available
+  changed_when: false
+  no_log: true
+
+- name: Check if mcp user exists
+  ansible.builtin.uri:
+    url: "https://localhost:{{ splunk_mgmt_port }}/services/authentication/users/mcp"
+    method: GET
+    url_username: admin
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code:
+      - 200
+      - 404
+  register: splunk_mcp_user_check
+  changed_when: false
+  no_log: true
+
+- name: Create mcp user
+  ansible.builtin.uri:
+    url: "https://localhost:{{ splunk_mgmt_port }}/services/authentication/users"
+    method: POST
+    url_username: admin
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: form-urlencoded
+    body:
+      name: mcp
+      password: "{{ splunk_mcp_password }}"
+      roles: mcp-user
+    status_code:
+      - 201
+  when: splunk_mcp_user_check.status == 404
+  changed_when: true
+  no_log: true

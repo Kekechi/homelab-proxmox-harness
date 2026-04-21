@@ -1,0 +1,23 @@
+---
+- name: Wait for Splunk management port to open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ splunk_mgmt_port }}"
+    timeout: 180
+    delay: 10
+
+- name: Verify Splunk management API is responding
+  ansible.builtin.uri:
+    url: "https://localhost:{{ splunk_mgmt_port }}/services"
+    method: GET
+    url_username: admin
+    url_password: "{{ splunk_admin_password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code:
+      - 200
+  register: splunk_health_check
+  until: splunk_health_check.status == 200
+  retries: 12
+  delay: 10
+  no_log: true

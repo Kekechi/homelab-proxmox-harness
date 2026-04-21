@@ -1,0 +1,72 @@
+---
+- name: Check if Splunk MCP Server app is installed
+  ansible.builtin.stat:
+    path: /opt/splunk/etc/apps/Splunk_MCP_Server
+  register: splunk_mcp_app_stat
+
+- name: Check if Splunk AI Toolkit app is installed
+  ansible.builtin.stat:
+    path: /opt/splunk/etc/apps/Splunk_ML_Toolkit
+  register: splunk_aitoolkit_app_stat
+
+- name: Download Splunk MCP Server app from Nexus
+  ansible.builtin.get_url:
+    url: "{{ nexus_apt_proxy }}/repository/splunk/{{ splunk_app_mcp_filename }}"
+    dest: "/tmp/{{ splunk_app_mcp_filename }}"
+    checksum: "{{ splunk_app_mcp_checksum }}"
+    mode: "0644"
+    url_username: nexus-reader
+    url_password: "{{ nexus_reader_password }}"
+  no_log: true
+  when: not splunk_mcp_app_stat.stat.exists
+
+- name: Download Splunk AI Toolkit app from Nexus
+  ansible.builtin.get_url:
+    url: "{{ nexus_apt_proxy }}/repository/splunk/{{ splunk_app_aitoolkit_filename }}"
+    dest: "/tmp/{{ splunk_app_aitoolkit_filename }}"
+    checksum: "{{ splunk_app_aitoolkit_checksum }}"
+    mode: "0644"
+    url_username: nexus-reader
+    url_password: "{{ nexus_reader_password }}"
+  no_log: true
+  when: not splunk_aitoolkit_app_stat.stat.exists
+
+- name: Install Splunk MCP Server app
+  ansible.builtin.command: >-
+    /opt/splunk/bin/splunk install app /tmp/{{ splunk_app_mcp_filename }}
+    -auth admin:{{ splunk_admin_password }}
+  register: splunk_mcp_install_result
+  failed_when: >
+    splunk_mcp_install_result.rc != 0 and
+    'already exists' not in splunk_mcp_install_result.stdout and
+    'already exists' not in splunk_mcp_install_result.stderr
+  changed_when: >
+    'already exists' not in splunk_mcp_install_result.stdout and
+    'already exists' not in splunk_mcp_install_result.stderr
+  no_log: true
+  when: not splunk_mcp_app_stat.stat.exists
+  notify: Restart Splunk
+
+- name: Install Splunk AI Toolkit app
+  ansible.builtin.command: >-
+    /opt/splunk/bin/splunk install app /tmp/{{ splunk_app_aitoolkit_filename }}
+    -auth admin:{{ splunk_admin_password }}
+  register: splunk_aitoolkit_install_result
+  failed_when: >
+    splunk_aitoolkit_install_result.rc != 0 and
+    'already exists' not in splunk_aitoolkit_install_result.stdout and
+    'already exists' not in splunk_aitoolkit_install_result.stderr
+  changed_when: >
+    'already exists' not in splunk_aitoolkit_install_result.stdout and
+    'already exists' not in splunk_aitoolkit_install_result.stderr
+  no_log: true
+  when: not splunk_aitoolkit_app_stat.stat.exists
+  notify: Restart Splunk
+
+- name: Remove downloaded app tarballs
+  ansible.builtin.file:
+    path: "/tmp/{{ item }}"
+    state: absent
+  loop:
+    - "{{ splunk_app_mcp_filename }}"
+    - "{{ splunk_app_aitoolkit_filename }}"

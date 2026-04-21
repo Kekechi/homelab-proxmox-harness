@@ -1,0 +1,27 @@
+---
+- name: Copy Splunk license file to target
+  ansible.builtin.copy:
+    src: "{{ splunk_license_file }}"
+    dest: /tmp/splunk-license.xml
+    owner: root
+    group: root
+    mode: "0600"
+  when: splunk_license_file | length > 0
+
+- name: Add Splunk license
+  ansible.builtin.command: >-
+    /opt/splunk/bin/splunk add licenses /tmp/splunk-license.xml
+    -auth admin:{{ splunk_admin_password }}
+  register: splunk_license_result
+  changed_when: >
+    'already' not in splunk_license_result.stdout and
+    'already' not in splunk_license_result.stderr
+  no_log: true
+  when: splunk_license_file | length > 0
+  notify: Restart Splunk
+
+- name: Remove license file from target
+  ansible.builtin.file:
+    path: /tmp/splunk-license.xml
+    state: absent
+  when: splunk_license_file | length > 0

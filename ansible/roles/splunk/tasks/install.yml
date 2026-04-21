@@ -1,0 +1,82 @@
+---
+- name: Check installed Splunk version
+  ansible.builtin.command: dpkg-query -W -f='${Version}' splunk
+  register: splunk_installed_version
+  failed_when: false
+  changed_when: false
+
+- name: Download Splunk Enterprise DEB from Nexus
+  ansible.builtin.get_url:
+    url: "{{ nexus_apt_proxy }}/repository/splunk/{{ splunk_deb_filename }}"
+    dest: "/tmp/{{ splunk_deb_filename }}"
+    checksum: "{{ splunk_deb_checksum }}"
+    mode: "0644"
+    url_username: nexus-reader
+    url_password: "{{ nexus_reader_password }}"
+  no_log: true
+  when: splunk_installed_version.rc != 0 or splunk_installed_version.stdout != splunk_version
+
+- name: Install Splunk Enterprise DEB
+  ansible.builtin.apt:
+    deb: "/tmp/{{ splunk_deb_filename }}"
+  when: splunk_installed_version.rc != 0 or splunk_installed_version.stdout != splunk_version
+
+- name: Remove downloaded Splunk DEB
+  ansible.builtin.file:
+    path: "/tmp/{{ splunk_deb_filename }}"
+    state: absent
+
+- name: Check if Splunk passwd file already exists (first-run detection)
+  ansible.builtin.stat:
+    path: /opt/splunk/etc/passwd
+  register: splunk_passwd_stat
+
+- name: Deploy user-seed.conf for admin password (first run only)
+  ansible.builtin.template:
+    src: user-seed.conf.j2
+    dest: /opt/splunk/etc/system/local/user-seed.conf
+    owner: splunk
+    group: splunk
+    mode: "0600"
+  no_log: true
+  when: not splunk_passwd_stat.stat.exists
+
+- name: Register Splunk systemd boot-start (first install only)
+  ansible.builtin.command: >-
+    /opt/splunk/bin/splunk enable boot-start
+    -systemd-managed 1
+    -user splunk
+    -group splunk
+    --accept-license
+    --answer-yes
+    --no-prompt
+  register: splunk_boot_start
+  # Use rc==0 as idempotency signal — Splunk 9.x stdout strings for "already enabled"
+  # are not documented and may vary; a successful rc with no state change is safe to mark
+  # changed only when a new unit file is actually written (rc != 0 means error, not no-op).
+  changed_when: >
+    splunk_boot_start.rc == 0 and
+    'already' not in splunk_boot_start.stdout and
+    'already' not in splunk_boot_start.stderr
+  when: splunk_installed_version.rc != 0 or splunk_installed_version.stdout != splunk_version
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable Splunkd service
+  ansible.builtin.systemd:
+    name: Splunkd
+    enabled: true
+
+- name: Start Splunkd service
+  ansible.builtin.systemd:
+    name: Splunkd
+    state: started
+
+- name: Wait for Splunk management port to be ready
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ splunk_mgmt_port }}"
+    timeout: 120
+    delay: 5

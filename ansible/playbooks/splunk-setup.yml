@@ -1,0 +1,45 @@
+---
+- name: Pre-flight — verify secrets
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Assert SPLUNK_ADMIN_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'SPLUNK_ADMIN_PASSWORD') | length > 0
+        fail_msg: "SPLUNK_ADMIN_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+    - name: Assert SPLUNK_HEC_TOKEN is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'SPLUNK_HEC_TOKEN') | length > 0
+        fail_msg: "SPLUNK_HEC_TOKEN is not set. Add it to .envrc and run: source .envrc"
+
+    - name: Assert SPLUNK_MCP_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'SPLUNK_MCP_PASSWORD') | length > 0
+        fail_msg: "SPLUNK_MCP_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+    - name: Assert NEXUS_READER_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
+        fail_msg: "NEXUS_READER_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
+- name: Common setup for Splunk host
+  hosts: splunk
+  become: true
+  roles:
+    - role: common
+      vars:
+        nexus_apt_proxy: ""  # noqa: var-naming[no-role-prefix] — shared infra var; Ubuntu 24.04 host skips Debian Trixie APT proxy config
+
+- name: Deploy Splunk Enterprise
+  hosts: splunk
+  become: true
+  vars:
+    nexus_reader_password: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
+  roles:
+    - splunk
