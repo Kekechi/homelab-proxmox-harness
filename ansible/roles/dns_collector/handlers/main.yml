@@ -1,0 +1,6 @@
+---
+- name: Restart dns-collector
+  ansible.builtin.systemd:
+    name: dns-collector
+    state: restarted
+    daemon_reload: true

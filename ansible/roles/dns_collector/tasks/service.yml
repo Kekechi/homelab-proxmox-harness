@@ -1,0 +1,16 @@
+---
+- name: Template dns-collector systemd unit
+  ansible.builtin.template:
+    src: dns-collector.service.j2
+    dest: /etc/systemd/system/dns-collector.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _dns_collector_unit
+  notify: Restart dns-collector
+
+- name: Enable and start dns-collector service
+  ansible.builtin.systemd:
+    name: dns-collector
+    enabled: true
+    state: started

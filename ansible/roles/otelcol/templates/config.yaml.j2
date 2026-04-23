@@ -8,6 +8,10 @@ receivers:
     tcp:
       listen_address: "0.0.0.0:1514"
     protocol: rfc5424
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:{{ otelcol_otlp_grpc_port }}"
 
 processors:
   memory_limiter:
@@ -25,6 +29,14 @@ processors:
           enabled: true
         os.type:
           enabled: true
+  resource/firewall:
+    attributes:
+      - { key: com.splunk.sourcetype, value: "network:firewall", action: insert }
+      - { key: com.splunk.source,     value: "syslog:tcp:1514",  action: insert }
+  resource/dns:
+    attributes:
+      - { key: com.splunk.sourcetype, value: "dns:query",            action: insert }
+      - { key: com.splunk.source,     value: "dnstap:dns-collector", action: insert }
 
 exporters:
   awss3:
@@ -38,7 +50,11 @@ exporters:
 service:
   extensions: [health_check]
   pipelines:
-    logs:
+    logs/firewall:
       receivers: [syslog]
-      processors: [memory_limiter, batch, resourcedetection]
+      processors: [memory_limiter, batch, resourcedetection, resource/firewall]
+      exporters: [awss3]
+    logs/dns:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection, resource/dns]
       exporters: [awss3]

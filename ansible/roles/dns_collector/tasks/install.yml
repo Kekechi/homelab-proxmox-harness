@@ -1,0 +1,76 @@
+---
+- name: Check if dns-collector binary exists
+  ansible.builtin.stat:
+    path: "{{ dns_collector_install_dir }}/dns-collector"
+  register: _dns_collector_binary
+
+- name: Check installed dns-collector version
+  ansible.builtin.shell: "{{ dns_collector_install_dir }}/dns-collector --version 2>&1"
+  register: _dns_collector_version_output
+  failed_when: false
+  changed_when: false
+  when: _dns_collector_binary.stat.exists
+
+- name: Set dns-collector installed fact
+  ansible.builtin.set_fact:
+    _dns_collector_installed: >-
+      {{ _dns_collector_binary.stat.exists and
+         dns_collector_version in (_dns_collector_version_output.stdout | default('')) }}
+
+- name: Create dns-collector system group
+  ansible.builtin.group:
+    name: "{{ dns_collector_group }}"
+    system: true
+    state: present
+
+- name: Create dns-collector system user
+  ansible.builtin.user:
+    name: "{{ dns_collector_user }}"
+    group: "{{ dns_collector_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ dns_collector_install_dir }}"
+    create_home: false
+    state: present
+
+- name: Create dns-collector install directory
+  ansible.builtin.file:
+    path: "{{ dns_collector_install_dir }}"
+    state: directory
+    owner: "{{ dns_collector_user }}"
+    group: "{{ dns_collector_group }}"
+    mode: "0755"
+
+- name: Download dns-collector tarball from Nexus
+  ansible.builtin.get_url:
+    url: "{{ nexus_apt_proxy }}/repository/dns-collector/{{ dns_collector_tarball_filename }}"
+    dest: "/tmp/{{ dns_collector_tarball_filename }}"
+    checksum: "{{ dns_collector_checksum }}"
+    mode: "0600"
+    url_username: nexus-reader
+    url_password: "{{ nexus_reader_password }}"
+  no_log: true
+  when: not _dns_collector_installed
+
+- name: Extract dns-collector binary
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ dns_collector_tarball_filename }}"
+    dest: "{{ dns_collector_install_dir }}"
+    remote_src: true
+    include:
+      - dnscollector
+  when: not _dns_collector_installed
+
+- name: Set dnscollector binary ownership and permissions
+  ansible.builtin.file:
+    path: "{{ dns_collector_install_dir }}/dnscollector"
+    owner: "{{ dns_collector_user }}"
+    group: "{{ dns_collector_group }}"
+    mode: "0755"
+  when: not _dns_collector_installed
+
+- name: Remove dns-collector tarball
+  ansible.builtin.file:
+    path: "/tmp/{{ dns_collector_tarball_filename }}"
+    state: absent
+  when: not _dns_collector_installed

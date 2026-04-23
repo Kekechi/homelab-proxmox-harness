@@ -1,0 +1,17 @@
+---
+- name: Create dns-collector config directory
+  ansible.builtin.file:
+    path: "{{ dns_collector_config_dir }}"
+    state: directory
+    owner: "{{ dns_collector_user }}"
+    group: "{{ dns_collector_group }}"
+    mode: "0750"
+
+- name: Template dns-collector config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ dns_collector_config_dir }}/config.yml"
+    owner: "{{ dns_collector_user }}"
+    group: "{{ dns_collector_group }}"
+    mode: "0640"
+  notify: Restart dns-collector

@@ -1,0 +1,11 @@
+---
+- name: Check dns-collector service is active
+  ansible.builtin.command: systemctl is-active dns-collector  # noqa command-instead-of-module
+  changed_when: false
+  register: _dns_collector_active
+
+- name: Assert dns-collector is running
+  ansible.builtin.assert:
+    that:
+      - _dns_collector_active.rc == 0
+    fail_msg: "dns-collector service is not active (systemctl is-active returned rc={{ _dns_collector_active.rc }})"

@@ -1,0 +1,11 @@
+---
+dns_collector_version: "2.2.1"
+dns_collector_tarball_filename: "DNS-collector_2.2.1_linux_amd64.tar.gz"
+dns_collector_checksum: "sha256:fde2b3020d9c010627efa5416d59bedc7ece5363885641822db8e0f0a4afd527"
+dns_collector_user: "dnscollector"
+dns_collector_group: "dnscollector"
+dns_collector_install_dir: "/opt/dns-collector"
+dns_collector_config_dir: "/etc/dns-collector"
+dns_collector_dnstap_listen_ip: "127.0.0.1"
+dns_collector_dnstap_listen_port: 6000
+dns_collector_otel_endpoint: "" # host:port format, no scheme — e.g. 10.0.0.5:4317

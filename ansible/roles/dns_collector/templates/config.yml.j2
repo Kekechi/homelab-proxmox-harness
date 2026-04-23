@@ -1,0 +1,18 @@
+# Managed by Ansible — do not edit manually
+global:
+  server-identity: "dns-collector"
+  trace:
+    verbose: false
+
+pipelines:
+  - name: "tap"
+    dnstap:
+      listen-ip: "{{ dns_collector_dnstap_listen_ip }}"
+      listen-port: {{ dns_collector_dnstap_listen_port }}
+      tls-support: false
+    routing-policy:
+      forward: ["otel"]
+
+  - name: "otel"
+    opentelemetry:
+      otel-endpoint: "{{ dns_collector_otel_endpoint }}"

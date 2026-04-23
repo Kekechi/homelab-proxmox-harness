@@ -16,6 +16,10 @@
     mode: "0640"
   notify: Restart otelcol-contrib
 
+- name: Validate OTel Collector config
+  ansible.builtin.command: otelcol-contrib validate --config=/etc/otelcol-contrib/config.yaml
+  changed_when: false
+
 - name: Create otelcol-contrib systemd drop-in directory
   ansible.builtin.file:
     path: /etc/systemd/system/otelcol-contrib.service.d

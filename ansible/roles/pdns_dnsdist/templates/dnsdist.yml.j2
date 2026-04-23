@@ -24,3 +24,28 @@ webserver:
   api_key: "{{ lookup('env', 'PDNS_DNSDIST_API_KEY') }}"
   acl:
     - "{{ pdns_dnsdist_webserver_allow_from }}"
+{% if pdns_dnsdist_dnstap_enabled | default(false) %}
+remote_logging:
+  dnstap_loggers:
+    - name: dns-collector
+      address: "{{ pdns_dnsdist_dnstap_address }}:{{ pdns_dnsdist_dnstap_port }}"
+      transport: "{{ pdns_dnsdist_dnstap_transport }}"
+
+query_rules:
+  - name: "log queries via dnstap"
+    selector:
+      type: "All"
+    action:
+      type: "DnstapLog"
+      identity: "dnsdist"
+      logger_name: "dns-collector"
+
+response_rules:
+  - name: "log responses via dnstap"
+    selector:
+      type: "All"
+    action:
+      type: "DnstapLog"
+      identity: "dnsdist"
+      logger_name: "dns-collector"
+{% endif %}

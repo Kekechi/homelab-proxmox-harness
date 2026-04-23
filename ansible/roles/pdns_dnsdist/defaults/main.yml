@@ -8,3 +8,9 @@ pdns_dnsdist_group: "_dnsdist"
 pdns_dnsdist_apt_key_url: "https://repo.powerdns.com/FD380FBB-pub.asc"
 pdns_dnsdist_apt_key_path: "/etc/apt/keyrings/dnsdist-21-pub.asc"
 pdns_dnsdist_binary_path: "/usr/bin/dnsdist"
+
+# dnstap forwarding to dns-collector sidecar
+pdns_dnsdist_dnstap_enabled: false
+pdns_dnsdist_dnstap_address: "127.0.0.1"
+pdns_dnsdist_dnstap_port: 6000
+pdns_dnsdist_dnstap_transport: "tcp"

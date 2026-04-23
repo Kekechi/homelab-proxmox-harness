@@ -1,0 +1,32 @@
+---
+- name: Assert dns_collector_checksum is set
+  ansible.builtin.assert:
+    that:
+      - dns_collector_checksum != "sha256:CHANGE_ME"
+      - dns_collector_checksum | length > 0
+    fail_msg: >-
+      dns_collector_checksum is CHANGE_ME. Set it in defaults/main.yml using the SHA256 from
+      https://github.com/dmachard/dns-collector/releases/download/v{{ dns_collector_version }}/dns-collector_{{ dns_collector_version }}_linux_amd64.tar.gz
+
+- name: Assert dns_collector_otel_endpoint is set
+  ansible.builtin.assert:
+    that:
+      - dns_collector_otel_endpoint | length > 0
+    fail_msg: >-
+      dns_collector_otel_endpoint is empty. Ensure services.log_server is in config/<env>.yml
+      and run make configure, or set dns_collector_otel_endpoint explicitly in group_vars.
+
+- name: Install dns-collector
+  ansible.builtin.include_tasks: install.yml
+
+- name: Configure dns-collector
+  ansible.builtin.include_tasks: configure.yml
+
+- name: Manage dns-collector service
+  ansible.builtin.include_tasks: service.yml
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify dns-collector
+  ansible.builtin.include_tasks: verify.yml
