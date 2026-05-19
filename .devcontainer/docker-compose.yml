@@ -42,6 +42,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
 
   # ---------------------------------------------------------------------------
   # Dev Container / Workspace
@@ -92,10 +97,14 @@ networks:
   isolated:
     driver: bridge
     internal: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
 
   # external: squid uses this to reach the internet and LAN
   external:
     driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
 
 volumes:
   terraform-plugin-cache:
