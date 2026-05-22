@@ -107,27 +107,50 @@ make apply               # terraform apply sandbox.tfplan
 |-----|----------|
 | `docs/proxmox-iam.md` | IAM setup — API tokens, roles, ACL paths |
 | `docs/guides/minio-setup.md` | MinIO LXC setup and bucket bootstrap |
+| `docs/guides/splunk-setup.md` | Splunk Enterprise deployment and OTel Collector wiring |
 | `docs/network-policy.md` | Squid proxy allowlist and SSH tunnel architecture |
 | `docs/threat-model.md` | What the isolation model protects against (and what it doesn't) |
 
 ## Claude Code Harness
 
-This repo includes a Claude Code harness that enables AI-assisted infrastructure work:
+This repo includes a structured, **human-in-the-loop** multi-agent orchestration framework built on top of Claude Code. It is not an autonomous agent that blindly runs scripts — every gate requires explicit operator approval before the next stage begins.
+
+### Planner-Generator-Evaluator (PGE) Architecture
+
+Each infrastructure change moves through three distinct, purpose-scoped agent roles:
+
+| Role | Model | Responsibility |
+|------|-------|----------------|
+| **iac-planner** | Opus | Researches the change, reads existing code, produces a structured plan document — no code written |
+| **iac-generator** | Sonnet | Translates the *approved* plan into Terraform/Ansible code — does not plan or review |
+| **tf-reviewer** | Sonnet | Reviews generated code for security, correctness, and bpg/proxmox conventions — returns APPROVE / WARN / BLOCK |
+
+The operator approves the plan before any code is generated. The operator reviews the reviewer verdict before any apply runs. No agent can skip a gate or grant itself permission to proceed.
+
+### Security Guardrails
+
+Safety is enforced at three independent layers that do not rely on each other:
+
+- **Squid proxy isolation** — the dev container's outbound traffic is limited to the sandbox VLAN; Claude Code cannot reach the public internet or production infrastructure regardless of what it attempts
+- **PreToolUse hooks** — intercept and block dangerous `terraform` subcommands (`destroy`, `state rm`, `force-unlock`) before execution, independent of any instruction Claude receives
+- **Credential separation** — the production Proxmox API token is never provisioned inside the dev container; a production apply would fail at authentication even if all other guardrails were bypassed
+
+### Available Skills
 
 | Command | What it does |
-|---------|-------------|
-| `/plan <description>` | Plans an infrastructure change (no code written) |
-| `/generate` | Writes code from an approved plan |
-| `/review [files]` | Reviews code for security and correctness |
+|---------|--------------|
+| `/design <rough idea>` | Explore and decide on a design — one decision at a time, no code written |
+| `/infra-plan <description>` | Plan an infrastructure change using iac-planner (Opus) |
+| `/generate` | Write code from an approved plan using iac-generator (Sonnet) |
+| `/review [files]` | Review code for security and correctness using tf-reviewer (Sonnet) |
+| `/polish [code\|plan\|design]` | Iterative review-fix loop until APPROVE — all fix+re-review cycles stay in subagents |
 | `/tf-deploy <description>` | Full Terraform plan → generate → review → apply pipeline |
 | `/ansible-deploy <description>` | Full Ansible plan → generate → review → run pipeline |
-
-The harness uses a **Planner-Generator-Evaluator** architecture:
-- **iac-planner** (Opus) — researches and designs the change
-- **iac-generator** (Sonnet) — writes the Terraform/Ansible code
-- **tf-reviewer** (Sonnet) — reviews for security, correctness, and bpg/proxmox conventions
-
-Safety is enforced at multiple layers: path-scoped rules, a PreToolUse hook that blocks dangerous terraform commands, and physical credential isolation.
+| `/ansible-run` | Pre-flight + run + verify for already-written Ansible code |
+| `/handoff` | Package a production plan with context for operator handoff |
+| `/assess <scope>` | Structured project assessment — surfaces hidden assumptions before remediation |
+| `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs |
+| `/retro` | Session retrospective — surfaces prompting lessons and workflow insights |
 
 ## Environment Switching
 
@@ -137,6 +160,18 @@ make init ENV=production          # switch backend to tfstate-production
 make plan ENV=production          # plan for production (prints operator warning)
 # Production apply is blocked — hand the plan to the operator
 ```
+
+## Summer 2026 Roadmap (Active Development)
+
+These four engineering priorities are in active design or implementation as of Summer 2026.
+
+1. **Detection Engineering** — Integrating a centralized Splunk logging infrastructure to monitor Proxmox API logs and LXC/VM system events. An OTel Collector Contrib gateway aggregates log streams from all managed hosts and forwards them to Splunk Enterprise via HEC; rsyslog on each LXC requires no reconfiguration when the SIEM backend changes.
+
+2. **Attack Simulation** — Building automated simulation scripts to test infrastructure resilience and validate Splunk detection rules. Simulation exercises target the specific data sources ingested (Proxmox API audit logs, DNS query logs, host auth events) so detection coverage can be verified against known-bad patterns before production incidents occur.
+
+3. **AI-Agent Abuse Defenses** — Hardening the PGE harness against prompt injection and unauthorized tool-use scenarios within the sandbox VLAN. This includes tightening PreToolUse hook coverage, auditing agent tool scope, and documenting adversarial test cases for the threat model.
+
+4. **Splunk Hackathon Submission** — Packaging the logging and detection components for an upcoming infrastructure security hackathon. The submission bundles the OTel Collector → Splunk pipeline, Splunk AI Toolkit / MCP Server integration, and detection rule set as a reproducible reference architecture.
 
 ## License
 
