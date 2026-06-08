@@ -32,6 +32,24 @@
     otelcol_minio_secret_key: "{{ lookup('env', 'OTELCOL_MINIO_SECRET_KEY') }}"
   no_log: true
 
+- name: Assert otelcol_splunk_hec_url is set
+  ansible.builtin.assert:
+    that:
+      - otelcol_splunk_hec_url | length > 0
+      - otelcol_splunk_hec_url != "CHANGE_ME"
+    fail_msg: "otelcol_splunk_hec_url is empty. Ensure services.splunk is in config/<env>.yml and run make configure."
+
+- name: Assert SPLUNK_HEC_TOKEN is set
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'SPLUNK_HEC_TOKEN') | length > 0
+    fail_msg: "SPLUNK_HEC_TOKEN is not set. Add it to .envrc and run: source .envrc"
+
+- name: Set otelcol Splunk HEC token as fact
+  ansible.builtin.set_fact:
+    otelcol_splunk_hec_token: "{{ lookup('env', 'SPLUNK_HEC_TOKEN') }}"
+  no_log: true
+
 - name: Install otelcol-contrib
   ansible.builtin.include_tasks: install.yml
 

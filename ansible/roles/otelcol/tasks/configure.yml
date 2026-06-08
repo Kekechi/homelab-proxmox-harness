@@ -14,11 +14,13 @@
     owner: root
     group: otelcol-contrib
     mode: "0640"
+  no_log: true
   notify: Restart otelcol-contrib
 
 - name: Validate OTel Collector config
   ansible.builtin.command: otelcol-contrib validate --config=/etc/otelcol-contrib/config.yaml
   changed_when: false
+  no_log: true
 
 - name: Create otelcol-contrib systemd drop-in directory
   ansible.builtin.file:

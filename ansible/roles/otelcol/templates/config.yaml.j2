@@ -33,10 +33,12 @@ processors:
     attributes:
       - { key: com.splunk.sourcetype, value: "network:firewall", action: insert }
       - { key: com.splunk.source,     value: "syslog:tcp:1514",  action: insert }
+      - { key: com.splunk.index,      value: "homelab-logs",     action: insert }
   resource/dns:
     attributes:
       - { key: com.splunk.sourcetype, value: "dns:query",            action: insert }
       - { key: com.splunk.source,     value: "dnstap:dns-collector", action: insert }
+      - { key: com.splunk.index,      value: "homelab-logs",         action: insert }
 
 exporters:
   awss3:
@@ -46,6 +48,10 @@ exporters:
       s3_force_path_style: true
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       region: "us-east-1"
+  splunk_hec:
+    endpoint: "{{ otelcol_splunk_hec_url }}"
+    token: "{{ otelcol_splunk_hec_token }}"
+    log_data_enabled: true
 
 service:
   extensions: [health_check]
@@ -53,8 +59,8 @@ service:
     logs/firewall:
       receivers: [syslog]
       processors: [memory_limiter, batch, resourcedetection, resource/firewall]
-      exporters: [awss3]
+      exporters: [awss3, splunk_hec]
     logs/dns:
       receivers: [syslog/dns]
       processors: [memory_limiter, batch, resourcedetection, resource/dns]
-      exporters: [awss3]
+      exporters: [awss3, splunk_hec]

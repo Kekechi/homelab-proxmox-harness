@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(**/.env*.example)"
+      "Read(**/.env*.example)",
+      "Edit(.claude/session/**)"
     ],
     "deny":[
       "Bash(ssh *)",
