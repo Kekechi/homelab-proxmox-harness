@@ -1,11 +1,11 @@
 ---
 - name: Check if dns-collector binary exists
   ansible.builtin.stat:
-    path: "{{ dns_collector_install_dir }}/dns-collector"
+    path: "{{ dns_collector_install_dir }}/dnscollector"
   register: _dns_collector_binary
 
 - name: Check installed dns-collector version
-  ansible.builtin.shell: "{{ dns_collector_install_dir }}/dns-collector --version 2>&1"
+  ansible.builtin.shell: "{{ dns_collector_install_dir }}/dnscollector -version 2>&1"
   register: _dns_collector_version_output
   failed_when: false
   changed_when: false
