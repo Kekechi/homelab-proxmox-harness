@@ -8,10 +8,10 @@ receivers:
     tcp:
       listen_address: "0.0.0.0:1514"
     protocol: rfc5424
-  otlp:
-    protocols:
-      grpc:
-        endpoint: "0.0.0.0:{{ otelcol_otlp_grpc_port }}"
+  syslog/dns:
+    tcp:
+      listen_address: "0.0.0.0:{{ otelcol_dns_syslog_port }}"
+    protocol: rfc5424
 
 processors:
   memory_limiter:
@@ -55,6 +55,6 @@ service:
       processors: [memory_limiter, batch, resourcedetection, resource/firewall]
       exporters: [awss3]
     logs/dns:
-      receivers: [otlp]
+      receivers: [syslog/dns]
       processors: [memory_limiter, batch, resourcedetection, resource/dns]
       exporters: [awss3]

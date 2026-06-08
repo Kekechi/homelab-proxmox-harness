@@ -782,9 +782,9 @@ def gen_inventory(cfg: dict, env: str) -> str:
                         for cidr in seen_cidrs:
                             lines.append(f'          - "{cidr}"')
                         log_server_ip = _strip_prefix(svcs.get("log_server", {}).get("ip", ""))
-                        # When log_server is present, automatically wire dns_dist → log_server OTLP pipeline.
+                        # When log_server is present, automatically wire dns_dist → log_server syslog pipeline.
                         if log_server_ip:
-                            lines.append(f'        dns_collector_otel_endpoint: "{log_server_ip}:4317"')
+                            lines.append(f'        dns_collector_syslog_endpoint: "{log_server_ip}"')
                             lines.append(f"        pdns_dnsdist_dnstap_enabled: true")
                     if group == "dns_auth":
                         _dns_records = _derive_dns_records(cfg.get("services", {}))

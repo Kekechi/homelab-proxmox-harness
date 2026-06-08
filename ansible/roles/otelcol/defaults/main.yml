@@ -23,5 +23,5 @@ otelcol_memory_check_interval: "1s"
 otelcol_batch_timeout: "60s"
 otelcol_batch_size: 1000
 
-# OTLP gRPC receiver port (used by dns_collector sidecar and other OTLP sources)
-otelcol_otlp_grpc_port: 4317
+# Syslog TCP port for DNS query logs (1514 is firewall syslog)
+otelcol_dns_syslog_port: 1515

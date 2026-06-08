@@ -8,4 +8,5 @@ dns_collector_install_dir: "/opt/dns-collector"
 dns_collector_config_dir: "/etc/dns-collector"
 dns_collector_dnstap_listen_ip: "127.0.0.1"
 dns_collector_dnstap_listen_port: 6000
-dns_collector_otel_endpoint: "" # host:port format, no scheme — e.g. 10.0.0.5:4317
+dns_collector_syslog_endpoint: ""  # log server IP — derived from generate-configs
+dns_collector_syslog_port: 1515

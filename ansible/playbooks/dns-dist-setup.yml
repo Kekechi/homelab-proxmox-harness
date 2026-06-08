@@ -32,7 +32,7 @@
   roles:
     - pdns_dnsdist
 
-# Requires log_server in config — dns_collector_otel_endpoint must be set via group vars
+# Requires log_server in config — dns_collector_syslog_endpoint must be set via group vars
 # (see generate-configs.py). Role asserts will fail fast if not configured.
 - name: Deploy DNS-Collector sidecar
   hosts: dns_dist

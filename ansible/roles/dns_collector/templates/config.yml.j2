@@ -11,8 +11,11 @@ pipelines:
       listen-port: {{ dns_collector_dnstap_listen_port }}
       tls-support: false
     routing-policy:
-      forward: ["otel"]
+      forward: ["syslog-out"]
 
-  - name: "otel"
-    opentelemetry:
-      otel-endpoint: "{{ dns_collector_otel_endpoint }}"
+  - name: "syslog-out"
+    syslog:
+      transport: tcp
+      remote-address: "{{ dns_collector_syslog_endpoint }}:{{ dns_collector_syslog_port }}"
+      formatter: rfc5424
+      mode: json
