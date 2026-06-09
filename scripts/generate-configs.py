@@ -752,6 +752,17 @@ def gen_inventory(cfg: dict, env: str) -> str:
                             file=sys.stderr,
                         )
                         sys.exit(1)
+                elif svc_name == "splunk":
+                    splunk_cfg = svc
+                    splunk_tls = splunk_cfg.get("tls", False)
+                    splunk_fqdn = splunk_cfg.get("fqdn", "")
+                    ca_url = f"https://ca.{domain_name}" if domain_name else ""
+                    lines.append(f"      vars:")
+                    lines.append(f"        splunk_tls_enabled: {str(bool(splunk_tls)).lower()}")
+                    if splunk_fqdn:
+                        lines.append(f"        splunk_domain: {splunk_fqdn}")
+                    if ca_url:
+                        lines.append(f"        splunk_ca_url: {ca_url}")
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")

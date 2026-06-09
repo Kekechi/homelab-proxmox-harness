@@ -1,0 +1,167 @@
+---
+# tls.yml — issue TLS cert from step-ca, deploy cert-renewer timer for Splunk management port.
+# Requires: step_client role applied, STEP_CA_PROVISIONER_PASSWORD set in environment.
+# Dependency: issuing CA must be reachable at splunk_ca_url before this runs.
+#   If PKI is not yet deployed, run pki-setup.yml (make ansible-pki) first.
+
+- name: Check issuing CA reachability
+  ansible.builtin.uri:
+    url: "{{ splunk_ca_url }}/health"
+    validate_certs: false
+    timeout: 5
+  register: splunk_ca_health_check
+  failed_when: false
+
+- name: Warn if issuing CA is not reachable
+  ansible.builtin.debug:
+    msg: >-
+      Issuing CA at {{ splunk_ca_url }} is not reachable — skipping TLS certificate issuance.
+      Run 'make ansible-pki' to deploy PKI, then re-run 'make ansible-splunk' to complete TLS setup.
+  when: splunk_ca_health_check.status | default(0) != 200
+
+- name: Configure Splunk TLS (skipped when issuing CA is unreachable)
+  when: splunk_ca_health_check.status | default(0) == 200
+  block:
+    - name: Create Splunk certs directory
+      ansible.builtin.file:
+        path: "{{ splunk_certs_dir }}"
+        state: directory
+        owner: splunk
+        group: splunk
+        mode: "0750"
+
+    - name: Assert STEP_CA_PROVISIONER_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
+        fail_msg: "STEP_CA_PROVISIONER_PASSWORD environment variable is not set"
+
+    - name: Stat Splunk certificate file
+      ansible.builtin.stat:
+        path: "{{ splunk_certs_dir }}/cert.crt"
+      register: splunk_cert_stat
+
+    - name: Issue Splunk TLS certificate
+      when: not splunk_cert_stat.stat.exists
+      block:
+        - name: Create temp file for provisioner password
+          ansible.builtin.tempfile:
+            state: file
+            suffix: .pass
+          register: splunk_prov_pass_file
+
+        - name: Write provisioner password to temp file
+          ansible.builtin.copy:
+            content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
+            dest: "{{ splunk_prov_pass_file.path }}"
+            mode: "0600"
+          no_log: true
+
+        - name: Issue certificate via step ca
+          ansible.builtin.command:
+            cmd: >-
+              step ca certificate {{ splunk_domain }}
+              {{ splunk_certs_dir }}/cert.crt
+              {{ splunk_certs_dir }}/cert.key
+              --provisioner {{ splunk_jwk_provisioner }}
+              --provisioner-password-file {{ splunk_prov_pass_file.path }}
+              --ca-url {{ splunk_ca_url }}
+              --root {{ splunk_ca_root }}
+              --kty EC
+              --curve P-256
+              --not-after 24h
+              --force
+          changed_when: true
+          no_log: true
+
+      always:
+        - name: Delete provisioner password temp file
+          ansible.builtin.file:
+            path: "{{ splunk_prov_pass_file.path }}"
+            state: absent
+          when: splunk_prov_pass_file is defined and splunk_prov_pass_file.path is defined
+
+    - name: Assemble combined PEM (cert.key + cert.crt → splunkd.pem)
+      ansible.builtin.shell:
+        cmd: "cat {{ splunk_certs_dir }}/cert.key {{ splunk_certs_dir }}/cert.crt > {{ splunk_certs_dir }}/splunkd.pem"
+      changed_when: false
+
+    # Run on every play — ensures permissions are correct even if a previous run
+    # crashed after issuance but before the permission task completed.
+    - name: Harden certificate file permissions
+      ansible.builtin.file:
+        path: "{{ splunk_certs_dir }}/{{ item.name }}"
+        owner: splunk
+        group: splunk
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: cert.crt, mode: "0640" }
+        - { name: cert.key, mode: "0600" }
+        - { name: splunkd.pem, mode: "0600" }
+
+    - name: Configure sslConfig — enableSplunkdSSL
+      community.general.ini_file:
+        path: /opt/splunk/etc/system/local/server.conf
+        section: sslConfig
+        option: enableSplunkdSSL
+        value: "true"
+        owner: splunk
+        group: splunk
+        mode: "0644"
+      notify: Restart Splunk
+
+    - name: Configure sslConfig — serverCert
+      community.general.ini_file:
+        path: /opt/splunk/etc/system/local/server.conf
+        section: sslConfig
+        option: serverCert
+        value: "{{ splunk_certs_dir }}/splunkd.pem"
+        owner: splunk
+        group: splunk
+        mode: "0644"
+      notify: Restart Splunk
+
+    - name: Configure sslConfig — sslRootCAPath
+      community.general.ini_file:
+        path: /opt/splunk/etc/system/local/server.conf
+        section: sslConfig
+        option: sslRootCAPath
+        value: "{{ splunk_ca_root }}"
+        owner: splunk
+        group: splunk
+        mode: "0644"
+      notify: Restart Splunk
+
+    - name: Configure sslConfig — requireClientCert
+      community.general.ini_file:
+        path: /opt/splunk/etc/system/local/server.conf
+        section: sslConfig
+        option: requireClientCert
+        value: "false"
+        owner: splunk
+        group: splunk
+        mode: "0644"
+      notify: Restart Splunk
+
+    - name: Deploy Splunk certificate renewal systemd service
+      ansible.builtin.template:
+        src: splunk-cert-renew.service.j2
+        dest: /etc/systemd/system/splunk-cert-renew.service
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Deploy Splunk certificate renewal systemd timer
+      ansible.builtin.template:
+        src: splunk-cert-renew.timer.j2
+        dest: /etc/systemd/system/splunk-cert-renew.timer
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Flush handlers (daemon-reload before enable)
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable and start Splunk certificate renewal timer
+      ansible.builtin.systemd:
+        name: splunk-cert-renew.timer
+        state: started
+        enabled: true

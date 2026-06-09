@@ -52,6 +52,10 @@
 - name: Install Splunk Enterprise
   ansible.builtin.include_tasks: install.yml
 
+- name: Configure TLS for management port
+  ansible.builtin.include_tasks: tls.yml
+  when: splunk_tls_enabled | default(false)
+
 - name: Install Splunk license
   ansible.builtin.include_tasks: license.yml
 

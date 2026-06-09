@@ -163,6 +163,8 @@ services:
     hostname: splunk-server
     cloud_init_template_id: 9001       # VMID of Ubuntu 24.04 cloud-init template — operator creates pre-phase
     network: sandbox
+    fqdn: "splunk.sandbox.example.com"   # FQDN for TLS cert SAN; required when tls: true
+    tls: false                           # Set true to issue cert from internal CA and enable mgmt port TLS
     # hec_port: 8088                  # optional: Splunk HEC ingest port (default 8088); used to emit otelcol_splunk_hec_url
 
 # Ad-hoc hosts not covered by a named service above.

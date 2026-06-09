@@ -1,0 +1,20 @@
+[Unit]
+Description=Splunk TLS certificate renewal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/step certificate needs-renewal {{ splunk_certs_dir }}/cert.crt
+ExecStart=/usr/bin/step ca renew --force \
+  --ca-url {{ splunk_ca_url }} \
+  --root {{ splunk_ca_root }} \
+  {{ splunk_certs_dir }}/cert.crt {{ splunk_certs_dir }}/cert.key
+ExecStartPost=/bin/bash -c 'cat {{ splunk_certs_dir }}/cert.key {{ splunk_certs_dir }}/cert.crt > {{ splunk_certs_dir }}/splunkd.pem'
+ExecStartPost=/usr/bin/chown splunk:splunk {{ splunk_certs_dir }}/splunkd.pem {{ splunk_certs_dir }}/cert.crt {{ splunk_certs_dir }}/cert.key
+ExecStartPost=/usr/bin/chmod 0600 {{ splunk_certs_dir }}/splunkd.pem {{ splunk_certs_dir }}/cert.key
+ExecStartPost=/usr/bin/chmod 0640 {{ splunk_certs_dir }}/cert.crt
+ExecStartPost=/bin/systemctl restart Splunkd
+
+[Install]
+WantedBy=multi-user.target

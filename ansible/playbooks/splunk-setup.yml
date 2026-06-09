@@ -28,13 +28,24 @@
           - lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
         fail_msg: "NEXUS_READER_PASSWORD is not set. Add it to .envrc and run: source .envrc"
 
+    - name: Assert STEP_CA_PROVISIONER_PASSWORD is set
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
+        fail_msg: "STEP_CA_PROVISIONER_PASSWORD is not set. Add it to .envrc and run: source .envrc"
+
 - name: Common setup for Splunk host
   hosts: splunk
   become: true
   roles:
     - role: common
-      vars:
-        nexus_apt_proxy: ""  # noqa: var-naming[no-role-prefix] — shared infra var; Ubuntu 24.04 host skips Debian Trixie APT proxy config
+
+- name: Deploy step CLI client for TLS certificate management
+  hosts: splunk
+  become: true
+  roles:
+    - role: step_client
+    # nexus_apt_proxy inherited from all group var (do NOT override to "")
 
 - name: Deploy Splunk Enterprise
   hosts: splunk

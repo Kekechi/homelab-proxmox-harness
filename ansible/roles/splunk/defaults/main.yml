@@ -30,3 +30,13 @@ splunk_mcp_password: "{{ lookup('env', 'SPLUNK_MCP_PASSWORD') }}"
 
 # nexus_apt_proxy and nexus_reader_password are shared infrastructure variables.
 # They must be supplied by the caller (playbook vars: or group_vars) — not defined here.
+
+# TLS configuration (via step-ca JWK provisioner)
+# splunk_tls_enabled, splunk_domain, and splunk_ca_url are propagated from config/<env>.yml
+# via make configure → ansible/inventory/hosts.yml group vars. Do not hardcode here.
+splunk_tls_enabled: false
+splunk_domain: ""
+splunk_ca_url: ""
+splunk_certs_dir: /opt/splunk/etc/auth/step-ca
+splunk_ca_root: /usr/local/share/ca-certificates/internal-root-ca.crt
+splunk_jwk_provisioner: acme  # Name of the JWK provisioner on the issuing CA (not the ACME protocol provisioner)
