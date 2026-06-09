@@ -86,6 +86,7 @@ module "issuing_ca" {
   ipv4_gateway     = var.issuing_ca_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
+  nesting          = true
 }
 
 # ---------------------------------------------------------------------------
@@ -120,6 +121,7 @@ module "dns_auth" {
   ipv4_gateway     = var.dns_auth_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
+  nesting          = true
 }
 
 module "dns_dist" {
@@ -145,6 +147,7 @@ module "dns_dist" {
   ipv4_gateway     = var.dns_dist_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
+  nesting          = true
 }
 
 # ---------------------------------------------------------------------------
@@ -180,6 +183,7 @@ module "nexus" {
   ipv4_gateway     = var.nexus_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
+  nesting          = true
 }
 
 # ---------------------------------------------------------------------------
@@ -213,6 +217,7 @@ module "log_server" {
   ipv4_gateway     = var.log_server_ipv4_gateway
   ssh_public_keys  = var.ssh_public_key != null ? [var.ssh_public_key] : []
   dns_servers      = var.dns_servers
+  nesting          = true
 }
 
 # ---------------------------------------------------------------------------

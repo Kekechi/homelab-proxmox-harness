@@ -1,0 +1,7 @@
+# Managed by Ansible — do not edit manually
+# Forward auth/authpriv events to log-server OTel syslog receiver (RFC 5424, TCP)
+auth,authpriv.*  action(type="omfwd"
+                         target="{{ common_log_server_address }}"
+                         port="{{ common_rsyslog_auth_port }}"
+                         protocol="tcp"
+                         Template="RSYSLOG_SyslogProtocol23Format")

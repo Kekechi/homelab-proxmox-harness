@@ -656,6 +656,10 @@ def gen_inventory(cfg: dict, env: str) -> str:
     if domain_name:
         lines.append(f"    domain_name: {domain_name}")
     lines.append(f"    nexus_apt_proxy: \"{nexus_apt_proxy}\"")
+    log_server_svc = svcs.get("log_server", {})
+    log_server_ip_for_all = _strip_prefix(log_server_svc.get("ip", "")) if log_server_svc.get("enabled", False) else ""
+    if log_server_ip_for_all:
+        lines.append(f'    common_log_server_address: "{log_server_ip_for_all}"')
     lines.append(f"  children:")
 
     has_content = bool(svcs) or any(v for v in hosts_cfg.values())

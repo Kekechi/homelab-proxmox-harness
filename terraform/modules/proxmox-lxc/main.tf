@@ -95,4 +95,11 @@ resource "proxmox_virtual_environment_container" "this" {
     template_file_id = var.template_file_id
     type             = var.os_type
   }
+
+  dynamic "features" {
+    for_each = var.nesting ? [1] : []
+    content {
+      nesting = true
+    }
+  }
 }

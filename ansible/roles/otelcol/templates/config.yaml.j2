@@ -12,6 +12,10 @@ receivers:
     tcp:
       listen_address: "0.0.0.0:{{ otelcol_dns_syslog_port }}"
     protocol: rfc5424
+  syslog/auth:
+    tcp:
+      listen_address: "0.0.0.0:{{ otelcol_auth_syslog_port }}"
+    protocol: rfc5424
 
 processors:
   memory_limiter:
@@ -39,6 +43,11 @@ processors:
       - { key: com.splunk.sourcetype, value: "dns:query",            action: insert }
       - { key: com.splunk.source,     value: "dnstap:dns-collector", action: insert }
       - { key: com.splunk.index,      value: "homelab-logs",         action: insert }
+  resource/auth:
+    attributes:
+      - { key: com.splunk.sourcetype, value: "linux:auth",                              action: insert }
+      - { key: com.splunk.source,     value: "syslog:tcp:{{ otelcol_auth_syslog_port }}", action: insert }
+      - { key: com.splunk.index,      value: "homelab-logs",                            action: insert }
 
 exporters:
   awss3:
@@ -63,4 +72,8 @@ service:
     logs/dns:
       receivers: [syslog/dns]
       processors: [memory_limiter, batch, resourcedetection, resource/dns]
+      exporters: [awss3, splunk_hec]
+    logs/auth:
+      receivers: [syslog/auth]
+      processors: [memory_limiter, batch, resourcedetection, resource/auth]
       exporters: [awss3, splunk_hec]

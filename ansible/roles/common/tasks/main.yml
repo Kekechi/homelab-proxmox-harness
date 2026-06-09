@@ -3,6 +3,7 @@
   when:
     - nexus_apt_proxy | default('') | length > 0
     - inventory_hostname not in groups['nexus'] | default([])
+    - ansible_distribution == 'Debian'
   block:
     - name: Deploy Nexus-proxied Debian sources (DEB822)
       ansible.builtin.copy:
@@ -112,3 +113,51 @@
     line: 'PermitRootLogin prohibit-password'
     state: present
   notify: Restart sshd
+
+- name: Configure auth log forwarding to log-server
+  when: common_log_server_address | length > 0
+  block:
+    - name: Install rsyslog
+      ansible.builtin.apt:
+        name: rsyslog
+        state: present
+
+    - name: Deploy rsyslog auth forwarding config
+      ansible.builtin.template:
+        src: rsyslog-auth-forward.conf.j2
+        dest: /etc/rsyslog.d/60-auth-forward.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart rsyslog
+
+    - name: Ensure rsyslog is enabled and started
+      ansible.builtin.systemd:
+        name: rsyslog
+        state: started
+        enabled: true
+
+- name: Remove rsyslog auth forwarding config when log server is not configured
+  ansible.builtin.file:
+    path: /etc/rsyslog.d/60-auth-forward.conf
+    state: absent
+  when: common_log_server_address | length == 0
+
+- name: Ensure journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure journald to forward to syslog
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/forward-to-syslog.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Journal]
+      ForwardToSyslog=yes
+  notify: Restart journald

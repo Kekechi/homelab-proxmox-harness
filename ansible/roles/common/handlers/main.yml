@@ -9,3 +9,22 @@
     cmd: update-ca-certificates
   register: common_update_ca_result
   changed_when: "'0 added, 0 removed' not in common_update_ca_result.stdout"
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+
+- name: Restart rsyslog
+  ansible.builtin.systemd:
+    name: rsyslog
+    state: restarted
+
+- name: Restart journald
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
+  # LXC containers cannot restart journald via systemctl (privileged service restriction).
+  # Config file is in place; change takes effect on next host reboot for LXC containers.
+  # VMs restart successfully.
+  failed_when: false

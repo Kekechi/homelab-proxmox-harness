@@ -26,6 +26,9 @@ otelcol_batch_size: 1000
 # Syslog TCP port for DNS query logs (1514 is firewall syslog)
 otelcol_dns_syslog_port: 1515
 
+# Syslog TCP port for managed-host auth events
+otelcol_auth_syslog_port: 1516
+
 # Splunk HEC endpoint — overridden by generate-configs.py for the log_server group.
 # Empty default: main.yml asserts non-empty before continuing.
 otelcol_splunk_hec_url: ""

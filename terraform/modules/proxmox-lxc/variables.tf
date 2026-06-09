@@ -138,3 +138,9 @@ variable "dns_servers" {
   type        = list(string)
   default     = []
 }
+
+variable "nesting" {
+  description = "Enable nesting feature for the container (grants sys_admin within the container's user namespace). Required for systemd-journald in unprivileged LXC."
+  type        = bool
+  default     = false
+}
