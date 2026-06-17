@@ -73,6 +73,10 @@ set_if_missing PDNS_DNSDIST_API_KEY  KEY
 set_if_missing NEXUS_ADMIN_PASSWORD  PW
 set_if_missing NEXUS_READER_PASSWORD PW
 
+# --- otelcol scoped MinIO key (awss3 log sink; IAM user provisioned by the role)
+set_if_missing OTELCOL_MINIO_ACCESS_KEY 'echo "otelcol-$(openssl rand -hex 6)"'
+set_if_missing OTELCOL_MINIO_SECRET_KEY PW
+
 # --- Splunk (deprecation-planned; set so config generation does not break) ---
 set_if_missing SPLUNK_ADMIN_PASSWORD PW
 set_if_missing SPLUNK_HEC_TOKEN      UUID

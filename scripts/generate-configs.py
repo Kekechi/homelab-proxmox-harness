@@ -749,10 +749,14 @@ def gen_inventory(cfg: dict, env: str) -> str:
                     splunk_svc = svcs.get("splunk", {})
                     splunk_ip = _strip_prefix(splunk_svc.get("ip", ""))
                     splunk_hec_port = splunk_svc.get("hec_port", 8088)
+                    # Splunk HEC sink only when Splunk is ENABLED with an IP.
+                    # Splunk is deprecation-planned; default sink is MinIO (awss3).
+                    splunk_hec_on = bool(splunk_svc.get("enabled", False)) and bool(splunk_ip)
                     if otelcol_endpoint:
                         lines.append(f"      vars:")
                         lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
-                        if splunk_ip:
+                        lines.append(f"        otelcol_splunk_hec_enabled: {str(splunk_hec_on).lower()}")
+                        if splunk_hec_on:
                             lines.append(f"        otelcol_splunk_hec_url: \"http://{splunk_ip}:{splunk_hec_port}\"")
                     else:
                         print(

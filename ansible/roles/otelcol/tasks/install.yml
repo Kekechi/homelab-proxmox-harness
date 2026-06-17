@@ -5,19 +5,28 @@
   failed_when: false
   changed_when: false
 
-# TODO(nexus-raw-repo): This task fetches the DEB directly from GitHub and runs on the target
-# LXC. MGMT VLAN hosts have no direct internet access in production — this will fail outside
-# sandbox. Fix: upload the DEB to a Nexus raw hosted repo and change this url to the Nexus
-# raw repo URL. Implement when adding Nexus raw repo support (Session 2 / Splunk phase).
-- name: Download otelcol-contrib DEB
-  ansible.builtin.get_url:
-    url: >-
-      https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v{{
-      otelcol_version }}/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb
-    dest: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
-    checksum: "sha256:{{ otelcol_checksum }}"
-    mode: "0644"
+# Prefer a Nexus raw repo (works on locked-down production MGMT-VLAN hosts with
+# no direct internet); fall back to the upstream GitHub release when the raw
+# repo is not seeded (cold start / sandbox), so the deploy is self-sufficient.
+- name: Download otelcol-contrib DEB (Nexus raw, fallback to upstream)
   when: otelcol_installed_version.rc != 0 or otelcol_installed_version.stdout != otelcol_version
+  block:
+    - name: Download otelcol-contrib DEB from Nexus raw repo
+      ansible.builtin.get_url:
+        url: "{{ otelcol_nexus_raw_url }}"
+        dest: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+        checksum: "sha256:{{ otelcol_checksum }}"
+        mode: "0644"
+        url_username: nexus-reader
+        url_password: "{{ nexus_reader_password | default('') }}"
+      no_log: true
+  rescue:
+    - name: Download otelcol-contrib DEB from upstream (Nexus raw unavailable)
+      ansible.builtin.get_url:
+        url: "{{ otelcol_upstream_url }}"
+        dest: "/tmp/otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+        checksum: "sha256:{{ otelcol_checksum }}"
+        mode: "0644"
 
 - name: Install otelcol-contrib DEB
   ansible.builtin.apt:

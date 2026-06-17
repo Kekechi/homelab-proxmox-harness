@@ -31,5 +31,9 @@
 - name: Deploy OTel Collector on Log Server
   hosts: log_server
   become: true
+  vars:
+    # Used to pull the otelcol DEB from the Nexus raw repo on locked-down hosts;
+    # falls back to the upstream release when unset/unreachable.
+    nexus_reader_password: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
   roles:
     - otelcol

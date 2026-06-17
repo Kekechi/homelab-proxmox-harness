@@ -29,6 +29,19 @@ otelcol_dns_syslog_port: 1515
 # Syslog TCP port for managed-host auth events
 otelcol_auth_syslog_port: 1516
 
-# Splunk HEC endpoint — overridden by generate-configs.py for the log_server group.
-# Empty default: main.yml asserts non-empty before continuing.
+# Splunk HEC exporter — DISABLED by default. Splunk is deprecation-planned; the
+# primary sink is the MinIO awss3 exporter. The generator sets this true only
+# when services.splunk is enabled with an IP. When false, the splunk_hec
+# exporter, its pipeline fan-out, asserts, and token lookup are all skipped.
+otelcol_splunk_hec_enabled: false
+# Splunk HEC endpoint/token — only used when otelcol_splunk_hec_enabled.
 otelcol_splunk_hec_url: ""
+otelcol_splunk_hec_token: ""
+
+# otelcol-contrib DEB: prefer a Nexus raw repo (locked-down production hosts),
+# fall back to the upstream GitHub release when the raw repo is not seeded
+# (cold start / sandbox) so the deploy is self-sufficient.
+otelcol_deb_filename: "otelcol-contrib_{{ otelcol_version }}_linux_amd64.deb"
+otelcol_nexus_raw_url: "{{ nexus_apt_proxy }}/repository/otelcol-contrib/{{ otelcol_deb_filename }}"
+otelcol_release_base: "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download"
+otelcol_upstream_url: "{{ otelcol_release_base }}/v{{ otelcol_version }}/{{ otelcol_deb_filename }}"

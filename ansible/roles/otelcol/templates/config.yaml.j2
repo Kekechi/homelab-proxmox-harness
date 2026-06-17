@@ -57,10 +57,12 @@ exporters:
       s3_force_path_style: true
       s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
       region: "us-east-1"
+{% if otelcol_splunk_hec_enabled | default(false) %}
   splunk_hec:
     endpoint: "{{ otelcol_splunk_hec_url }}"
     token: "{{ otelcol_splunk_hec_token }}"
     log_data_enabled: true
+{% endif %}
 
 service:
   extensions: [health_check]
@@ -68,12 +70,12 @@ service:
     logs/firewall:
       receivers: [syslog]
       processors: [memory_limiter, batch, resourcedetection, resource/firewall]
-      exporters: [awss3, splunk_hec]
+      exporters: [awss3{% if otelcol_splunk_hec_enabled | default(false) %}, splunk_hec{% endif %}]
     logs/dns:
       receivers: [syslog/dns]
       processors: [memory_limiter, batch, resourcedetection, resource/dns]
-      exporters: [awss3, splunk_hec]
+      exporters: [awss3{% if otelcol_splunk_hec_enabled | default(false) %}, splunk_hec{% endif %}]
     logs/auth:
       receivers: [syslog/auth]
       processors: [memory_limiter, batch, resourcedetection, resource/auth]
-      exporters: [awss3, splunk_hec]
+      exporters: [awss3{% if otelcol_splunk_hec_enabled | default(false) %}, splunk_hec{% endif %}]

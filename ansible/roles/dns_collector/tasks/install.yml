@@ -41,16 +41,28 @@
     group: "{{ dns_collector_group }}"
     mode: "0755"
 
-- name: Download dns-collector tarball from Nexus
-  ansible.builtin.get_url:
-    url: "{{ nexus_apt_proxy }}/repository/dns-collector/{{ dns_collector_tarball_filename }}"
-    dest: "/tmp/{{ dns_collector_tarball_filename }}"
-    checksum: "{{ dns_collector_checksum }}"
-    mode: "0600"
-    url_username: nexus-reader
-    url_password: "{{ nexus_reader_password }}"
-  no_log: true
+# Prefer the Nexus raw repo (works on locked-down production hosts); fall back
+# to the upstream release when the raw repo is not seeded (cold start / sandbox),
+# so the deploy is self-sufficient without a manual artifact-seeding prereq.
+- name: Download dns-collector tarball (Nexus raw, fallback to upstream)
   when: not _dns_collector_installed
+  block:
+    - name: Download dns-collector tarball from Nexus raw repo
+      ansible.builtin.get_url:
+        url: "{{ nexus_apt_proxy }}/repository/dns-collector/{{ dns_collector_tarball_filename }}"
+        dest: "/tmp/{{ dns_collector_tarball_filename }}"
+        checksum: "{{ dns_collector_checksum }}"
+        mode: "0600"
+        url_username: nexus-reader
+        url_password: "{{ nexus_reader_password }}"
+      no_log: true
+  rescue:
+    - name: Download dns-collector tarball from upstream (Nexus raw unavailable)
+      ansible.builtin.get_url:
+        url: "{{ dns_collector_upstream_url }}"
+        dest: "/tmp/{{ dns_collector_tarball_filename }}"
+        checksum: "{{ dns_collector_checksum }}"
+        mode: "0600"
 
 - name: Extract dns-collector binary
   ansible.builtin.unarchive:
