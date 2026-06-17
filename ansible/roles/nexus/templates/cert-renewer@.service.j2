@@ -5,14 +5,17 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Renewal activity + failures land in the journal under this identifier, which
+# the common role forwards to the syslog / log-server pipeline (SIEM-agnostic).
+SyslogIdentifier=cert-renewer
 # Runs as root: needs to write cert files (owned by www-data) and reload the service via systemctl.
 # %i is both the cert filename base (/etc/nginx/certs/%i.crt) and the service to reload.
 # ExecStartPost chowns cert files back to nginx user before the reload so nginx can read them.
 ExecCondition=/usr/bin/step certificate needs-renewal /etc/nginx/certs/%i.crt
-ExecStart=/usr/bin/step ca renew --force \
-  --ca-url {{ nexus_ca_url }} \
-  --root {{ nexus_ca_root }} \
-  /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key
+# Renew while the cert is still valid; if renew fails (expired past notAfter),
+# self-heal by RE-ENROLLING with the persisted provisioner password. A total
+# failure logs a clear line to the journal and exits non-zero.
+ExecStart=/bin/bash -c '/usr/bin/step ca renew --force --ca-url {{ nexus_ca_url }} --root {{ nexus_ca_root }} /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key || { echo "step ca renew failed for {{ nexus_domain }} (cert likely expired) - re-enrolling"; /usr/bin/step ca certificate {{ nexus_domain }} /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key --provisioner {{ nexus_jwk_provisioner }} --provisioner-password-file {{ nexus_prov_pass_persist }} --ca-url {{ nexus_ca_url }} --root {{ nexus_ca_root }} --kty EC --curve P-256 --not-after {{ nexus_cert_duration }} --force; } || { echo "CERT RENEW AND RE-ENROLL FAILED for {{ nexus_domain }}"; exit 1; }'
 ExecStartPost=/usr/bin/chown {{ nexus_nginx_user }}:{{ nexus_nginx_user }} /etc/nginx/certs/%i.crt /etc/nginx/certs/%i.key
 ExecStartPost=/bin/systemctl try-reload-or-restart %i
 

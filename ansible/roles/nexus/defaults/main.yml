@@ -18,4 +18,11 @@ nexus_ca_root: "/usr/local/share/ca-certificates/internal-root-ca.crt"
 nexus_jwk_provisioner: "acme"
 # nexus_domain must be set explicitly — asserted at top of main.yml
 nexus_tls_enabled: false
+# Cert lifetime requested at issuance/re-enroll. Capped by the issuing CA's
+# maxTLSCertDuration (templated in step_ca_issuing); keep renewal headroom well
+# below this (renewer fires every 15 min and renews at ~2/3 of the lifetime).
+nexus_cert_duration: "24h"
+# Root-only file holding the JWK provisioner password, used by the renewer to
+# re-enroll a fully-expired cert (renew alone cannot recover past notAfter).
+nexus_prov_pass_persist: "/etc/nginx/certs/.provisioner-pass"
 nexus_apt_proxy_repos: []

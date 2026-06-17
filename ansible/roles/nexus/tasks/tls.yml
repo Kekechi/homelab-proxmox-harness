@@ -22,6 +22,19 @@
 - name: Configure Nexus TLS (skipped when issuing CA is unreachable)
   when: nexus_ca_health_check.status | default(0) == 200
   block:
+    # Persist the JWK provisioner password (root-only) so the renewer can
+    # RE-ENROLL if the cert ever fully expires (`step ca renew` needs a still-
+    # valid cert; a long outage past notAfter is otherwise unrecoverable). The
+    # issuing CA's x509 policy bounds this credential to *.{{ domain_name }}.
+    - name: Persist provisioner password for renewer re-enroll
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
+        dest: "{{ nexus_prov_pass_persist }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
     - name: Stat Nexus TLS certificate
       ansible.builtin.stat:
         path: /etc/nginx/certs/nginx.crt
@@ -30,19 +43,6 @@
     - name: Issue Nexus TLS certificate
       when: not nexus_cert_stat.stat.exists
       block:
-        - name: Create temp file for provisioner password
-          ansible.builtin.tempfile:
-            state: file
-            suffix: .pass
-          register: nexus_prov_pass_file
-
-        - name: Write provisioner password to temp file
-          ansible.builtin.copy:
-            content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
-            dest: "{{ nexus_prov_pass_file.path }}"
-            mode: "0600"
-          no_log: true
-
         - name: Issue certificate via step ca
           ansible.builtin.command:
             cmd: >-
@@ -50,22 +50,15 @@
               /etc/nginx/certs/nginx.crt
               /etc/nginx/certs/nginx.key
               --provisioner {{ nexus_jwk_provisioner }}
-              --provisioner-password-file {{ nexus_prov_pass_file.path }}
+              --provisioner-password-file {{ nexus_prov_pass_persist }}
               --ca-url {{ nexus_ca_url }}
               --root {{ nexus_ca_root }}
               --kty EC
               --curve P-256
-              --not-after 24h
+              --not-after {{ nexus_cert_duration }}
               --force
           changed_when: true
           no_log: true
-
-      always:
-        - name: Delete provisioner password temp file
-          ansible.builtin.file:
-            path: "{{ nexus_prov_pass_file.path }}"
-            state: absent
-          when: nexus_prov_pass_file is defined and nexus_prov_pass_file.path is defined
 
     - name: Re-stat certificate after issuance attempt
       ansible.builtin.stat:
