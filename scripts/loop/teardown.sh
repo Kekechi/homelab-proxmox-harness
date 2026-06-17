@@ -22,12 +22,14 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEEP_MINIO=0
 DRY_RUN=0
+INCLUDE_VMS=0
 ARGS=()
 for a in "$@"; do
     case "$a" in
-        --keep-minio) KEEP_MINIO=1 ;;
-        --dry-run)    DRY_RUN=1 ;;
-        *)            ARGS+=("$a") ;;
+        --keep-minio)  KEEP_MINIO=1 ;;
+        --dry-run)     DRY_RUN=1 ;;
+        --include-vms) INCLUDE_VMS=1 ;;
+        *)             ARGS+=("$a") ;;
     esac
 done
 ENV="${ARGS[0]:-${ENV:-sandbox}}"
@@ -38,8 +40,14 @@ load_envrc
 _pve_init
 
 log "Teardown target pool: ${POOL_ID} (vmid range ${VMID_MIN}-${VMID_MAX})"
-[[ "$KEEP_MINIO" == 1 ]] && log "  --keep-minio: MinIO LXC will be preserved"
-[[ "$DRY_RUN"   == 1 ]] && log "  --dry-run: no mutations will be performed"
+[[ "$KEEP_MINIO"   == 1 ]] && log "  --keep-minio: MinIO LXC will be preserved"
+[[ "$DRY_RUN"      == 1 ]] && log "  --dry-run: no mutations will be performed"
+# Clone-based VMs (e.g. root-ca, splunk) are created from templates in
+# templates-pool, which the sandbox token cannot clone (Permission check
+# failed). The loop cannot rebuild them, so by default it must NOT destroy
+# them — they are operator-managed prereqs, like the network bridges. Only a
+# deliberate --include-vms (operator will recreate with their token) wipes them.
+[[ "$INCLUDE_VMS" == 0 ]] && log "  VMs (qemu) preserved — token cannot re-clone them; pass --include-vms to override"
 
 # Enumerate cluster guests and select pool members as: vmid|type|node|status|name
 # (JSON goes through a temp file so the heredoc program and the API data don't
@@ -97,6 +105,10 @@ for line in "${MEMBERS[@]}"; do
     fi
     if [[ "$KEEP_MINIO" == 1 && "$name" == *minio* ]]; then
         log "KEEP ${vmid} (${name}) — --keep-minio"
+        continue
+    fi
+    if [[ "$INCLUDE_VMS" == 0 && "$typ" == "qemu" ]]; then
+        log "KEEP ${vmid} (${name}) — qemu VM, not token-rebuildable (use --include-vms to force)"
         continue
     fi
 

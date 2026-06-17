@@ -49,6 +49,9 @@ PREFIX="${CIDR##*/}"; : "${PREFIX:=24}"
 TEMPLATE="$(cfg infrastructure.storage.lxc_template_file_id)"
 DATASTORE="$(cfg infrastructure.storage.datastore_id)"
 SSH_KEY="$(cfg ssh.public_key)"
+# Bootstrap resolver: use the configured dns_server (a public resolver during a
+# cold start, since internal dnsdist is down). Fall back to the gateway.
+NAMESERVER="$(cfg infrastructure.dns_server)"; : "${NAMESERVER:=$GATEWAY}"
 VMID="${VMID_OVERRIDE:-$(cfg terraform.vm_id_range_start)}"
 [[ -n "$IP_OVERRIDE" ]] && IP="$IP_OVERRIDE"
 
@@ -77,7 +80,7 @@ create() {
         --data-urlencode "unprivileged=1"
         --data-urlencode "features=nesting=1"
         --data-urlencode "net0=${NET0}"
-        --data-urlencode "nameserver=${GATEWAY}"
+        --data-urlencode "nameserver=${NAMESERVER}"
         --data-urlencode "ssh-public-keys=${SSH_KEY}"
         --data-urlencode "start=1"
         --data-urlencode "onboot=1"
@@ -123,11 +126,17 @@ wait_task "$NODE" "$UPID" || die "create task did not complete OK"
 log "MinIO LXC created and started."
 
 # --- wait for SSH (through the Squid CONNECT proxy) --------------------------
+# Use a real SSH connect rather than an ncat banner grab: the banner can lag
+# (reverse-DNS delay while the internal resolver is down) and rebuilt boxes
+# present a new host key, so disable host-key checking here.
 if [[ "$WAIT_SSH" == 1 ]]; then
     log "Waiting for SSH on ${IP}:22 (via proxy)..."
-    PROXY_HOSTPORT="${https_proxy#http://}"; PROXY_HOSTPORT="${PROXY_HOSTPORT%/}"
+    SSH_USER="$(cfg services.minio.ansible_user)"; : "${SSH_USER:=root}"
     for i in $(seq 1 60); do
-        if ncat --proxy "${PROXY_HOSTPORT}" --proxy-type http -w 4 "$IP" 22 </dev/null 2>/dev/null | grep -q SSH; then
+        if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+               -o ConnectTimeout=10 \
+               -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+               "${SSH_USER}@${IP}" true 2>/dev/null; then
             log "SSH is up on ${IP}."
             exit 0
         fi
