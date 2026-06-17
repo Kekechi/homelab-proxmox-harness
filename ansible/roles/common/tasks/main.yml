@@ -166,6 +166,7 @@
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
+    lock_timeout: 300
 
 - name: Install base packages
   ansible.builtin.apt:
@@ -179,6 +180,7 @@
       - python3
       - python3-pip
     state: present
+    lock_timeout: 300
 
 - name: Set timezone
   community.general.timezone:
@@ -199,6 +201,7 @@
       ansible.builtin.apt:
         name: rsyslog
         state: present
+        lock_timeout: 300
 
     - name: Deploy rsyslog auth forwarding config
       ansible.builtin.template:

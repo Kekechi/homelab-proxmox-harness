@@ -5,7 +5,11 @@
     name: step-ca
     state: restarted
 
+# step-ca exits on SIGHUP under this systemd unit (it does not re-exec cleanly),
+# which left the CA dead after a config change. Restart instead — a brief CA
+# restart is acceptable in this homelab and guarantees the new config is loaded
+# and the service ends running.
 - name: Reload step-ca config
-  ansible.builtin.command:
-    cmd: systemctl kill -s HUP step-ca
-  changed_when: true
+  ansible.builtin.systemd:
+    name: step-ca
+    state: restarted

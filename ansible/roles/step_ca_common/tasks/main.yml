@@ -26,6 +26,10 @@
     group: root
     mode: "0644"
 
+# Repo selection follows Nexus reachability (common sets common_nexus_reachable),
+# not merely whether a proxy is configured: on a cold start nexus_apt_proxy is
+# set in group_vars but Nexus is not up yet. Default to the direct repo when
+# reachability is unknown (sandbox hosts have direct internet).
 - name: Add Smallstep APT repository (direct)
   ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/smallstep.sources
@@ -38,7 +42,7 @@
       Suites: debs
       Components: main
       Signed-By: /etc/apt/keyrings/smallstep.asc
-  when: nexus_apt_proxy | default('') | length == 0
+  when: not (common_nexus_reachable | default(false) | bool)
 
 - name: Add Smallstep APT repository (via Nexus proxy)
   ansible.builtin.copy:
@@ -52,7 +56,7 @@
       Suites: debs
       Components: main
       Signed-By: /etc/apt/keyrings/smallstep.asc
-  when: nexus_apt_proxy | default('') | length > 0
+  when: common_nexus_reachable | default(false) | bool
 
 - name: Install step-cli on all PKI hosts
   ansible.builtin.apt:

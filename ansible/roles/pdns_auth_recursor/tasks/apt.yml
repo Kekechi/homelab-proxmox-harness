@@ -33,7 +33,7 @@
       Suites: trixie-auth-50
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
-  when: nexus_apt_proxy | default('') | length == 0
+  when: not (common_nexus_reachable | default(false) | bool)
 
 - name: Add PowerDNS Auth 5.0 APT repository (via Nexus proxy)
   ansible.builtin.copy:
@@ -47,7 +47,7 @@
       Suites: trixie-auth-50
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
-  when: nexus_apt_proxy | default('') | length > 0
+  when: common_nexus_reachable | default(false) | bool
 
 - name: Add PowerDNS Recursor 5.4 APT repository (direct)
   ansible.builtin.copy:
@@ -61,7 +61,7 @@
       Suites: trixie-rec-54
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
-  when: nexus_apt_proxy | default('') | length == 0
+  when: not (common_nexus_reachable | default(false) | bool)
 
 - name: Add PowerDNS Recursor 5.4 APT repository (via Nexus proxy)
   ansible.builtin.copy:
@@ -75,7 +75,7 @@
       Suites: trixie-rec-54
       Components: main
       Signed-By: /etc/apt/keyrings/pdns.asc
-  when: nexus_apt_proxy | default('') | length > 0
+  when: common_nexus_reachable | default(false) | bool
 
 - name: Write APT pin to prefer PowerDNS packages from vendor repo
   ansible.builtin.copy:

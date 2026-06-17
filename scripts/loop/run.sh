@@ -131,6 +131,26 @@ fi
 # Ansible audit. On a cold start this is where the WS1 apt/TLS break surfaces.
 if active deploy; then
     banner deploy
+    # The root-ca VM is created stopped (started=false / on_boot=false — offline
+    # root CA). PKI deploy connects to it over SSH, so start it first. Idempotent.
+    RCA_NODE="$(cfg services.pki.root_ca.node)"
+    RCA_VMID="$(cfg services.pki.root_ca.vm_id)"
+    RCA_IP="$(cfg services.pki.root_ca.ip)"; RCA_IP="${RCA_IP%%/*}"
+    if [[ -n "$RCA_NODE" && -n "$RCA_VMID" ]]; then
+        load_envrc; _pve_init
+        st="$(pve_api GET "/nodes/${RCA_NODE}/qemu/${RCA_VMID}/status/current" \
+              | python3 -c 'import sys,json;print(json.load(sys.stdin).get("data",{}).get("status",""))' 2>/dev/null || echo "")"
+        if [[ "$st" != "running" ]]; then
+            log "Starting offline root-ca VM ${RCA_VMID} on ${RCA_NODE}..."
+            pve_api POST "/nodes/${RCA_NODE}/qemu/${RCA_VMID}/status/start" >/dev/null || warn "root-ca start call failed"
+            for _ in $(seq 1 40); do
+                ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                    -o ConnectTimeout=8 -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+                    "$(cfg services.pki.root_ca.ansible_user)@${RCA_IP}" true 2>/dev/null && break
+                sleep 8
+            done
+        fi
+    fi
     cd ansible
     log "Phase: PKI";        ansible-playbook -i inventory/ playbooks/pki-setup.yml
     log "Phase: Nexus";      ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus

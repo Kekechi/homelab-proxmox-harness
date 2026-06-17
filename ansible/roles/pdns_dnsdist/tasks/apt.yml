@@ -33,7 +33,7 @@
       Suites: trixie-dnsdist-21
       Components: main
       Signed-By: /etc/apt/keyrings/dnsdist-21-pub.asc
-  when: nexus_apt_proxy | default('') | length == 0
+  when: not (common_nexus_reachable | default(false) | bool)
 
 - name: Add DNSdist 2.1 APT repository (via Nexus proxy)
   ansible.builtin.copy:
@@ -47,7 +47,7 @@
       Suites: trixie-dnsdist-21
       Components: main
       Signed-By: /etc/apt/keyrings/dnsdist-21-pub.asc
-  when: nexus_apt_proxy | default('') | length > 0
+  when: common_nexus_reachable | default(false) | bool
 
 - name: Write APT pin to prefer DNSdist package from vendor repo
   ansible.builtin.copy:
@@ -59,7 +59,7 @@
       Package: dnsdist
       Pin: origin repo.powerdns.com
       Pin-Priority: 600
-  when: nexus_apt_proxy | default('') | length == 0
+  when: not (common_nexus_reachable | default(false) | bool)
 
 - name: Install DNSdist packages
   ansible.builtin.apt:
