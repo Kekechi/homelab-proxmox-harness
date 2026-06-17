@@ -2,11 +2,13 @@
   "permissions": {
     "allow": [
       "Read(**/.env*.example)",
-      "Edit(.claude/session/**)"
+      "Edit(.claude/session/**)",
+      "Write(.claude/session/**)"
     ],
     "deny":[
       "Bash(ssh *)",
-      "Bash(scp *)"
+      "Bash(scp *)",
+      "Bash(git push:*)"
     ]
   },
   "hooks": {

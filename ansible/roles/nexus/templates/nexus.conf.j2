@@ -13,7 +13,7 @@ server {
     ssl_prefer_server_ciphers off;
     add_header Strict-Transport-Security "max-age=63072000" always;
 
-    client_max_body_size 1G;
+    client_max_body_size 2G;
 
     location / {
         proxy_pass http://127.0.0.1:{{ nexus_http_port }}/;
@@ -39,7 +39,7 @@ server {
     ssl_prefer_server_ciphers off;
     add_header Strict-Transport-Security "max-age=63072000" always;
 
-    client_max_body_size 1G;
+    client_max_body_size 2G;
 
     location / {
         proxy_pass http://127.0.0.1:{{ nexus_docker_connector_port }}/;
