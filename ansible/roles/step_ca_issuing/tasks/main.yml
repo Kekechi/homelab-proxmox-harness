@@ -209,6 +209,14 @@
 
 # --- ACME domain policy ---
 
+# Re-stat after init: the first stat (before `step ca init`) is frozen at
+# not-exists on a cold start, which would skip the policy patch on the very run
+# that creates ca.json. Refresh it so the read + patch below run on first deploy.
+- name: Re-stat ca.json after init
+  ansible.builtin.stat:
+    path: "{{ step_ca_home }}/authorities/{{ step_ca_issuing_context }}/config/ca.json"
+  register: step_ca_issuing_ca_json_stat
+
 - name: Read current ca.json
   ansible.builtin.slurp:
     src: "{{ step_ca_home }}/authorities/{{ step_ca_issuing_context }}/config/ca.json"

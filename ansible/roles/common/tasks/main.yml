@@ -1,72 +1,8 @@
 ---
-- name: Configure apt to use Nexus proxy for base Debian repos
-  when:
-    - nexus_apt_proxy | default('') | length > 0
-    - inventory_hostname not in groups['nexus'] | default([])
-    - ansible_distribution == 'Debian'
-  block:
-    - name: Deploy Nexus-proxied Debian sources (DEB822)
-      ansible.builtin.copy:
-        dest: /etc/apt/sources.list.d/debian-nexus.sources
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          Types: deb
-          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie/
-          Suites: trixie
-          Components: main contrib non-free non-free-firmware
-          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-
-          Types: deb
-          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-updates/
-          Suites: trixie-updates
-          Components: main contrib non-free non-free-firmware
-          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-
-          Types: deb
-          URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-security/
-          Suites: trixie-security
-          Components: main contrib non-free non-free-firmware
-          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
-
-    - name: Remove default Debian apt sources when using Nexus proxy
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - /etc/apt/sources.list
-        - /etc/apt/sources.list.d/debian.sources
-
-- name: Configure Nexus APT credentials
-  ansible.builtin.copy:
-    dest: /etc/apt/auth.conf.d/nexus.conf
-    owner: root
-    group: root
-    mode: "0600"
-    content: |
-      machine {{ nexus_apt_proxy }} login nexus-reader password {{ lookup('env', 'NEXUS_READER_PASSWORD') }}
-  when:
-    - nexus_apt_proxy | default('') | length > 0
-    - lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
-
-- name: Update apt cache
-  ansible.builtin.apt:
-    update_cache: true
-
-- name: Install base packages
-  ansible.builtin.apt:
-    name:
-      - curl
-      - git
-      - vim
-      - htop
-      - ca-certificates
-      - gnupg
-      - python3
-      - python3-pip
-    state: present
-
+# --- Internal root CA trust (must precede any HTTPS apt to Nexus) ------------
+# Installed BEFORE apt runs so that, once apt is pointed at Nexus-over-HTTPS,
+# the chain validates. On a cold start the controller has no root_ca.crt yet
+# (PKI not deployed), so this is skipped and apt falls back to upstream below.
 - name: Check if internal root CA cert exists on controller
   ansible.builtin.stat:
     path: "{{ common_root_ca_controller_path }}"
@@ -78,7 +14,8 @@
   ansible.builtin.debug:
     msg: >-
       {{ common_root_ca_controller_path }} not found on the Ansible controller.
-      Skipping internal root CA trust setup. Run pki-setup.yml first.
+      Skipping internal root CA trust setup (run pki-setup.yml first). apt will
+      use the upstream Debian mirror until Nexus + PKI are up.
   when: not common_root_ca_cert_stat.stat.exists
 
 - name: Copy internal root CA certificate to system trust store
@@ -101,6 +38,147 @@
     - ansible_os_family == 'Debian'
     - not common_root_ca_cert_stat.stat.exists
   notify: Update CA certificates
+
+- name: Apply CA trust now (before apt) so HTTPS apt to Nexus validates
+  ansible.builtin.meta: flush_handlers
+
+# Resolve internal service FQDNs (ca.<domain>, nexus.<domain>, ...) via /etc/hosts
+# so the TLS mesh works on a cold start before DNSdist exists. Public names still
+# go to the configured resolver (a public DNS during bootstrap).
+- name: Write internal service FQDNs to /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} ANSIBLE MANAGED — internal services"
+    block: |
+      {% for h in common_internal_hosts %}
+      {{ h.ip }} {{ h.fqdn }}
+      {% endfor %}
+  when: common_internal_hosts | default([]) | length > 0
+
+# --- Base apt repositories: Nexus when reachable, upstream Debian as fallback
+# Sandbox hosts have direct internet, so Nexus is a caching optimisation, not a
+# hard dependency. The probe + fallback removes the cold-start ordering trap
+# where `common` (the first role on every host) assumed Nexus was already up.
+- name: Probe Nexus apt proxy reachability
+  ansible.builtin.uri:
+    url: "{{ nexus_apt_proxy }}{{ common_nexus_status_path }}"
+    method: GET
+    validate_certs: false
+    timeout: "{{ common_nexus_probe_timeout }}"
+    status_code: [200, 401, 403, 404]
+  register: common_nexus_probe
+  failed_when: false
+  changed_when: false
+  when:
+    - nexus_apt_proxy | default('') | length > 0
+    - inventory_hostname not in groups['nexus'] | default([])
+    - ansible_distribution == 'Debian'
+
+- name: Decide whether the Nexus apt proxy is usable
+  ansible.builtin.set_fact:
+    common_nexus_reachable: >-
+      {{ (nexus_apt_proxy | default('') | length > 0)
+         and (inventory_hostname not in groups['nexus'] | default([]))
+         and ((common_nexus_probe.status | default(0)) in [200, 401, 403, 404]) }}
+
+- name: Configure base Debian apt repositories
+  when: ansible_distribution == 'Debian'
+  block:
+    - name: Use Nexus-proxied Debian sources (Nexus reachable)
+      when: common_nexus_reachable | bool
+      block:
+        - name: Deploy Nexus-proxied Debian sources (DEB822)
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/debian-nexus.sources
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              Types: deb
+              URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie/
+              Suites: {{ common_debian_suite }}
+              Components: main contrib non-free non-free-firmware
+              Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+              Types: deb
+              URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-updates/
+              Suites: {{ common_debian_suite }}-updates
+              Components: main contrib non-free non-free-firmware
+              Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+              Types: deb
+              URIs: {{ nexus_apt_proxy }}/repository/apt-proxy-trixie-security/
+              Suites: {{ common_debian_suite }}-security
+              Components: main contrib non-free non-free-firmware
+              Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+        - name: Configure Nexus APT credentials
+          ansible.builtin.copy:
+            dest: /etc/apt/auth.conf.d/nexus.conf
+            owner: root
+            group: root
+            mode: "0600"
+            content: |
+              machine {{ nexus_apt_proxy }} login nexus-reader password {{ lookup('env', 'NEXUS_READER_PASSWORD') }}
+          when: lookup('env', 'NEXUS_READER_PASSWORD') | length > 0
+
+        - name: Remove default + upstream-fallback sources while using Nexus
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/apt/sources.list
+            - /etc/apt/sources.list.d/debian.sources
+            - /etc/apt/sources.list.d/debian-upstream.sources
+
+    - name: Use upstream Debian sources (Nexus unreachable — fallback)
+      when: not (common_nexus_reachable | bool)
+      block:
+        - name: Deploy upstream Debian sources (DEB822 fallback)
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/debian-upstream.sources
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              Types: deb
+              URIs: {{ common_debian_upstream_uri }}
+              Suites: {{ common_debian_suite }} {{ common_debian_suite }}-updates
+              Components: main contrib non-free non-free-firmware
+              Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+              Types: deb
+              URIs: {{ common_debian_security_uri }}
+              Suites: {{ common_debian_suite }}-security
+              Components: main contrib non-free non-free-firmware
+              Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+        - name: Remove Nexus-proxied sources + creds while falling back to upstream
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/apt/sources.list
+            - /etc/apt/sources.list.d/debian.sources
+            - /etc/apt/sources.list.d/debian-nexus.sources
+            - /etc/apt/auth.conf.d/nexus.conf
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - git
+      - vim
+      - htop
+      - ca-certificates
+      - gnupg
+      - python3
+      - python3-pip
+    state: present
 
 - name: Set timezone
   community.general.timezone:

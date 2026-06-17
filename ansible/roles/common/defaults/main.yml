@@ -8,3 +8,20 @@ common_root_ca_controller_path: "{{ step_ca_controller_staging_dir }}/root_ca.cr
 # Log forwarding — set by generate-configs.py via all.vars; empty = disabled
 common_log_server_address: ""
 common_rsyslog_auth_port: 1516
+
+# Internal service FQDN → IP map for /etc/hosts, emitted by generate-configs.py
+# into group_vars all. Lets hosts resolve ca.<domain>/nexus.<domain>/etc. before
+# the internal DNS server (DNSdist) is deployed. Empty = no managed entries.
+common_internal_hosts: []
+
+# --- Base-repo bootstrap (cold-start safe) ----------------------------------
+# Nexus is a caching apt proxy, not a hard dependency: sandbox hosts have direct
+# internet. On a cold start (Nexus not deployed yet) `common` probes Nexus and,
+# if it is unreachable, falls back to the upstream Debian mirror so apt still
+# works. The Nexus-proxied sources are only used once Nexus actually answers.
+common_debian_suite: trixie
+common_debian_upstream_uri: "http://deb.debian.org/debian"
+common_debian_security_uri: "http://deb.debian.org/debian-security"
+# Nexus health endpoint used for the reachability probe (path under nexus_apt_proxy).
+common_nexus_status_path: "/service/rest/v1/status"
+common_nexus_probe_timeout: 5

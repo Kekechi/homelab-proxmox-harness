@@ -660,6 +660,16 @@ def gen_inventory(cfg: dict, env: str) -> str:
     log_server_ip_for_all = _strip_prefix(log_server_svc.get("ip", "")) if log_server_svc.get("enabled", False) else ""
     if log_server_ip_for_all:
         lines.append(f'    common_log_server_address: "{log_server_ip_for_all}"')
+    # Internal service FQDN → IP map for /etc/hosts (the common role writes these).
+    # Decouples cold-start TLS from the internal DNS server: services can reach
+    # ca.<domain>, nexus.<domain>, etc. before DNSdist is deployed. Reuses the
+    # DNS A-record derivation, so it honours dns_name overrides and dns: false.
+    if domain_name:
+        internal_hosts = _derive_dns_records(svcs)
+        if internal_hosts:
+            lines.append(f"    common_internal_hosts:")
+            for rec in internal_hosts:
+                lines.append(f'      - {{ip: "{rec["ip"]}", fqdn: "{rec["name"]}.{domain_name}"}}')
     lines.append(f"  children:")
 
     has_content = bool(svcs) or any(v for v in hosts_cfg.values())
