@@ -119,6 +119,19 @@ mcli admin policy attach "${ALIAS}" "${POLICY_NAME}" \
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Persist the scoped credentials into .envrc
+#
+# Writing directly (rather than echoing for manual copy) is what makes the
+# destroy→rebuild loop unattended: the next `make init` reads these straight
+# from .envrc. .envrc is gitignored and the pre-commit guard blocks it, so the
+# secret never leaves the dev container.
+# ---------------------------------------------------------------------------
+ENVRC_FILE="$(dirname "$0")/../.envrc"
+UPSERT="$(dirname "$0")/loop/envrc-upsert.py"
+python3 "${UPSERT}" "${ENVRC_FILE}" MINIO_ACCESS_KEY "${ACCESS_KEY}"
+python3 "${UPSERT}" "${ENVRC_FILE}" MINIO_SECRET_KEY "${SECRET_KEY}"
+
 echo ""
 echo "============================================================"
 echo " MinIO bootstrap complete (${ENV})"
@@ -127,10 +140,10 @@ echo ""
 echo " Bucket created:"
 mcli ls "${ALIAS}"
 echo ""
-echo " Scoped IAM credentials — add to .envrc:"
-echo "   export MINIO_ACCESS_KEY=\"${ACCESS_KEY}\""
-echo "   export MINIO_SECRET_KEY=\"${SECRET_KEY}\""
+echo " Scoped IAM credentials written to .envrc:"
+echo "   MINIO_ACCESS_KEY  (access key id: ${ACCESS_KEY})"
+echo "   MINIO_SECRET_KEY  (value hidden — stored in .envrc)"
 echo ""
-echo " NOTE: Store these values securely. They will not be shown again."
-echo " The MINIO_ROOT_* credentials in .envrc retain full admin access."
-echo " This key can ONLY access ${BUCKET}."
+echo " Run 'direnv allow' (interactive shells) if the values are not yet"
+echo " exported in your environment. Loop scripts source .envrc directly."
+echo " This key can ONLY access ${BUCKET}; MINIO_ROOT_* retain admin access."

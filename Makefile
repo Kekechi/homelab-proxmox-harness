@@ -16,6 +16,7 @@ TF_PLANFILE ?= $(ENV).tfplan
 TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
+        loop-teardown loop-minio loop-secrets \
         ansible-lint ansible-env ansible-check ansible-minio ansible-pki \
         ansible-dns ansible-dns-records ansible-dns-dist \
         ansible-nexus bootstrap-minio docs-gen
@@ -51,6 +52,14 @@ verify-isolation: ## Run network isolation verification inside the container
 # ---------------------------------------------------------------------------
 
 init: ## Initialize Terraform backend for $(ENV) (use -reconfigure to switch environments)
+	@_mkenv=$$(grep -E '^ENV\s*:?=' .env.mk 2>/dev/null | head -1 | sed 's/.*:*=\s*//' | tr -d '[:space:]'); \
+	if [ -n "$$_mkenv" ] && [ "$$_mkenv" != "$(ENV)" ]; then \
+		echo "ERROR: .env.mk records ENV=$$_mkenv but you requested ENV=$(ENV)."; \
+		echo "  TF_BUCKET is bound from .env.mk at parse time, so 'make init' would"; \
+		echo "  initialise the WRONG state bucket ($(TF_BUCKET))."; \
+		echo "  Run 'make configure ENV=$(ENV)' first to realign .env.mk."; \
+		exit 1; \
+	fi
 	cd $(TF_DIR) && terraform init -reconfigure \
 		-backend-config="bucket=$(TF_BUCKET)" \
 		-backend-config="access_key=$$MINIO_ACCESS_KEY" \
@@ -69,7 +78,7 @@ lint: ## terraform fmt check + tflint + ansible-lint
 	cd $(TF_DIR) && tflint
 	ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/playbooks/
 
-plan: ## Terraform plan for $(ENV) — saves $(ENV).tfplan
+plan: configure ## Terraform plan for $(ENV) — saves $(ENV).tfplan (regenerates configs first)
 	cd $(TF_DIR) && terraform plan -var-file=$(TF_VARFILE) -out=$(TF_PLANFILE)
 	@if [ "$(ENV)" != "sandbox" ]; then \
 		echo ""; \
@@ -87,8 +96,22 @@ apply: ## Terraform apply $(ENV).tfplan (plan file required)
 	fi
 	cd $(TF_DIR) && terraform apply $(TF_PLANFILE)
 
-destroy: ## Terraform destroy for $(ENV) (requires confirmation — blocked by hook for production)
-	cd $(TF_DIR) && terraform destroy -var-file=$(TF_VARFILE)
+destroy: configure ## Terraform destroy for $(ENV) via a destroy plan file (bare destroy is blocked by the guard hook)
+	cd $(TF_DIR) && terraform plan -destroy -var-file=$(TF_VARFILE) -out=$(TF_PLANFILE)
+	cd $(TF_DIR) && terraform apply $(TF_PLANFILE)
+
+# ---------------------------------------------------------------------------
+# Verification loop (sandbox only) — destroy→rebuild harness
+# ---------------------------------------------------------------------------
+
+loop-teardown: ## API sweep: delete all sandbox-pool members incl. MinIO (sandbox only)
+	bash scripts/loop/teardown.sh $(ENV)
+
+loop-minio: ## Recreate the MinIO LXC via PVE API + cloud-init (sandbox only)
+	bash scripts/loop/recreate-minio.sh $(ENV)
+
+loop-secrets: ## Generate any missing loop secrets (passphrases/keys) into .envrc
+	bash scripts/loop/gen-secrets.sh $(ENV)
 
 # ---------------------------------------------------------------------------
 # Ansible
