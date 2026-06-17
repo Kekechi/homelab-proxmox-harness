@@ -455,8 +455,7 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'datastore_id           = "{s.get("datastore_id", "local-lvm")}"',
         f'cloudinit_datastore_id = "{s.get("cloudinit_datastore_id", "local")}"',
         f'vm_id_range_start      = {t.get("vm_id_range_start", 200)}',
-        f'clone_template_id      = {t.get("clone_template_id", 0)}',
-        f'ssh_public_key         = "{ssh_key}"',
+        f'ssh_public_key         = {_hcl_str(ssh_key)}',
         f'domain_name            = {_hcl_str(domain_name)}',
     ]
 

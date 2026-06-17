@@ -75,12 +75,6 @@ variable "vm_id_range_start" {
   default     = 200
 }
 
-variable "clone_template_id" {
-  description = "VM ID of the cloud-init template to clone from. 0 = create from scratch (no clone)."
-  type        = number
-  default     = 0
-}
-
 variable "ssh_public_key" {
   description = "SSH public key to inject via cloud-init into provisioned VMs/LXCs. Required for the issuing CA LXC unless a root_password is passed directly to the module — the LXC module enforces at least one auth method at plan time."
   type        = string
