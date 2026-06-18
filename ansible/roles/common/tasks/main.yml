@@ -163,10 +163,27 @@
             - /etc/apt/sources.list.d/debian-nexus.sources
             - /etc/apt/auth.conf.d/nexus.conf
 
+# Freshly-booted hosts — especially VMs cloned from a template (e.g. the offline
+# root CA) — run apt-daily / unattended-upgrades on first boot, holding the dpkg
+# lock for several minutes. The deploy starts such a VM and configures it
+# immediately, so the apt tasks below raced that lock and failed (the task-level
+# lock_timeout alone was not enough). Stop the auto-apt timers so they can't
+# re-fire mid-provisioning; any in-flight run is then ridden out by the widened
+# lock_timeout. (LXCs are unaffected, but this is harmless and idempotent there.)
+- name: Quiesce automatic apt timers (avoid first-boot dpkg lock races)
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  failed_when: false
+
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
-    lock_timeout: 300
+    lock_timeout: 600
 
 - name: Install base packages
   ansible.builtin.apt:
@@ -180,7 +197,7 @@
       - python3
       - python3-pip
     state: present
-    lock_timeout: 300
+    lock_timeout: 600
 
 - name: Set timezone
   community.general.timezone:

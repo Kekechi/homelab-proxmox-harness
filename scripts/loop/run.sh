@@ -12,6 +12,9 @@
 #
 #   --keep-minio   skip teardown+rebuild of MinIO/state (faster iteration when
 #                  MinIO and Terraform state are not under test).
+#   --include-vms  destroy qemu VMs too (root-ca, splunk) in teardown — the TRUE
+#                  cold start from nothing. Without it, kept VMs + a wiped state
+#                  (MinIO recreate) collide at apply. Forwarded to teardown.sh.
 #   --from PHASE   start at PHASE (secrets|teardown|minio|configure|init|plan|
 #                  apply|deploy|gate|verify). Default: secrets.
 #   --to PHASE     stop after PHASE. Default: verify.
@@ -38,15 +41,17 @@ set -euo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KEEP_MINIO=0
+INCLUDE_VMS=0
 FROM="secrets"
 TO="verify"
 ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --keep-minio) KEEP_MINIO=1; shift ;;
-        --from)       FROM="$2"; shift 2 ;;
-        --to)         TO="$2"; shift 2 ;;
-        *)            ARGS+=("$1"); shift ;;
+        --keep-minio)  KEEP_MINIO=1; shift ;;
+        --include-vms) INCLUDE_VMS=1; shift ;;
+        --from)        FROM="$2"; shift 2 ;;
+        --to)          TO="$2"; shift 2 ;;
+        *)             ARGS+=("$1"); shift ;;
     esac
 done
 ENV="${ARGS[0]:-${ENV:-sandbox}}"
@@ -80,11 +85,10 @@ fi
 # --- teardown ----------------------------------------------------------------
 if active teardown; then
     banner teardown
-    if [[ "$KEEP_MINIO" == 1 ]]; then
-        bash "${SELF_DIR}/teardown.sh" "$ENV" --keep-minio
-    else
-        bash "${SELF_DIR}/teardown.sh" "$ENV"
-    fi
+    TD_ARGS=("$ENV")
+    [[ "$KEEP_MINIO"  == 1 ]] && TD_ARGS+=(--keep-minio)
+    [[ "$INCLUDE_VMS" == 1 ]] && TD_ARGS+=(--include-vms)
+    bash "${SELF_DIR}/teardown.sh" "${TD_ARGS[@]}"
     # Controller-local PKI staging must be wiped for a TRUE cold start: a stale
     # root_ca.crt would let `common` install trust for a CA that no longer
     # exists, masking the cold-start ordering bug the loop is meant to expose.
@@ -188,6 +192,7 @@ if active deploy; then
     log "Phase: DNS auth";   ansible-playbook -i inventory/ playbooks/dns-setup.yml
     log "Phase: DNS records";ansible-playbook -i inventory/ playbooks/dns-records.yml
     log "Phase: DNS dist";   ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml
+    log "Phase: log-server"; ansible-playbook -i inventory/ playbooks/log-server-setup.yml
     cd "$REPO_ROOT"
 fi
 

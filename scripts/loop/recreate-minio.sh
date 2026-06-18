@@ -132,7 +132,13 @@ log "MinIO LXC created and started."
 if [[ "$WAIT_SSH" == 1 ]]; then
     log "Waiting for SSH on ${IP}:22 (via proxy)..."
     SSH_USER="$(cfg services.minio.ansible_user)"; : "${SSH_USER:=root}"
-    for i in $(seq 1 60); do
+    # A freshly recreated LXC can take several minutes to bring sshd up on the
+    # proxy path, and may bounce (a brief reboot/network re-settle) during first
+    # boot. The prior ~5-min cap raced that and killed the loop while the box was
+    # still settling (observed: host became reachable well after the cap). Wait
+    # on a wall-clock deadline and keep retrying across a transient drop.
+    DEADLINE=$(( $(date +%s) + 720 ))   # ~12 min
+    until (( $(date +%s) >= DEADLINE )); do
         if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
                -o ConnectTimeout=10 \
                -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
@@ -142,5 +148,5 @@ if [[ "$WAIT_SSH" == 1 ]]; then
         fi
         sleep 5
     done
-    die "SSH on ${IP} did not come up within ~5 min"
+    die "SSH on ${IP} did not come up within ~12 min"
 fi

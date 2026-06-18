@@ -36,4 +36,10 @@
     # falls back to the upstream release when unset/unreachable.
     nexus_reader_password: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
   roles:
+    # common provides the baseline every other service host gets: base packages
+    # (curl, ca-certificates, …), internal CA trust, apt-via-Nexus config, and
+    # auth-log forwarding. It was missing here, so a cold-start log-server came up
+    # without that baseline (no curl → health probes/tools fail). Must precede
+    # otelcol (which pulls its DEB via the apt/Nexus path common configures).
+    - common
     - otelcol
