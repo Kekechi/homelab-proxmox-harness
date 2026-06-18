@@ -17,6 +17,8 @@ TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
         loop-teardown loop-minio loop-secrets \
+        verify-all verify-issuing-ca verify-nexus verify-dns-auth verify-dnsdist \
+        verify-dns-collector verify-minio verify-log-server \
         ansible-lint ansible-env ansible-check ansible-minio ansible-pki \
         ansible-dns ansible-dns-records ansible-dns-dist \
         ansible-nexus bootstrap-minio docs-gen
@@ -46,6 +48,34 @@ build: ## Rebuild dev container images (run after make configure updates allowed
 
 verify-isolation: ## Run network isolation verification inside the container
 	bash scripts/verify-isolation.sh
+
+# Tier-1 machine gate: per-service behavioral verify (queries the live daemon,
+# not its config). Each produces a hard exit 0/1. ENV selects the inventory +
+# config to resolve hosts from (default sandbox). Mirrors the ansible-<svc> set.
+
+verify-all: ## Run all Tier-1 per-service verifies (hard exit 0/1; skips disabled Splunk)
+	bash scripts/verify/verify-all.sh $(ENV)
+
+verify-issuing-ca: ## Verify the step-ca issuing CA (liveness + served /health + provisioner list)
+	bash scripts/verify/verify-issuing-ca.sh
+
+verify-nexus: ## Verify Nexus (liveness + writable status + docker v2 + apt-proxy repo)
+	bash scripts/verify/verify-nexus.sh
+
+verify-dns-auth: ## Verify PowerDNS Auth+Recursor (API health + zone + dig resolution)
+	bash scripts/verify/verify-dns-auth.sh
+
+verify-dnsdist: ## Verify DNSdist (liveness + :53 resolution + webserver API)
+	bash scripts/verify/verify-dnsdist.sh
+
+verify-dns-collector: ## Verify dns-collector (liveness + dnstap receiver bound)
+	bash scripts/verify/verify-dns-collector.sh
+
+verify-minio: ## Verify MinIO (liveness + health/live + health/ready)
+	bash scripts/verify/verify-minio.sh
+
+verify-log-server: ## Verify otelcol log server (liveness + health_check + syslog receivers + awss3 sink)
+	bash scripts/verify/verify-log-server.sh
 
 # ---------------------------------------------------------------------------
 # Terraform
