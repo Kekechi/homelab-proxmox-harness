@@ -189,10 +189,12 @@
 # Freshly-booted hosts — especially VMs cloned from a template (e.g. the offline
 # root CA) — run apt-daily / unattended-upgrades on first boot, holding the dpkg
 # lock for several minutes. The deploy starts such a VM and configures it
-# immediately, so the apt tasks below raced that lock and failed (the task-level
-# lock_timeout alone was not enough). Stop the auto-apt timers so they can't
-# re-fire mid-provisioning; any in-flight run is then ridden out by the widened
-# lock_timeout. (LXCs are unaffected, but this is harmless and idempotent there.)
+# immediately, so the apt tasks below race that lock and fail.
+# Two-part fix: (1) stop the auto-apt TIMERS so they can't re-fire mid-deploy;
+# (2) actively WAIT for any ALREADY-RUNNING first-boot apt/dpkg to finish and
+# release the lock. (1) alone is insufficient — it does not touch a run that is
+# already in flight, which is exactly what held the lock and broke base-package
+# install on a true cold start. (LXCs are unaffected; harmless+idempotent there.)
 - name: Quiesce automatic apt timers (avoid first-boot dpkg lock races)
   ansible.builtin.systemd:
     name: "{{ item }}"
@@ -202,6 +204,22 @@
     - apt-daily.timer
     - apt-daily-upgrade.timer
   failed_when: false
+
+- name: Wait for any in-flight first-boot automatic apt/dpkg to release the lock
+  ansible.builtin.shell: |
+    set -o pipefail   # no real pipe; satisfies ansible-lint (regex '|' in pattern)
+    for _ in $(seq 1 120); do            # ~10 min ceiling (120 * 5s)
+      if ! pgrep -f 'apt\.systemd\.daily|unattended-upgrade|apt-get|/usr/bin/dpkg ' >/dev/null 2>&1; then
+        exit 0
+      fi
+      sleep 5
+    done
+    echo "automatic apt/dpkg still running after ~10 min — lock not released" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: ansible_distribution == 'Debian'
 
 - name: Update apt cache
   ansible.builtin.apt:
