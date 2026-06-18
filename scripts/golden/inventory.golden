@@ -18,9 +18,10 @@ all:
   children:
     minio:
       vars:
-        minio_tls_enabled: false
+        minio_tls_enabled: true
         minio_domain: minio.lab.example.com
         minio_ca_url: https://ca.lab.example.com
+        minio_endpoint_ip: 10.20.30.10
       hosts:
         minio-server:
           ansible_host: 10.20.30.10
@@ -74,7 +75,7 @@ all:
           ansible_user: root
     log_server:
       vars:
-        otelcol_minio_endpoint: "http://10.20.30.10:9000"
+        otelcol_minio_endpoint: "https://minio.lab.example.com:9000"
         otelcol_splunk_hec_enabled: false
       hosts:
         log-server:

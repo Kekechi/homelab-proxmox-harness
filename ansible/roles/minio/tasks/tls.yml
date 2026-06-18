@@ -36,6 +36,20 @@
           - lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') | length > 0
         fail_msg: "STEP_CA_PROVISIONER_PASSWORD environment variable is not set"
 
+    # Persist the JWK provisioner password (root-only) so the self-heal renewer
+    # can RE-ENROLL if the cert ever fully expires (`step ca renew` needs a still-
+    # valid cert; a long outage past notAfter is otherwise unrecoverable). The
+    # issuing CA's x509 policy bounds this credential to *.{{ domain_name }}.
+    # Mirrors the nexus cert-renewer pattern.
+    - name: Persist provisioner password for renewer re-enroll
+      ansible.builtin.copy:
+        content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
+        dest: "{{ minio_prov_pass_persist }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
     - name: Stat MinIO certificate file
       ansible.builtin.stat:
         path: "{{ minio_certs_dir }}/public.crt"
@@ -44,43 +58,27 @@
     - name: Issue MinIO TLS certificate
       when: not minio_cert_stat.stat.exists
       block:
-        - name: Create temp file for provisioner password
-          ansible.builtin.tempfile:
-            state: file
-            suffix: .pass
-          register: minio_prov_pass_file
-
-        - name: Write provisioner password to temp file
-          ansible.builtin.copy:
-            content: "{{ lookup('env', 'STEP_CA_PROVISIONER_PASSWORD') }}"
-            dest: "{{ minio_prov_pass_file.path }}"
-            mode: "0600"
-          no_log: true
-
         - name: Issue certificate via step ca
           ansible.builtin.command:
+            # SAN coupling: FQDN (minio_domain) is the primary SAN — MINIO_ENDPOINT
+            # uses https://{fqdn}:{port}. The host IP is added as a secondary SAN so
+            # IP-addressed access still validates against the served cert.
             cmd: >-
               step ca certificate {{ minio_domain }}
               {{ minio_certs_dir }}/public.crt
               {{ minio_certs_dir }}/private.key
+              {% if minio_endpoint_ip %}--san {{ minio_domain }} --san {{ minio_endpoint_ip }}{% endif %}
               --provisioner {{ minio_jwk_provisioner }}
-              --provisioner-password-file {{ minio_prov_pass_file.path }}
+              --provisioner-password-file {{ minio_prov_pass_persist }}
               --ca-url {{ minio_ca_url }}
               --root {{ minio_ca_root }}
               --kty EC
               --curve P-256
-              --not-after 24h
+              --not-after {{ minio_cert_duration }}
               --force
           changed_when: true
           no_log: true
           notify: Restart minio
-
-      always:
-        - name: Delete provisioner password temp file
-          ansible.builtin.file:
-            path: "{{ minio_prov_pass_file.path }}"
-            state: absent
-          when: minio_prov_pass_file is defined
 
     # Run on every play — ensures permissions are correct even if a previous run
     # crashed after issuance but before the permission task completed.
@@ -94,16 +92,30 @@
         - { name: public.crt, mode: "0640" }
         - { name: private.key, mode: "0600" }
 
-    - name: Deploy MinIO certificate renewal systemd service
+    # Self-heal renewer: oneshot service + timer (mirrors nexus cert-renewer).
+    # `step ca renew` at ~2/3 lifetime; re-enroll fallback via the persisted
+    # provisioner password when the cert has lapsed past notAfter; reload MinIO
+    # so the fresh cert is served. Fresh-deploy-only (role-internal), idempotent.
+    - name: Deploy MinIO cert-renewer service template
       ansible.builtin.template:
-        src: minio-cert-renew.service.j2
-        dest: /etc/systemd/system/minio-cert-renew.service
+        src: minio-cert-renewer.service.j2
+        dest: /etc/systemd/system/minio-cert-renewer.service
         mode: "0644"
       notify: Reload systemd
 
-    - name: Enable and start MinIO certificate renewal service
+    - name: Deploy MinIO cert-renewer timer template
+      ansible.builtin.template:
+        src: minio-cert-renewer.timer.j2
+        dest: /etc/systemd/system/minio-cert-renewer.timer
+        mode: "0644"
+      notify: Reload systemd
+
+    - name: Reload systemd for cert-renewer units
       ansible.builtin.systemd:
-        name: minio-cert-renew
+        daemon_reload: true
+
+    - name: Enable and start MinIO cert-renewer timer
+      ansible.builtin.systemd:
+        name: minio-cert-renewer.timer
         enabled: true
         state: started
-        daemon_reload: true

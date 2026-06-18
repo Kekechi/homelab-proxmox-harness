@@ -57,8 +57,11 @@ FIXTURE = {
         "state_bucket": "tfstate-sandbox",
     },
     "services": {
+        # tls: True exercises the production-representative HTTPS state-backend path
+        # (https MINIO_ENDPOINT + AWS_CA_BUNDLE + cert-SAN wiring). The generator's
+        # http-scheme branch is still covered by the live sandbox config (tls:false).
         "minio": {"node": "n1", "ip": "10.20.30.10", "port": 9000, "ansible_user": "root",
-                  "hostname": "minio-server", "fqdn": "minio.lab.example.com", "tls": False, "network": "lab"},
+                  "hostname": "minio-server", "fqdn": "minio.lab.example.com", "tls": True, "network": "lab"},
         "pki": {
             "root_ca": {"node": "n1", "ip": "10.20.30.11/24", "vm_id": 311, "ansible_user": "debian",
                         "hostname": "root-ca", "cloud_init_template_id": 9000,

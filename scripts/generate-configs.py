@@ -701,6 +701,13 @@ def gen_inventory(cfg: dict, env: str) -> str:
                         lines.append(f"        minio_domain: {minio_fqdn}")
                     if domain_name:
                         lines.append(f"        minio_ca_url: https://ca.{domain_name}")
+                    # Cert SAN coupling: the MinIO server cert must validate for
+                    # whatever host MINIO_ENDPOINT uses. .envrc points the endpoint
+                    # at the FQDN (https://{fqdn}:{port}) when tls:true, so the FQDN
+                    # is the primary SAN (minio_domain); the bare IP is added as a
+                    # secondary SAN so IP-addressed access (and the loop's own
+                    # state-backend reachability checks) still validate.
+                    lines.append(f"        minio_endpoint_ip: {host_ip}")
                 # nexus: propagate domain, CA URL, and APT proxy repo list
                 elif svc_name == "nexus":
                     nexus_fqdn = svc.get("fqdn", "")
@@ -979,6 +986,21 @@ def gen_envrc(cfg: dict, env: str) -> str:
             export SPLUNK_ADMIN_PASSWORD="{CHANGE_ME}"  # admin account password
             export SPLUNK_HEC_TOKEN="{CHANGE_ME}"       # HEC token UUID (generate with uuidgen); reuse in OTel config
             export SPLUNK_MCP_PASSWORD="{CHANGE_ME}"    # mcp service account password
+        """))
+
+    if minio_tls:
+        # MinIO serves the TF state backend over HTTPS (minio.tls: true). The S3
+        # client (Terraform's AWS SDK) must trust the internal CA that signed the
+        # MinIO server cert, or `terraform init`/state access fails. AWS_CA_BUNDLE
+        # points the SDK at the exported root CA. Emitted (uncommented) only when
+        # minio.tls is true so the loop's own init survives the HTTPS backend.
+        parts.append(textwrap.dedent("""\
+
+            # Internal CA trust for the HTTPS MinIO state backend (minio.tls: true).
+            # Terraform's S3 client reads AWS_CA_BUNDLE to validate the MinIO server
+            # cert against the internal root CA. Requires .pki/root_ca.crt to exist
+            # (PKI deployed). Go/curl also honour SSL_CERT_FILE below if uncommented.
+            export AWS_CA_BUNDLE=/workspace/.pki/root_ca.crt
         """))
 
     parts.append(textwrap.dedent("""\

@@ -12,7 +12,7 @@ export MINIO_ROOT_USER="CHANGE_ME"      # MinIO root/admin username
 export MINIO_ROOT_PASSWORD="CHANGE_ME"  # MinIO root/admin password
 
 # MinIO scoped key — endpoint auto-populated; keys from: bash scripts/bootstrap-minio.sh sandbox
-export MINIO_ENDPOINT="http://10.20.30.10:9000"
+export MINIO_ENDPOINT="https://minio.lab.example.com:9000"
 export MINIO_ACCESS_KEY="CHANGE_ME"  # terraform-sandbox scoped key (read/write tfstate-sandbox only)
 export MINIO_SECRET_KEY="CHANGE_ME"  # terraform-sandbox scoped secret
 
@@ -39,6 +39,12 @@ export OTELCOL_MINIO_SECRET_KEY="CHANGE_ME"  # write-scoped secret
 export SPLUNK_ADMIN_PASSWORD="CHANGE_ME"  # admin account password
 export SPLUNK_HEC_TOKEN="CHANGE_ME"       # HEC token UUID (generate with uuidgen); reuse in OTel config
 export SPLUNK_MCP_PASSWORD="CHANGE_ME"    # mcp service account password
+
+# Internal CA trust for the HTTPS MinIO state backend (minio.tls: true).
+# Terraform's S3 client reads AWS_CA_BUNDLE to validate the MinIO server
+# cert against the internal root CA. Requires .pki/root_ca.crt to exist
+# (PKI deployed). Go/curl also honour SSL_CERT_FILE below if uncommented.
+export AWS_CA_BUNDLE=/workspace/.pki/root_ca.crt
 
 # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
 # Go (Terraform) and curl pick this up; no container rebuild needed.

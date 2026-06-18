@@ -1,0 +1,27 @@
+[Unit]
+Description=MinIO TLS certificate self-heal renewer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Renewal activity + failures land in the journal under this identifier, which
+# the common role forwards to the syslog / log-server pipeline (SIEM-agnostic).
+SyslogIdentifier=cert-renewer
+# Runs as root: needs to read the persisted provisioner password (root:0600),
+# write cert files (owned by minio-user) and reload the minio service.
+# Only acts when the cert is actually near expiry.
+ExecCondition=/usr/bin/step certificate needs-renewal {{ minio_certs_dir }}/public.crt
+# Renew while the cert is still valid; if renew fails (expired past notAfter),
+# self-heal by RE-ENROLLING with the persisted provisioner password. A total
+# failure logs a clear line to the journal and exits non-zero.
+ExecStart=/bin/bash -c '/usr/bin/step ca renew --force --ca-url {{ minio_ca_url }} --root {{ minio_ca_root }} {{ minio_certs_dir }}/public.crt {{ minio_certs_dir }}/private.key || { echo "step ca renew failed for {{ minio_domain }} (cert likely expired) - re-enrolling"; /usr/bin/step ca certificate {{ minio_domain }} {{ minio_certs_dir }}/public.crt {{ minio_certs_dir }}/private.key{% if minio_endpoint_ip %} --san {{ minio_domain }} --san {{ minio_endpoint_ip }}{% endif %} --provisioner {{ minio_jwk_provisioner }} --provisioner-password-file {{ minio_prov_pass_persist }} --ca-url {{ minio_ca_url }} --root {{ minio_ca_root }} --kty EC --curve P-256 --not-after {{ minio_cert_duration }} --force; } || { echo "CERT RENEW AND RE-ENROLL FAILED for {{ minio_domain }}"; exit 1; }'
+ExecStartPost=/usr/bin/chown minio-user:minio-user {{ minio_certs_dir }}/public.crt {{ minio_certs_dir }}/private.key
+ExecStartPost=/bin/chmod 0640 {{ minio_certs_dir }}/public.crt
+ExecStartPost=/bin/chmod 0600 {{ minio_certs_dir }}/private.key
+# MinIO hot-reloads certs from disk; try-reload-or-restart guarantees the fresh
+# cert is served even on the (current) no-ExecReload unit.
+ExecStartPost=/bin/systemctl try-reload-or-restart minio
+
+[Install]
+WantedBy=multi-user.target

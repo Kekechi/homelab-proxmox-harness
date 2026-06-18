@@ -13,3 +13,15 @@ minio_ca_url: ""
 minio_certs_dir: /etc/minio/certs
 minio_ca_root: /usr/local/share/ca-certificates/internal-root-ca.crt
 minio_jwk_provisioner: acme  # Name of the JWK provisioner on the issuing CA (not the ACME protocol provisioner)
+# Cert lifetime requested at issuance/re-enroll. Capped by the issuing CA's
+# maxTLSCertDuration; keep renewal headroom well below this (the renewer timer
+# fires every 15 min and step renews at ~2/3 of the lifetime).
+minio_cert_duration: "24h"
+# Root-only file holding the JWK provisioner password, used by the self-heal
+# renewer to RE-ENROLL a fully-expired cert (`step ca renew` alone cannot recover
+# a cert past notAfter). Mirrors the nexus cert-renewer pattern.
+minio_prov_pass_persist: "/etc/minio/certs/.provisioner-pass"
+# Secondary SAN (the MinIO host IP) for the server cert, propagated from
+# config/<env>.yml via make configure. Empty here so role defaults stay
+# deployment-agnostic; the generator emits it into the minio group vars.
+minio_endpoint_ip: ""
