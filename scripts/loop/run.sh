@@ -13,7 +13,7 @@
 #   --keep-minio   skip teardown+rebuild of MinIO/state (faster iteration when
 #                  MinIO and Terraform state are not under test).
 #   --from PHASE   start at PHASE (secrets|teardown|minio|configure|init|plan|
-#                  apply|deploy|verify). Default: secrets.
+#                  apply|deploy|gate|verify). Default: secrets.
 #   --to PHASE     stop after PHASE. Default: verify.
 #
 # Phases:
@@ -25,7 +25,14 @@
 #   plan      terraform plan (TF_INPUT=0 — fail, never prompt)
 #   apply     terraform apply → creates the service LXCs/VMs
 #   deploy    phased ansible: PKI → Nexus → DNS → log_server
+#   gate      HARD Tier-1 regression gate: `make verify-all` (behavioral, queries
+#             the live daemons). Non-zero HALTS the loop — this is the only phase
+#             that gates on service-correctness, not just absence of a failure.
 #   verify    live evidence capture (reachability, cert issuers, apt health)
+#
+# Note: `gate` is a deliberate behavior change vs. the evidence-only `verify`
+# phase (which always exits 0). `gate` stops the loop on a failed/incomplete
+# service so a regression (e.g. a skipped role) cannot pass silently.
 # =============================================================================
 set -euo pipefail
 
@@ -53,7 +60,7 @@ source "${SELF_DIR}/lib.sh"
 export TF_INPUT=0
 export ANSIBLE_HOST_KEY_CHECKING=False
 
-PHASES=(secrets teardown minio configure init plan apply deploy verify)
+PHASES=(secrets teardown minio configure init plan apply deploy gate verify)
 phase_idx() { local p="$1" i; for i in "${!PHASES[@]}"; do [[ "${PHASES[$i]}" == "$p" ]] && { echo "$i"; return; }; done; echo -1; }
 FROM_I=$(phase_idx "$FROM"); TO_I=$(phase_idx "$TO")
 (( FROM_I >= 0 )) || die "unknown --from phase: $FROM"
@@ -84,6 +91,30 @@ if active teardown; then
     if [[ -d "${REPO_ROOT}/.pki" ]]; then
         log "Wiping controller PKI staging (${REPO_ROOT}/.pki) for a clean cold start"
         rm -rf "${REPO_ROOT}/.pki"/*
+    fi
+    # Rebuilt hosts reuse their IPs but present FRESH SSH host keys. ansible.cfg
+    # uses StrictHostKeyChecking=accept-new, which accepts UNKNOWN hosts but
+    # REFUSES a host whose key CHANGED — so a stale known_hosts entry from the
+    # prior build makes the very first ansible-playbook fail UNREACHABLE
+    # ("REMOTE HOST IDENTIFICATION HAS CHANGED"). The raw-ssh readiness waits in
+    # this loop dodge it with UserKnownHostsFile=/dev/null, but ansible uses the
+    # real known_hosts. Purge the sandbox host keys here (same cold-start hygiene
+    # as the .pki wipe) so the rebuilt hosts re-key cleanly on first contact.
+    if [[ -f "${HOME}/.ssh/known_hosts" ]]; then
+        log "Purging stale known_hosts entries for sandbox service IPs (rebuilt hosts re-key)"
+        for _svc_ip in \
+            "$(cfg services.minio.ip)" \
+            "$(cfg services.pki.root_ca.ip)" \
+            "$(cfg services.pki.issuing_ca.ip)" \
+            "$(cfg services.dns.auth.ip)" \
+            "$(cfg services.dns.dist.ip)" \
+            "$(cfg services.nexus.ip)" \
+            "$(cfg services.log_server.ip)" \
+            "$(cfg services.splunk.ip)"; do
+            _svc_ip="${_svc_ip%%/*}"   # strip any /prefix
+            [[ -n "$_svc_ip" ]] || continue
+            ssh-keygen -R "$_svc_ip" >/dev/null 2>&1 || true
+        done
     fi
 fi
 
@@ -158,6 +189,19 @@ if active deploy; then
     log "Phase: DNS records";ansible-playbook -i inventory/ playbooks/dns-records.yml
     log "Phase: DNS dist";   ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml
     cd "$REPO_ROOT"
+fi
+
+# --- gate --------------------------------------------------------------------
+# HARD Tier-1 regression gate. `make verify-all` runs the per-service behavioral
+# verifies (scripts/verify/), each querying the live daemon, aggregating to a
+# single exit 0 (all green) / 1 (any service down or incompletely deployed).
+#
+# Unlike the evidence-only `verify` phase below, this one GATES: a non-zero exit
+# (set -e) halts the loop here so a regression — e.g. a skipped/failed role that
+# left a service down — cannot slip past into a "successful" run.
+if active gate; then
+    banner gate
+    make verify-all ENV="$ENV"
 fi
 
 # --- verify ------------------------------------------------------------------
