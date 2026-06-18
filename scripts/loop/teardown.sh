@@ -42,12 +42,16 @@ _pve_init
 log "Teardown target pool: ${POOL_ID} (vmid range ${VMID_MIN}-${VMID_MAX})"
 [[ "$KEEP_MINIO"   == 1 ]] && log "  --keep-minio: MinIO LXC will be preserved"
 [[ "$DRY_RUN"      == 1 ]] && log "  --dry-run: no mutations will be performed"
-# Clone-based VMs (e.g. root-ca, splunk) are created from templates in
-# templates-pool, which the sandbox token cannot clone (Permission check
-# failed). The loop cannot rebuild them, so by default it must NOT destroy
-# them — they are operator-managed prereqs, like the network bridges. Only a
-# deliberate --include-vms (operator will recreate with their token) wipes them.
-[[ "$INCLUDE_VMS" == 0 ]] && log "  VMs (qemu) preserved — token cannot re-clone them; pass --include-vms to override"
+# Clone-based VMs (e.g. root-ca, splunk) are created from templates. The earlier
+# rationale here — "the sandbox token cannot clone them (Permission check
+# failed)" — is DISPROVEN: an --include-vms cold rebuild's `terraform apply`
+# recreates the root-CA VM from its template fine (verified). The real historical
+# blocker was template storage/node-locality, not IAM permissions. VMs are still
+# preserved by DEFAULT here as a conservative choice — a full --include-vms wipe
+# also destroys the offline root CA, regenerating the entire trust chain, which
+# is rarely what you want for a quick iteration. Pass --include-vms for a true
+# cold start from nothing (now safe: the token can re-clone the templates).
+[[ "$INCLUDE_VMS" == 0 ]] && log "  VMs (qemu) preserved by default (conservative — keeps the offline root CA); pass --include-vms for a full cold start"
 
 # Enumerate cluster guests and select pool members as: vmid|type|node|status|name
 # (JSON goes through a temp file so the heredoc program and the API data don't

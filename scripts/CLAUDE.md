@@ -88,5 +88,9 @@ preserved `test-golden.py` byte-identically.
 
 See `docs/design/deployment-automation-overhaul.md` and the loop scripts'
 headers. `make loop-teardown|loop-minio|loop-secrets`; `scripts/loop/run.sh`
-drives a full cycle. Sandbox only; teardown preserves qemu VMs by default
-(the token cannot re-clone them — they are operator-managed prereqs).
+drives a full cycle. Sandbox only; teardown preserves qemu VMs by default as a
+conservative choice (a full `--include-vms` wipe also destroys the offline root
+CA and regenerates the whole trust chain). The token *can* re-clone the VM
+templates (verified via an `--include-vms` cold rebuild) — the old "token cannot
+clone" note was wrong; the real historical blocker was template storage/node-
+locality. Pass `--include-vms` for a true cold start from nothing.
