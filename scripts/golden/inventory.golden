@@ -6,6 +6,7 @@ all:
     ansible_user: ubuntu
     domain_name: lab.example.com
     nexus_apt_proxy: ""
+    nexus_fallback: "fail"
     common_log_server_address: "10.20.30.16"
     common_internal_hosts:
       - {ip: "10.20.30.10", fqdn: "minio.lab.example.com"}

@@ -127,7 +127,10 @@ if active minio && [[ "$KEEP_MINIO" != 1 ]]; then
     banner minio
     bash "${SELF_DIR}/recreate-minio.sh" "$ENV"
     log "Provisioning MinIO via Ansible..."
-    ( cd ansible && ansible-playbook -i inventory/ playbooks/minio-setup.yml --limit minio )
+    # Cold rebuild: Nexus does not exist yet, so base packages MUST fall back to
+    # upstream. nexus_fallback defaults to 'fail' (see apt-fallback-policy.md);
+    # override to 'upstream' here so this bootstrap deploy does not abort.
+    ( cd ansible && ansible-playbook -i inventory/ playbooks/minio-setup.yml --limit minio -e nexus_fallback=upstream )
     log "Bootstrapping MinIO bucket + scoped IAM (writes scoped key to .envrc)..."
     bash "${REPO_ROOT}/scripts/bootstrap-minio.sh" "$ENV"
     # re-source so the freshly-written scoped key is in this shell for init
@@ -187,12 +190,19 @@ if active deploy; then
         fi
     fi
     cd ansible
-    log "Phase: PKI";        ansible-playbook -i inventory/ playbooks/pki-setup.yml
-    log "Phase: Nexus";      ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus
-    log "Phase: DNS auth";   ansible-playbook -i inventory/ playbooks/dns-setup.yml
-    log "Phase: DNS records";ansible-playbook -i inventory/ playbooks/dns-records.yml
-    log "Phase: DNS dist";   ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml
-    log "Phase: log-server"; ansible-playbook -i inventory/ playbooks/log-server-setup.yml
+    # Cold rebuild bootstrap: Nexus does not exist until its own phase below, so
+    # every phase that runs `common` (base apt) or fetches a raw artifact before
+    # Nexus is up MUST fall back to upstream. nexus_fallback defaults to 'fail'
+    # (the fail-safe steady-state policy, see docs/design/apt-fallback-policy.md);
+    # override to 'upstream' for the whole cold-rebuild deploy so it does not
+    # abort at the PKI phase. Day-2 deploys keep the 'fail' default.
+    APT_FALLBACK="-e nexus_fallback=upstream"
+    log "Phase: PKI";        ansible-playbook -i inventory/ playbooks/pki-setup.yml $APT_FALLBACK
+    log "Phase: Nexus";      ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus $APT_FALLBACK
+    log "Phase: DNS auth";   ansible-playbook -i inventory/ playbooks/dns-setup.yml $APT_FALLBACK
+    log "Phase: DNS records";ansible-playbook -i inventory/ playbooks/dns-records.yml $APT_FALLBACK
+    log "Phase: DNS dist";   ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml $APT_FALLBACK
+    log "Phase: log-server"; ansible-playbook -i inventory/ playbooks/log-server-setup.yml $APT_FALLBACK
     cd "$REPO_ROOT"
 fi
 

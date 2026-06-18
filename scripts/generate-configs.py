@@ -655,6 +655,14 @@ def gen_inventory(cfg: dict, env: str) -> str:
     if domain_name:
         lines.append(f"    domain_name: {domain_name}")
     lines.append(f"    nexus_apt_proxy: \"{nexus_apt_proxy}\"")
+    # nexus_fallback — phase-keyed run parameter, NOT per-env config. Shared
+    # default 'fail' is fail-safe: when Nexus is unreachable a deploy aborts with
+    # a clear message rather than silently chasing upstream (correct in a
+    # firewalled steady state, where upstream is unreachable anyway). Bootstrap
+    # tooling (scripts/loop/run.sh cold rebuild, the prod scaffolding runbook)
+    # overrides to 'upstream' with `-e nexus_fallback=upstream`, since Nexus does
+    # not exist yet at the PKI phase. See docs/design/apt-fallback-policy.md.
+    lines.append(f"    nexus_fallback: \"fail\"")
     log_server_svc = svcs.get("log_server", {})
     log_server_ip_for_all = _strip_prefix(log_server_svc.get("ip", "")) if log_server_svc.get("enabled", False) else ""
     if log_server_ip_for_all:

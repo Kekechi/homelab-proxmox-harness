@@ -6,6 +6,12 @@ dns_collector_checksum: "sha256:fde2b3020d9c010627efa5416d59bedc7ece536388564182
 # Production locked-down hosts use the Nexus raw repo; internet-connected hosts
 # fall back here so the deploy is self-sufficient.
 dns_collector_upstream_url: "https://github.com/dmachard/DNS-collector/releases/download/v{{ dns_collector_version }}/{{ dns_collector_tarball_filename }}"
+# nexus_fallback (phase-keyed run parameter, NOT per-env config) is a shared,
+# intentionally un-prefixed cross-role var emitted into inventory all.vars by
+# generate-configs.py with the fail-safe default 'fail'. It is NOT a role default
+# (that would mis-prefix it); the rescue in tasks/install.yml guards with
+# `| default('fail')` as the fail-safe floor. Bootstrap tooling overrides to
+# 'upstream' via -e. See docs/design/apt-fallback-policy.md.
 dns_collector_user: "dnscollector"
 dns_collector_group: "dnscollector"
 dns_collector_install_dir: "/opt/dns-collector"

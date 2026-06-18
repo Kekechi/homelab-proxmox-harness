@@ -21,6 +21,19 @@
         url_password: "{{ nexus_reader_password | default('') }}"
       no_log: true
   rescue:
+    # fail-mode (default): a Nexus raw fetch failure is a real fault, not a
+    # bootstrap condition — re-raise with a clear message instead of silently
+    # chasing the upstream GitHub release (firewalled-off in production).
+    - name: Abort — otelcol Nexus raw fetch failed in fail mode
+      ansible.builtin.fail:
+        msg: >-
+          otelcol-contrib download from the Nexus raw repo
+          ({{ otelcol_nexus_raw_url }}) failed and nexus_fallback is 'fail' (the
+          default) — aborting, no upstream fallback (firewalled production has no
+          usable upstream). For a cold bootstrap re-run with
+          -e nexus_fallback=upstream.
+      when: nexus_fallback | default('fail') == 'fail'
+
     - name: Download otelcol-contrib DEB from upstream (Nexus raw unavailable)
       ansible.builtin.get_url:
         url: "{{ otelcol_upstream_url }}"

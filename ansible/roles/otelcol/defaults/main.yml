@@ -7,6 +7,13 @@ otelcol_version: "0.150.1"
 # Must be updated whenever otelcol_version changes.
 otelcol_checksum: "c8ded6c8dbe38e63b63fbfb86b5eff485ba91616254b58ae21dc71d03ba1b922"
 
+# nexus_fallback (phase-keyed run parameter, NOT per-env config) is a shared,
+# intentionally un-prefixed cross-role var emitted into inventory all.vars by
+# generate-configs.py with the fail-safe default 'fail'. It is NOT a role default
+# (that would mis-prefix it); the rescue in tasks/install.yml guards with
+# `| default('fail')` as the fail-safe floor. Bootstrap tooling overrides to
+# 'upstream' via -e. See docs/design/apt-fallback-policy.md.
+
 # MinIO bucket for log storage
 otelcol_minio_bucket: "otelcol-logs"
 

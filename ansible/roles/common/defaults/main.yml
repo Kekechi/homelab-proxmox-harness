@@ -25,3 +25,14 @@ common_debian_security_uri: "http://deb.debian.org/debian-security"
 # Nexus health endpoint used for the reachability probe (path under nexus_apt_proxy).
 common_nexus_status_path: "/service/rest/v1/status"
 common_nexus_probe_timeout: 5
+# A few retries so a transient blip does not trip the fail-mode abort.
+common_nexus_probe_retries: 3
+common_nexus_probe_delay: 5
+
+# nexus_fallback (phase-keyed run parameter, NOT per-env config) is a shared
+# cross-role var emitted into inventory all.vars by generate-configs.py with the
+# fail-safe default 'fail'. Like nexus_apt_proxy it is intentionally un-prefixed
+# and lives in all.vars, NOT a role default (a role default would mis-prefix it
+# and shadow the shared value). The tasks guard with `| default('fail')` as the
+# fail-safe floor. Bootstrap tooling overrides to 'upstream' via -e, because
+# Nexus does not exist yet at the PKI phase. See docs/design/apt-fallback-policy.md.

@@ -67,6 +67,11 @@
     timeout: "{{ common_nexus_probe_timeout }}"
     status_code: [200, 401, 403, 404]
   register: common_nexus_probe
+  # Retry a few times so a transient blip does not trip the fail-mode abort; the
+  # message below names the real cause, not a downstream apt error.
+  retries: "{{ common_nexus_probe_retries }}"
+  delay: "{{ common_nexus_probe_delay }}"
+  until: (common_nexus_probe.status | default(0)) in [200, 401, 403, 404]
   failed_when: false
   changed_when: false
   when:
@@ -84,6 +89,24 @@
 - name: Configure base Debian apt repositories
   when: ansible_distribution == 'Debian'
   block:
+    # fail-mode (default): a configured-but-unreachable Nexus is a real fault, not
+    # a bootstrap condition. Abort with a clear message naming the cause instead
+    # of silently chasing upstream (which is firewalled-off in production anyway).
+    # Bootstrap tooling overrides nexus_fallback=upstream where this is expected.
+    - name: Fail fast when Nexus is unreachable in fail mode
+      ansible.builtin.fail:
+        msg: >-
+          Nexus apt proxy ({{ nexus_apt_proxy }}) is unreachable after
+          {{ common_nexus_probe_retries }} retries — aborting. nexus_fallback is
+          'fail' (the default), so there is no upstream fallback (firewalled
+          production has no usable upstream mirror). If this is a cold bootstrap
+          where Nexus does not exist yet, re-run with -e nexus_fallback=upstream.
+      when:
+        - nexus_fallback | default('fail') == 'fail'
+        - not (common_nexus_reachable | bool)
+        - nexus_apt_proxy | default('') | length > 0
+        - inventory_hostname not in groups['nexus'] | default([])
+
     - name: Use Nexus-proxied Debian sources (Nexus reachable)
       when: common_nexus_reachable | bool
       block:
