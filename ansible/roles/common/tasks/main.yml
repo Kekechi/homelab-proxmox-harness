@@ -206,18 +206,13 @@
   failed_when: false
 
 - name: Wait for any in-flight first-boot automatic apt/dpkg to release the lock
-  ansible.builtin.shell: |
-    set -o pipefail   # no real pipe; satisfies ansible-lint (regex '|' in pattern)
-    for _ in $(seq 1 120); do            # ~10 min ceiling (120 * 5s)
-      if ! pgrep -f 'apt\.systemd\.daily|unattended-upgrade|apt-get|/usr/bin/dpkg ' >/dev/null 2>&1; then
-        exit 0
-      fi
-      sleep 5
-    done
-    echo "automatic apt/dpkg still running after ~10 min — lock not released" >&2
-    exit 1
-  args:
-    executable: /bin/bash
+  # Wait on the real dpkg frontend lock rather than matching process names:
+  # `flock -w` blocks until the lock is free (then releases it immediately, so
+  # the apt tasks below are unaffected) or exits non-zero after the ceiling.
+  # This avoids the pgrep -f self-match trap, where the wait command's own argv
+  # contained the pattern strings and matched itself forever. ~10 min ceiling.
+  ansible.builtin.command:
+    cmd: flock -w 600 /var/lib/dpkg/lock-frontend true
   changed_when: false
   when: ansible_distribution == 'Debian'
 
