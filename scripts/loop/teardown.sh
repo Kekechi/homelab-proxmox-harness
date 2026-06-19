@@ -81,19 +81,31 @@ fi
 log "Found ${#MEMBERS[@]} pool member(s):"
 printf '    %s\n' "${MEMBERS[@]}" >&2
 
+# Print a guest's current status, or "gone" if the vmid no longer exists.
+# (lxc and qemu live at different API paths — the caller passes $typ.)
+guest_status() {
+    local node="$1" typ="$2" vmid="$3" raw
+    raw="$(pve_api GET "/nodes/${node}/${typ}/${vmid}/status/current" 2>/dev/null || echo '')"
+    printf '%s' "$raw" | python3 -c 'import sys,json
+try: print(json.load(sys.stdin)["data"]["status"])
+except Exception: print("gone")' 2>/dev/null || echo gone
+}
+
 # Wait for a guest's status to reach a target (or vanish), up to ~60s.
 wait_status() {
-    local node="$1" typ="$2" vmid="$3" want="$4" raw st
+    local node="$1" typ="$2" vmid="$3" want="$4" st
     for _ in $(seq 1 60); do
-        raw="$(pve_api GET "/nodes/${node}/${typ}/${vmid}/status/current" 2>/dev/null || echo '')"
-        st="$(printf '%s' "$raw" | python3 -c 'import sys,json
-try: print(json.load(sys.stdin)["data"]["status"])
-except Exception: print("gone")' 2>/dev/null || echo gone)"
+        st="$(guest_status "$node" "$typ" "$vmid")"
         [[ "$st" == "$want" || "$st" == "gone" ]] && return 0
         sleep 1
     done
     return 1
 }
+
+# vmids we actually issued a DELETE for, recorded as "vmid|typ|node|name" so the
+# post-delete wait can poll the EXACT guests we removed (lxc + qemu both) until
+# the async purge task has truly made each one disappear.
+DELETED=()
 
 for line in "${MEMBERS[@]}"; do
     IFS='|' read -r vmid typ node status name <<<"$line"
@@ -131,7 +143,44 @@ for line in "${MEMBERS[@]}"; do
     log "Deleting ${typ} ${vmid} (${name})..."
     pve_api DELETE "/nodes/${node}/${typ}/${vmid}?purge=1&destroy-unreferenced-disks=1" >/dev/null \
         || die "DELETE failed for ${vmid} (${name})"
-    wait_status "$node" "$typ" "$vmid" gone || warn "${vmid} still present after delete (purge task may be async)"
+    DELETED+=("${vmid}|${typ}|${node}|${name}")
 done
+
+# --- wait for every deleted guest to be truly GONE ---------------------------
+# The DELETE above only QUEUES an async purge task; the API returns before the
+# guest is actually removed. If teardown declares "complete" while a purge is
+# still in flight, the next loop phase (recreate-minio / run.sh) collides with
+# "CT <vmid> already exists". So poll each deleted vmid — lxc and qemu both, at
+# their respective API paths — until status/current reports "gone". Polling all
+# at once lets the node's concurrent purges overlap instead of serialising a
+# per-guest ceiling. A vmid still present at the ceiling is a real stuck purge:
+# die loudly rather than continue into a guaranteed downstream collision.
+if [[ "${#DELETED[@]}" -gt 0 ]]; then
+    GONE_DEADLINE=$(( $(date +%s) + 180 ))   # ~3 min ceiling for all purges combined
+    log "Waiting for ${#DELETED[@]} deleted guest(s) to be purged (gone)..."
+    pending=("${DELETED[@]}")
+    while [[ "${#pending[@]}" -gt 0 ]]; do
+        still=()
+        for d in "${pending[@]}"; do
+            IFS='|' read -r vmid typ node name <<<"$d"
+            st="$(guest_status "$node" "$typ" "$vmid")"
+            if [[ "$st" == "gone" ]]; then
+                log "  ${typ} ${vmid} (${name}) gone"
+            else
+                still+=("$d")
+            fi
+        done
+        pending=("${still[@]}")
+        [[ "${#pending[@]}" -eq 0 ]] && break
+        if (( $(date +%s) >= GONE_DEADLINE )); then
+            for d in "${pending[@]}"; do
+                IFS='|' read -r vmid typ node name <<<"$d"
+                warn "STUCK: ${typ} ${vmid} (${name}) still present after purge ceiling (status=$(guest_status "$node" "$typ" "$vmid"))"
+            done
+            die "purge did not complete for ${#pending[@]} guest(s) within 180s — refusing to declare teardown complete (downstream recreate would collide)"
+        fi
+        sleep 3
+    done
+fi
 
 log "Teardown complete."
