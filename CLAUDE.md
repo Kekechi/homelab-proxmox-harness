@@ -70,6 +70,8 @@ docs/                     proxmox-iam.md, network-policy.md, threat-model.md, vi
   skills/
     design/               Design exploration for net-new infrastructure (pre-planning)
     retro/                Session retrospective — prompting lessons and skill lifecycle
+    auto-plan/            Plan an autonomous long-running session (boundary + workstreams + brief)
+    auto-run/             Execute an autonomous long-running session from an /auto-plan brief
     infra-plan/           Plan infrastructure changes (iac-planner, Opus)
     generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
     review/               Review code for security and correctness (tf-reviewer, Sonnet)
@@ -119,6 +121,8 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 |---|---|
 | `/design <rough idea>` | Explore and decide on a design before planning — one decision at a time |
 | `/retro` | Retrospective on a completed session — surfaces prompting lessons, recommends no action / memory / skill update / new skill |
+| `/auto-plan <goal>` | Plan an autonomous long-running session — safety boundary, sequenced workstreams, session-bricking risks → executable brief |
+| `/auto-run <brief>` | Execute an autonomous session from an `/auto-plan` brief — orchestrator-only main thread, delegated execution, journaled, idempotency-verified |
 | `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
 | `/generate` | Write code from an approved plan using iac-generator |
 | `/review [files]` | Review Terraform/Ansible code with tf-reviewer (single pass) |
