@@ -72,7 +72,7 @@ DISK_SIZE="8G"
 if ! pvesm status 2>/dev/null | awk 'NR>1 {print $1}' | grep -qx "${STORAGE}"; then
   echo "ERROR: Storage '${STORAGE}' not found on this node." >&2
   echo "       For single-node setups, run: STORAGE=local-lvm bash $0" >&2
-  echo "       For cluster setups, configure NFS storage first. See docs/cluster-setup.md" >&2
+  echo "       For cluster setups, configure NFS storage first. See docs/guides/cluster-setup.md" >&2
   exit 1
 fi
 

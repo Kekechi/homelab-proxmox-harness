@@ -42,7 +42,7 @@ make configure
 
 The generator writes `terraform/sandbox.tfvars`, `ansible/inventory/hosts.yml`,
 `.devcontainer/squid/allowed-cidrs.conf`, `.envrc` (with `CHANGE_ME` placeholders),
-and `.env.mk`.
+`.env.mk`, and `ansible/inventory/group_vars/pki_*/vars.yml`.
 
 > If `allowed-cidrs.conf` changed, run `make build` and reopen the dev container
 > so Squid picks up the new allowlist.
@@ -55,7 +55,8 @@ MINIO_ROOT_USER         # admin username you choose
 MINIO_ROOT_PASSWORD     # admin password you choose
 ```
 
-> `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` are filled in after Phase 1 bootstrap.
+> `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` are written into `.envrc` automatically
+> by `make bootstrap-minio` in Phase 1 — leave them as the `CHANGE_ME` placeholders here.
 > Phase-specific secrets (`NEXUS_ADMIN_PASSWORD`, `PDNS_*`, `STEP_CA_*`) can wait
 > until the relevant phase.
 
@@ -73,7 +74,7 @@ Follow **all steps** in `docs/guides/minio-setup.md`:
 | Step 0 | Generate SSH keypair (already done if `ssh.public_key` is set) |
 | Step 1 | Create the MinIO LXC in Proxmox GUI, bootstrap SSH via `pct exec` |
 | Step 2 | Fetch MinIO checksum, run `make ansible-minio` |
-| Step 3 | Run `make bootstrap-minio` — copy `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` output into `.envrc` |
+| Step 3 | Run `make bootstrap-minio` — it writes the scoped `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` directly into `.envrc` (no manual copy) |
 
 Then initialize Terraform and validate the empty plan:
 
@@ -256,7 +257,9 @@ make configure
 make ansible-minio    # issues TLS cert from Issuing CA, restarts MinIO on HTTPS
 make init             # re-initialize Terraform backend (MinIO endpoint now HTTPS)
 make ansible-nexus    # TLS pass: Issuing CA now reachable, issues Nexus cert, wires nginx
-make ansible-env      # update APT sources on all managed hosts to HTTPS (nexus_apt_proxy switches to https://<fqdn>:8443)
+make ansible-env      # rewrite APT sources on all managed hosts to the HTTPS Nexus proxy
+                      # (the earlier `make configure` already switched nexus_apt_proxy in the
+                      #  inventory from http://<ip>:8081 to https://<fqdn>:8443, driven by nexus.tls: true)
 ```
 
 Final verification:

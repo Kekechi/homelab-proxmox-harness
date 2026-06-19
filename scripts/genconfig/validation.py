@@ -50,7 +50,7 @@ def validate_schema(cfg: dict):
         sys.exit(
             "Config error: remove 'infrastructure.proxmox.node' — per-service node "
             "placement is now via 'node:' on each service. "
-            "See docs/cluster-setup.md for migration steps."
+            "See docs/guides/cluster-setup.md for migration steps."
         )
 
     # infrastructure.nodes must exist and be a non-empty dict

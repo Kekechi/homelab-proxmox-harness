@@ -99,11 +99,17 @@ To find the ACME-type provisioner name:
 ```bash
 step ca provisioner list \
   --ca-url https://ca.<your-domain> \
-  --root /etc/ssl/certs/internal-root-ca.pem
+  --root /usr/local/share/ca-certificates/internal-root-ca.crt
 ```
 
 Look for the entry with `"type": "ACME"`. In this deployment the provisioner is named
-`acme-1` — the directory URL is `https://ca.<your-domain>/acme/acme-1/directory`.
+`acme` — the directory URL is `https://ca.<your-domain>/acme/acme/directory`.
+
+> **Naming note:** The issuing CA carries two provisioners that are *both* named
+> `acme` — the ACME-protocol provisioner used here, and a separate JWK provisioner
+> (used by the JWK fallback below). The directory URL above selects the ACME one by
+> path (`/acme/<name>/`). Always confirm the live name with the command above rather
+> than assuming it — the provisioner names are a known source of confusion.
 
 ### Appliances with a built-in ACME client — Proxmox example
 
@@ -121,7 +127,7 @@ systemctl restart pveproxy
 
 ```bash
 pvenode acme account register internal admin@<your-domain> \
-  --directory https://ca.<your-domain>/acme/acme-1/directory
+  --directory https://ca.<your-domain>/acme/acme/directory
 ```
 
 The email is required by Proxmox syntactically but step-ca only stores it as metadata —
@@ -149,10 +155,10 @@ then point it at the internal CA:
 
 ```bash
 acme.sh --register-account \
-  --server https://ca.<your-domain>/acme/acme-1/directory
+  --server https://ca.<your-domain>/acme/acme/directory
 
 acme.sh --issue \
-  --server https://ca.<your-domain>/acme/acme-1/directory \
+  --server https://ca.<your-domain>/acme/acme/directory \
   -d <hostname>.<your-domain> \
   --webroot /path/to/webroot
 ```
@@ -164,10 +170,14 @@ appliance's UI.
 ### JWK issuance (fallback)
 
 If ACME is not an option — for example, the host cannot expose an HTTP challenge endpoint —
-the issuing CA also has a JWK provisioner. This requires the `step` CLI and the
-`STEP_CA_PROVISIONER_PASSWORD` from `.envrc`. Renewal is manual.
+the issuing CA also has a JWK provisioner (confusingly, also named `acme`). This requires the
+`step` CLI, the `--provisioner` name, and the `STEP_CA_PROVISIONER_PASSWORD` from `.envrc`.
+Renewal is manual.
 
-See `ansible/roles/minio/tasks/tls.yml` for a reference implementation.
+See `ansible/roles/minio/tasks/tls.yml` for a reference implementation — it issues a cert with
+`step ca certificate ... --provisioner acme --provisioner-password-file <file> --ca-url
+https://ca.<your-domain> --root <root-ca.crt>` and certs are scoped to `*.<domain_name>` by the
+issuing CA's x509 name policy.
 
 ---
 

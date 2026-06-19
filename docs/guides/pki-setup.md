@@ -16,14 +16,18 @@ Two environments are supported:
 
 ```
 Root CA (VM, normally off)
-  └── signs Intermediate CA certificate once per year
-  └── key: file-based (PKCS#11/YubiKey path available via config change)
+  └── signs the Issuing CA's intermediate certificate (boots only to sign/rotate)
+  └── key: file-based today (HSM/PKCS#11 not currently wired in the roles)
 
 Issuing CA (LXC, always on)
-  └── ACME provisioner  — automatic cert renewal for services
-  └── JWK provisioner   — manual/one-off cert issuance
+  └── ACME provisioner (named "acme") — automatic cert issuance + renewal for services
   └── binds :443 directly via setcap (no reverse proxy)
 ```
+
+> The Issuing CA is created with a single ACME provisioner (`step ca init --acme`).
+> There is no separate manual-issuance provisioner. The provisioner naming and the
+> authority's `*.<domain>` policy scope are under review (a separate design item) —
+> this guide documents what currently exists.
 
 DNS records (add to your internal DNS resolver after deployment):
 
@@ -105,21 +109,27 @@ domain_name: "sandbox.example.com"     # used in Terraform DNS output hints
 
 services:
   pki:
+    enabled: true                       # gates the Terraform module (enable_pki); must be true to deploy
     root_ca:
+      node: pve1                         # Proxmox node the cloud-init template lives on
       ip: "192.168.X.X/24"             # CIDR notation required for cloud-init static IP
-      gateway: "192.168.X.1"
-      vm_id: 201                        # must not conflict with existing VMs
+      vm_id: 201                         # must not conflict with existing VMs
       ansible_user: debian
-      hostname: root-ca
-      cloud_init_template_id: 9000      # VMID from Step 1
+      hostname: root-ca                  # Ansible inventory alias (not a DNS label)
+      ca_name: "Homelab Root CA"         # CN written into the root certificate
+      cloud_init_template_id: 9000       # VMID from Step 1
     issuing_ca:
+      node: pve1
       ip: "192.168.X.X/24"
-      gateway: "192.168.X.1"
       ct_id: 202
       ansible_user: root
       hostname: issuing-ca
-      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+      ca_name: "Homelab Issuing CA"      # CN written into the intermediate certificate
 ```
+
+> Production additionally sets `network: mgmt` on both hosts (see
+> `config/production.yml.example`). The gateway is resolved by the generator from the
+> service's network — there is no per-host `gateway:` key.
 
 Regenerate config files:
 
@@ -131,9 +141,9 @@ Fill in the new step-ca secrets in `.envrc`:
 
 ```bash
 # .envrc — fill in these three new entries (in addition to existing secrets)
-export STEP_CA_ROOT_PASSWORD="..."       # protects the Root CA private key
-export STEP_CA_ISSUING_PASSWORD="..."   # protects the Issuing CA private key
-export STEP_CA_PROVISIONER_PASSWORD="..." # protects the ACME provisioner key
+export STEP_CA_ROOT_PASSWORD="..."        # encrypts/decrypts the Root CA private key
+export STEP_CA_ISSUING_PASSWORD="..."     # encrypts the intermediate (Issuing CA) private key
+export STEP_CA_PROVISIONER_PASSWORD="..." # encrypts the ACME provisioner's JWK key
 
 direnv allow
 ```
@@ -154,15 +164,8 @@ pveam update
 pveam download local debian-13-standard_13.0-1_amd64.tar.zst
 ```
 
-Verify the template file ID matches what is set in `config/sandbox.yml`:
-```yaml
-services:
-  pki:
-    issuing_ca:
-      lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
-```
-
-If your template storage is not `local`, update `lxc_template_file_id` accordingly.
+Ensure the Debian 13 standard LXC template is present on Proxmox storage before the
+Terraform apply in Step 4 — the issuing CA LXC clones from it.
 
 ---
 
@@ -203,38 +206,42 @@ ansible -i inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
 
 ## Step 5 — Ansible: Bootstrap the PKI
 
-The PKI setup playbook must be run in two passes because the Root CA must be online
-to sign the Issuing CA's intermediate CSR.
+The PKI setup playbook is a single run. The Root CA VM must be **powered on** while it
+runs: the root play generates the root certificate and key, and the issuing play signs
+the intermediate locally using the root key (staged on the controller). There is no
+CSR exchange and no second pass.
 
-**Pass 1 — Common setup and CSR generation:**
-
-```bash
-# Run from /workspace/ansible (or set ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg)
-cd ansible
-ansible-playbook playbooks/pki-setup.yml
-```
-
-This will:
-1. Install step-cli and step-ca binaries on both hosts
-2. Generate the Root CA certificate and key
-3. Generate the Issuing CA intermediate key and CSR
-4. Fetch the CSR to `/tmp/ansible-pki/intermediate_ca.csr` on the controller
-
-> **Root CA VM:** The VM was created with `started = false`. Start it manually in the
-> Proxmox UI (or via `qm start <vmid>`) before running the playbook. After the playbook
-> completes the signing step, power it off again — it should remain off during normal operation.
-
-**Pass 2 — Deploy signed certificate and start services:**
-
-After the root CA has signed the intermediate CSR, re-run the playbook to deploy
-the signed cert and start the Issuing CA service:
+> **Root CA VM:** Terraform creates it with `started = false`
+> (`terraform/main.tf` — root CA module). Start it manually in the Proxmox UI (or
+> `qm start <vmid>`) **before** running the playbook. After the playbook completes,
+> power it off again — it should remain off during normal operation.
 
 ```bash
-ansible-playbook playbooks/pki-setup.yml
+# Preferred — runs ansible-playbook -i inventory/ playbooks/pki-setup.yml
+make ansible-pki
+
+# Equivalent raw invocation (ansible.cfg supplies the inventory + proxy):
+cd ansible && ansible-playbook playbooks/pki-setup.yml
 ```
 
-The playbook is idempotent — it detects the signed cert and proceeds to configure
-and start step-ca on the Issuing CA.
+The playbook runs four plays over both hosts, in order:
+1. **`common`** — selects apt sources, bootstraps internal root-CA trust, and writes the
+   `/etc/hosts` mesh so `ca.<domain>` resolves before internal DNS exists.
+2. **`step_ca_common`** — installs `step-cli` on both hosts and `step-ca` on the issuing
+   CA only; creates the `step` user and directory layout.
+3. **`step_ca_root`** (root CA host) — generates the root certificate and key, then
+   fetches both to the controller staging dir `/workspace/.pki/`.
+4. **`step_ca_issuing`** (issuing CA host) — runs `step ca init --acme` using the staged
+   root key to sign the intermediate, applies the authority policy, sets
+   `cap_net_bind_service` on the `step-ca` binary, and starts the service on `:443`. The
+   staged root key is deleted from the controller and the issuing host after init.
+
+The playbook is idempotent — re-running it detects existing certs and the initialized
+issuing CA (stat checks) and skips regeneration.
+
+> **Required env vars** (set in `.envrc`, then `direnv allow`): `STEP_CA_ROOT_PASSWORD`,
+> `STEP_CA_ISSUING_PASSWORD`, `STEP_CA_PROVISIONER_PASSWORD`. The plays assert all three
+> are non-empty before acting.
 
 ---
 
@@ -253,10 +260,14 @@ step ca provisioner list \
   --root /workspace/.pki/root_ca.crt
 ```
 
-The root cert is also available for download at:
+The root cert was already fetched to the controller staging dir during Step 5 — it lives
+at `/workspace/.pki/root_ca.crt` (the `step_ca_controller_staging_dir`). The `common` role
+distributes it to managed hosts from there.
+
+It is also downloadable from step-ca's built-in API if you need a fresh copy:
 
 ```bash
-# Via step-ca's built-in API (accept the TLS warning on first use — this is expected):
+# Accept the TLS warning on first use — this is expected:
 curl -k https://ca.<your-domain>/roots.pem -o root_ca.crt
 ```
 
