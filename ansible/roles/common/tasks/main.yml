@@ -189,31 +189,56 @@
 # Freshly-booted hosts — especially VMs cloned from a template (e.g. the offline
 # root CA) — run apt-daily / unattended-upgrades on first boot, holding the dpkg
 # lock for several minutes. The deploy starts such a VM and configures it
-# immediately, so the apt tasks below race that lock and fail.
-# Two-part fix: (1) stop the auto-apt TIMERS so they can't re-fire mid-deploy;
-# (2) actively WAIT for any ALREADY-RUNNING first-boot apt/dpkg to finish and
-# release the lock. (1) alone is insufficient — it does not touch a run that is
-# already in flight, which is exactly what held the lock and broke base-package
-# install on a true cold start. (LXCs are unaffected; harmless+idempotent there.)
-- name: Quiesce automatic apt timers (avoid first-boot dpkg lock races)
+# immediately, so the apt tasks below race that lock and fail
+# ("E: Could not get lock /var/lib/dpkg/lock-frontend … held by … apt-get").
+# Diagnosed on the root-ca VM: the lock-holder is apt-daily.service, fired by
+# apt-daily.timer's persistent boot catch-up; unattended-upgrades is installed
+# here too. Stopping only the TIMERS (the prior fix) was insufficient: it does
+# not touch a service already in flight, and a `flock … true` wait merely proves
+# the lock is momentarily free — the in-flight apt re-grabs it before our apt
+# tasks run.
+# Fix the source: stop AND mask the auto-apt *services* + timers so nothing can
+# re-activate mid-deploy, and `systemctl kill` to terminate any in-flight run so
+# the lock is released and stays released. The `lock_timeout` on the apt tasks
+# below is the residual-race backstop. failed_when:false guards units that are
+# absent on some hosts (e.g. unattended-upgrades is not on every LXC); masking
+# applies only for the deploy window and is the standard quiesce idiom.
+- name: Stop and mask automatic apt services + timers (kill any in-flight run)
   ansible.builtin.systemd:
     name: "{{ item }}"
     state: stopped
     enabled: false
+    masked: true
   loop:
+    - apt-daily.service
+    - apt-daily-upgrade.service
+    - unattended-upgrades.service
     - apt-daily.timer
     - apt-daily-upgrade.timer
   failed_when: false
 
-- name: Wait for any in-flight first-boot automatic apt/dpkg to release the lock
-  # Wait on the real dpkg frontend lock rather than matching process names:
-  # `flock -w` blocks until the lock is free (then releases it immediately, so
-  # the apt tasks below are unaffected) or exits non-zero after the ceiling.
-  # This avoids the pgrep -f self-match trap, where the wait command's own argv
-  # contained the pattern strings and matched itself forever. ~10 min ceiling.
+- name: Kill any in-flight automatic apt run so it releases the dpkg lock
+  # Mask prevents re-activation but does not terminate a run already holding the
+  # lock; kill the unit's whole cgroup. No-op (guarded) when the unit is inactive
+  # or absent. lock_timeout on the apt tasks below covers any residual contention.
   ansible.builtin.command:
-    cmd: flock -w 600 /var/lib/dpkg/lock-frontend true
+    cmd: "systemctl kill --kill-whom=all {{ item }}"
+  loop:
+    - apt-daily.service
+    - apt-daily-upgrade.service
+    - unattended-upgrades.service
   changed_when: false
+  failed_when: false
+  when: ansible_distribution == 'Debian'
+
+- name: Repair dpkg state if the killed auto-apt run left a partial transaction
+  # `systemctl kill` can interrupt a dpkg transaction mid-run, leaving the next
+  # apt-get to fail with "dpkg was interrupted, you must manually run
+  # 'dpkg --configure -a'". A safe no-op when nothing is broken.
+  ansible.builtin.command:
+    cmd: dpkg --configure -a
+  changed_when: false
+  failed_when: false
   when: ansible_distribution == 'Debian'
 
 - name: Update apt cache
