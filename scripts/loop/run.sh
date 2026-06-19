@@ -181,12 +181,30 @@ if active deploy; then
         if [[ "$st" != "running" ]]; then
             log "Starting offline root-ca VM ${RCA_VMID} on ${RCA_NODE}..."
             pve_api POST "/nodes/${RCA_NODE}/qemu/${RCA_VMID}/status/start" >/dev/null || warn "root-ca start call failed"
-            for _ in $(seq 1 40); do
-                ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                    -o ConnectTimeout=8 -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
-                    "$(cfg services.pki.root_ca.ansible_user)@${RCA_IP}" true 2>/dev/null && break
-                sleep 8
+            # Wait on the SAME real signal as the MinIO probe: N CONSECUTIVE full
+            # SSH handshakes, not one lucky success during the freshly-booted
+            # path's lossy settling window (WS1/WS2 characterised this on the MinIO
+            # LXC; a fresh qemu boot can settle on a similar timer). The first
+            # ansible PKI play connects into this box immediately after, so a false
+            # "ready" here would make that play fail UNREACHABLE on a half-settled
+            # path. Deadline is a safety net (10 min); readiness is the signal.
+            RCA_USER="$(cfg services.pki.root_ca.ansible_user)"; : "${RCA_USER:=root}"
+            rca_deadline=$(( $(date +%s) + 600 )); rca_consec=0
+            until (( $(date +%s) >= rca_deadline )); do
+                if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                       -o ConnectTimeout=8 -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+                       "${RCA_USER}@${RCA_IP}" true 2>/dev/null; then
+                    rca_consec=$(( rca_consec + 1 ))
+                    log "  root-ca handshake ok (${rca_consec}/3)"
+                    (( rca_consec >= 3 )) && { log "root-ca VM ${RCA_VMID} reachable."; break; }
+                    sleep 3
+                else
+                    (( rca_consec > 0 )) && warn "  root-ca handshake streak broken — path still settling"
+                    rca_consec=0
+                    sleep 8
+                fi
             done
+            (( rca_consec >= 3 )) || warn "root-ca VM ${RCA_VMID} not confirmed reachable within 10 min — PKI play may fail UNREACHABLE"
         fi
     fi
     cd ansible

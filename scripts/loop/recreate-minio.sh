@@ -126,27 +126,69 @@ wait_task "$NODE" "$UPID" || die "create task did not complete OK"
 log "MinIO LXC created and started."
 
 # --- wait for SSH (through the Squid CONNECT proxy) --------------------------
-# Use a real SSH connect rather than an ncat banner grab: the banner can lag
-# (reverse-DNS delay while the internal resolver is down) and rebuilt boxes
-# present a new host key, so disable host-key checking here.
+# Layered readiness probe (WS2). A freshly created LXC's path through the Squid
+# proxy is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
+# KEX stalls while a 1-RTT banner grab can still squeak through). WS2 A/B'd the
+# cause directly: a brand-new vmid on a NEVER-USED IP is reachable in ~20-28 s
+# (firewall flag irrelevant), but reusing an IP that was vacated minutes earlier
+# (this loop's delete-then-recreate-on-the-same-IP pattern) blackholes the path
+# for ~17-19 min — a stale gateway-ARP / bridge-FDB entry for the old occupant
+# ageing out (Hypothesised; node shell unavailable to confirm). NOT the firewall
+# flag (left as-is, empty ruleset, harmless) and NOT the MAC. The real fix is
+# loop hygiene (avoid rapid same-IP reuse — see WS3 / artifact 02). This probe
+# makes the wait CORRECT and diagnosable regardless: it must survive the lossy
+# window without false-readying and without dying mid-settle.
+#
+# Two consequences for the probe:
+#   1. The readiness signal is NEITHER "TCP :22 open" NOR a single SSH success —
+#      both can pass mid-settle while the next real connection still stalls. We
+#      require N CONSECUTIVE full SSH handshakes (multi-RTT KEX+auth) so one lucky
+#      success in the lossy window cannot declare a false "ready".
+#   2. The deadline is a SAFETY NET, not the readiness mechanism: readiness is
+#      declared by the signal above; the clock only bounds a genuinely stuck box.
+#      It is set above the observed ~19.5 min settle so it never races a healthy
+#      first boot (the old blind 720 s cap died mid-settle — that was the flake).
+# Every failed poll logs WHICH layer is the blocker (TCP CONNECT vs full
+# handshake) so a future halt names what is lagging instead of dying blind.
 if [[ "$WAIT_SSH" == 1 ]]; then
-    log "Waiting for SSH on ${IP}:22 (via proxy)..."
     SSH_USER="$(cfg services.minio.ansible_user)"; : "${SSH_USER:=root}"
-    # A freshly recreated LXC can take several minutes to bring sshd up on the
-    # proxy path, and may bounce (a brief reboot/network re-settle) during first
-    # boot. The prior ~5-min cap raced that and killed the loop while the box was
-    # still settling (observed: host became reachable well after the cap). Wait
-    # on a wall-clock deadline and keep retrying across a transient drop.
-    DEADLINE=$(( $(date +%s) + 720 ))   # ~12 min
+    READY_NEED=3                                 # consecutive full SSH handshakes to declare ready
+    PROBE_T0="$(date +%s)"
+    DEADLINE=$(( PROBE_T0 + 1500 ))              # 25 min safety net (> observed ~19.5 min settle)
+    log "Waiting for SSH on ${IP}:22 (via proxy) — need ${READY_NEED} consecutive full handshakes..."
+
+    _ssh_ok() {   # full multi-RTT handshake (KEX + auth) — the real readiness signal
+        ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 \
+            -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+            "${SSH_USER}@${IP}" true 2>/dev/null
+    }
+    _tcp_ok() {   # squid established the CONNECT tunnel = SYN passed, something on :22
+        timeout 25 ncat --proxy squid-proxy:3128 --proxy-type http "$IP" 22 </dev/null >/dev/null 2>&1
+    }
+
+    consec=0
     until (( $(date +%s) >= DEADLINE )); do
-        if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=10 \
-               -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
-               "${SSH_USER}@${IP}" true 2>/dev/null; then
-            log "SSH is up on ${IP}."
-            exit 0
+        elapsed=$(( $(date +%s) - PROBE_T0 ))
+        if _ssh_ok; then
+            consec=$(( consec + 1 ))
+            log "  [+${elapsed}s] full SSH handshake ok (${consec}/${READY_NEED})"
+            if (( consec >= READY_NEED )); then
+                log "SSH is up on ${IP} (${READY_NEED} consecutive handshakes)."
+                exit 0
+            fi
+            sleep 3
+            continue
+        fi
+        # handshake failed: reset the streak, then classify the blocking layer
+        (( consec > 0 )) && warn "  [+${elapsed}s] handshake streak broken (was ${consec}) — path still lossy, restarting count"
+        consec=0
+        if _tcp_ok; then
+            log "  [+${elapsed}s] TCP CONNECT ok but full handshake stalls (banner/KEX settling window)"
+        else
+            log "  [+${elapsed}s] TCP CONNECT failing (squid 503 = SYN dropped — path not up yet)"
         fi
         sleep 5
     done
-    die "SSH on ${IP} did not come up within ~12 min"
+    die "SSH on ${IP} did not reach ${READY_NEED} consecutive handshakes within $(( (DEADLINE - PROBE_T0) / 60 )) min (last layer state logged above)"
 fi
