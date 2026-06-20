@@ -186,6 +186,16 @@
             - /etc/apt/sources.list.d/debian-nexus.sources
             - /etc/apt/auth.conf.d/nexus.conf
 
+# Wait for cloud-init to finish first-boot work (its package_upgrade runs apt and
+# holds the dpkg lock). This is cloud-init's own synchronisation primitive, so the
+# quiesce + apt tasks below do not race it. Absent on LXCs (no cloud-init), where
+# the command fails → failed_when:false makes it a harmless no-op.
+- name: Wait for cloud-init first-boot to complete
+  ansible.builtin.command:
+    cmd: cloud-init status --wait
+  changed_when: false
+  failed_when: false
+
 # Freshly-booted hosts — especially VMs cloned from a template (e.g. the offline
 # root CA) — run apt-daily / unattended-upgrades on first boot, holding the dpkg
 # lock for several minutes. The deploy starts such a VM and configures it
@@ -244,6 +254,11 @@
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
+    lock_timeout: 600
+
+- name: Upgrade all packages to latest (catches newly-released packages on day-2)
+  ansible.builtin.apt:
+    upgrade: dist
     lock_timeout: 600
 
 - name: Install base packages
