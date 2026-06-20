@@ -41,6 +41,7 @@ _pve_init
 NODE="$(cfg services.minio.node)"
 IP="$(cfg services.minio.ip)"
 HOSTNAME="$(cfg services.minio.hostname)"
+MAC="$(cfg services.minio.mac)"          # optional: pin the LXC MAC (see NET0 note below)
 NET_NAME="$(cfg services.minio.network)"; : "${NET_NAME:=$(cfg infrastructure.default_network)}"
 BRIDGE="$(cfg "infrastructure.networks.${NET_NAME}.bridge")"
 GATEWAY="$(cfg "infrastructure.networks.${NET_NAME}.gateway")"
@@ -60,7 +61,15 @@ VMID="${VMID_OVERRIDE:-$(cfg terraform.vm_id_range_start)}"
 
 log "Recreating MinIO LXC: vmid=${VMID} host=${HOSTNAME} node=${NODE} ip=${IP}/${PREFIX} bridge=${BRIDGE}"
 
+# Pin the MAC when config provides one. The loop reuses MinIO's fixed IP on every
+# recreate but Proxmox otherwise assigns a FRESH random MAC each time — so the
+# upstream L3 gateway keeps a now-dead IP->old-MAC ARP entry and blackholes the
+# path until that entry ages out (~16-20 min). Confirmed 2026-06-20 via the
+# gateway's own ARP log showing the entry move at the exact second the path
+# recovered. Reusing a stable MAC keeps the gateway's ARP entry valid across
+# recreate → no blackhole.
 NET0="name=eth0,bridge=${BRIDGE},firewall=1,gw=${GATEWAY},ip=${IP}/${PREFIX},type=veth"
+[[ -n "$MAC" ]] && NET0="${NET0},hwaddr=${MAC}"
 
 # --- create ------------------------------------------------------------------
 # Try with pool assignment first (matches the rest of the sandbox pool). If the
@@ -128,16 +137,17 @@ log "MinIO LXC created and started."
 # --- wait for SSH (through the Squid CONNECT proxy) --------------------------
 # Layered readiness probe (WS2). A freshly created LXC's path through the Squid
 # proxy is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
-# KEX stalls while a 1-RTT banner grab can still squeak through). WS2 A/B'd the
-# cause directly: a brand-new vmid on a NEVER-USED IP is reachable in ~20-28 s
-# (firewall flag irrelevant), but reusing an IP that was vacated minutes earlier
-# (this loop's delete-then-recreate-on-the-same-IP pattern) blackholes the path
-# for ~17-19 min — a stale gateway-ARP / bridge-FDB entry for the old occupant
-# ageing out (Hypothesised; node shell unavailable to confirm). NOT the firewall
-# flag (left as-is, empty ruleset, harmless) and NOT the MAC. The real fix is
-# loop hygiene (avoid rapid same-IP reuse — see WS3 / artifact 02). This probe
-# makes the wait CORRECT and diagnosable regardless: it must survive the lossy
-# window without false-readying and without dying mid-settle.
+# KEX stalls while a 1-RTT banner grab can still squeak through). ROOT CAUSE
+# (CONFIRMED 2026-06-20, supersedes the earlier fwbr-settling guess): the loop
+# reuses MinIO's fixed IP but Proxmox assigns a fresh random MAC each recreate, so
+# the L3 gateway keeps a dead IP->old-MAC ARP entry and blackholes the path until
+# that entry ages out (~16-20 min). Proven by the gateway's own ARP log showing the
+# entry move to the new MAC at the same second the path recovered. It is NOT local
+# fwbr settling (that is seconds, not minutes) and was wrongly attributed to it when
+# no upstream/node visibility was available. The fix is to pin a stable MAC
+# (services.minio.mac → hwaddr above) so the gateway's ARP entry stays valid. This
+# probe remains as defense-in-depth: it must survive any residual lossy window
+# without false-readying and without dying mid-settle.
 #
 # Two consequences for the probe:
 #   1. The readiness signal is NEITHER "TCP :22 open" NOR a single SSH success —

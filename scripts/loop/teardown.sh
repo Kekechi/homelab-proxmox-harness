@@ -102,6 +102,25 @@ wait_status() {
     return 1
 }
 
+# Issue a purge-DELETE and confirm Proxmox actually ACCEPTED it (queued an async
+# task) rather than transiently rejecting it. A DELETE fired right after vzstop
+# released the config lock can come back HTTP 500 "can't lock file - got timeout";
+# pve_api uses `curl -sS` (no --fail) so that error body returns as exit 0 and the
+# guest is never purged — only the gone-poll later notices, after wasting the whole
+# ceiling. A successful DELETE returns a task id ("UPID:..."); anything else is a
+# rejection to retry. Observed 2026-06-20: a guest, then two guests, silently
+# un-deleted before this retry guard was added.
+delete_guest() {
+    local node="$1" typ="$2" vmid="$3" name="$4" resp
+    for attempt in 1 2 3 4 5; do
+        resp="$(pve_api DELETE "/nodes/${node}/${typ}/${vmid}?purge=1&destroy-unreferenced-disks=1" 2>/dev/null || true)"
+        printf '%s' "$resp" | grep -q 'UPID:' && return 0
+        warn "DELETE for ${vmid} (${name}) not accepted (attempt ${attempt}/5): ${resp:-<empty>} — retrying in 3s"
+        sleep 3
+    done
+    return 1
+}
+
 # vmids we actually issued a DELETE for, recorded as "vmid|typ|node|name" so the
 # post-delete wait can poll the EXACT guests we removed (lxc + qemu both) until
 # the async purge task has truly made each one disappear.
@@ -141,8 +160,8 @@ for line in "${MEMBERS[@]}"; do
     fi
 
     log "Deleting ${typ} ${vmid} (${name})..."
-    pve_api DELETE "/nodes/${node}/${typ}/${vmid}?purge=1&destroy-unreferenced-disks=1" >/dev/null \
-        || die "DELETE failed for ${vmid} (${name})"
+    delete_guest "$node" "$typ" "$vmid" "$name" \
+        || die "DELETE not accepted for ${vmid} (${name}) after 5 attempts"
     DELETED+=("${vmid}|${typ}|${node}|${name}")
 done
 
