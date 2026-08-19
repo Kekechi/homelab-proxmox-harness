@@ -34,7 +34,10 @@ spec.loader.exec_module(gen)
 # ---------------------------------------------------------------------------
 
 BASE_INFRA = {
-    "proxmox": {"ip": "10.0.0.1", "port": 8006, "node": "pve", "insecure": True},
+    "proxmox": {"ip": "10.0.0.1", "port": 8006, "insecure": True},
+    "nodes": {
+        "pve": {"ip": "10.0.0.1"},
+    },
     "networks": {
         "lab": {
             "bridge": "lab",
@@ -47,6 +50,7 @@ BASE_INFRA = {
     "storage": {
         "datastore_id":           "local-lvm",
         "cloudinit_datastore_id": "local",
+        "lxc_template_file_id":   "local:vztmpl/debian-12.tar.xz",
     },
 }
 
@@ -64,6 +68,7 @@ BASE_SSH = {
 
 BASE_MINIO = {
     "network":      "lab",
+    "node":         "pve",
     "ip":           "10.10.40.5",
     "port":         9000,
     "ansible_user": "root",
@@ -74,6 +79,7 @@ BASE_MINIO = {
 
 BASE_PKI = {
     "root_ca": {
+        "node":                  "pve",
         "ip":                    "10.10.40.10/24",
         "vm_id":                 201,
         "ansible_user":          "debian",
@@ -81,28 +87,40 @@ BASE_PKI = {
         "cloud_init_template_id": 9000,
     },
     "issuing_ca": {
+        "node":                  "pve",
         "ip":                    "10.10.40.11/24",
         "ct_id":                 202,
         "ansible_user":          "root",
         "hostname":              "issuing-ca",
-        "lxc_template_file_id": "local:vztmpl/debian-12.tar.xz",
     },
 }
 
 BASE_DNS = {
     "auth": {
+        "node":         "pve",
         "ip":           "10.10.40.12/24",
         "ct_id":        203,
         "ansible_user": "root",
         "hostname":     "dns-auth",
     },
     "dist": {
+        "node":         "pve",
         "ip":           "10.10.40.13/24",
         "ct_id":        204,
         "ansible_user": "root",
         "hostname":     "dns-dist",
         "client_cidrs": ["10.10.10.0/24"],
     },
+}
+
+
+BASE_NEXUS = {
+    "node":         "pve",
+    "ip":           "10.10.40.14/24",
+    "ct_id":        205,
+    "ansible_user": "root",
+    "hostname":     "nexus",
+    "network":      "lab",
 }
 
 
@@ -119,6 +137,7 @@ def make_cfg(*, infra=None, services=None, extra=None):
             "minio": BASE_MINIO,
             "pki":   BASE_PKI,
             "dns":   BASE_DNS,
+            "nexus": BASE_NEXUS,
         }),
     }
     if extra:
@@ -312,8 +331,8 @@ class TestTfvarsOutput(unittest.TestCase):
         out = self._tfvars(cfg)
         self.assertIn('root_ca_ipv4_gateway    = "10.10.40.254"', out)
         self.assertIn('issuing_ca_ipv4_gateway = "10.10.40.254"', out)
-        self.assertIn('dns_auth_ipv4_gateway   = "10.10.40.254"', out)
-        self.assertIn('dns_dist_ipv4_gateway   = "10.10.40.254"', out)
+        self.assertIn('dns_auth_ipv4_gateway = "10.10.40.254"', out)
+        self.assertIn('dns_dist_ipv4_gateway = "10.10.40.254"', out)
 
     def test_multi_network_bridge_per_service(self):
         """Services on different networks emit the correct bridge per service."""
@@ -333,28 +352,26 @@ class TestTfvarsOutput(unittest.TestCase):
         cfg["services"]["minio"]["network"]             = "lab"
 
         out = self._tfvars(cfg)
-        self.assertIn('dns_dist_bridge         = "lan"',  out)
-        self.assertIn('dns_dist_ipv4_gateway   = "10.10.10.1"', out)
-        self.assertIn('dns_auth_bridge         = "lab"',  out)
-        self.assertIn('dns_auth_ipv4_gateway   = "10.10.40.1"', out)
+        self.assertIn('dns_dist_bridge       = "lan"',  out)
+        self.assertIn('dns_dist_ipv4_gateway = "10.10.10.1"', out)
+        self.assertIn('dns_auth_bridge       = "lab"',  out)
+        self.assertIn('dns_auth_ipv4_gateway = "10.10.40.1"', out)
         self.assertIn('root_ca_bridge          = "lab"',  out)
         self.assertIn('issuing_ca_bridge       = "lab"',  out)
 
-    def test_sparse_no_dns_section(self):
-        """Config without services.dns → no DNS lines in tfvars."""
-        cfg = make_cfg(services={"minio": BASE_MINIO, "pki": BASE_PKI})
-        out = self._tfvars(cfg)
-        self.assertNotIn("dns_auth", out)
-        self.assertNotIn("dns_dist", out)
+    def test_sparse_no_dns_rejected(self):
+        """Config without services.dns is invalid — schema requires pki+dns+nexus."""
+        cfg = make_cfg(services={"minio": BASE_MINIO, "pki": BASE_PKI, "nexus": BASE_NEXUS})
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: gen.validate_schema(cfg))
+        self.assertIn("services.dns", str(cm.exception.code))
 
-    def test_sparse_no_pki_section(self):
-        """Config without services.pki → no PKI lines in tfvars."""
-        import copy
-        dns = copy.deepcopy(BASE_DNS)
-        cfg = make_cfg(services={"minio": BASE_MINIO, "dns": dns})
-        out = self._tfvars(cfg)
-        self.assertNotIn("root_ca", out)
-        self.assertNotIn("issuing_ca", out)
+    def test_sparse_no_pki_rejected(self):
+        """Config without services.pki is invalid — schema requires pki+dns+nexus."""
+        cfg = make_cfg(services={"minio": BASE_MINIO, "dns": BASE_DNS, "nexus": BASE_NEXUS})
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: gen.validate_schema(cfg))
+        self.assertIn("services.pki", str(cm.exception.code))
 
 
 # ---------------------------------------------------------------------------
@@ -615,6 +632,62 @@ class TestResolveNetwork(unittest.TestCase):
         finally:
             sys.stderr = old_stderr
         self.assertEqual(cm.exception.code, 1)
+
+
+# ---------------------------------------------------------------------------
+# .envrc smart-merge tests (atomic_write)
+# ---------------------------------------------------------------------------
+
+class TestEnvrcSmartMerge(unittest.TestCase):
+
+    def _merge(self, existing, generated):
+        """Run atomic_write against a real temp .envrc and return the merged text."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".envrc")
+            with open(path, "w") as f:
+                f.write(existing)
+            return gen.atomic_write(path, generated)
+
+    def test_filled_secret_preserved(self):
+        """A filled-in secret survives regeneration over its CHANGE_ME slot."""
+        existing  = 'export MINIO_ROOT_PASSWORD="realvalue123"\n'
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        merged = self._merge(existing, generated)
+        self.assertIn('export MINIO_ROOT_PASSWORD="realvalue123"', merged)
+        self.assertNotIn(gen.CHANGE_ME, merged)
+
+    def test_operator_added_key_carried_over(self):
+        """An export the generator never emitted is carried, not deleted."""
+        existing = (
+            'export MINIO_ROOT_PASSWORD="realvalue123"\n'
+            'export OPERATOR_CUSTOM_FLAG="keep-me"\n'
+        )
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        merged = self._merge(existing, generated)
+        self.assertIn('export OPERATOR_CUSTOM_FLAG="keep-me"', merged)
+        self.assertIn(".envrc.local", merged)  # carried block points at the seam
+
+    def test_carry_over_idempotent(self):
+        """Regenerating twice does not duplicate carried lines or headers."""
+        existing  = 'export OPERATOR_CUSTOM_FLAG="keep-me"\n'
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        once  = self._merge(existing, generated)
+        twice = self._merge(once, generated)
+        self.assertEqual(once.count('export OPERATOR_CUSTOM_FLAG="keep-me"'), 1)
+        self.assertEqual(twice.count('export OPERATOR_CUSTOM_FLAG="keep-me"'), 1)
+        self.assertEqual(
+            twice.count("Preserved from the previous .envrc"), 1,
+            "carry-over header must not accumulate across regenerations",
+        )
+
+    def test_emitted_commented_var_not_carried(self):
+        """A var the template emits commented-out (opt-in) is not duplicated by carry-over."""
+        existing  = 'export SSL_CERT_FILE=/workspace/.pki/root_ca.crt\n'
+        generated = '# export SSL_CERT_FILE=/workspace/.pki/root_ca.crt\n'
+        merged = self._merge(existing, generated)
+        # uncommented-opt-in restore path handles it; carry-over must not add a second copy
+        self.assertEqual(merged.count("export SSL_CERT_FILE"), 1)
 
 
 # ---------------------------------------------------------------------------

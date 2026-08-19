@@ -166,6 +166,27 @@ def atomic_write(path: str, content: str, force: bool = False):
                     replaced = True
             if not replaced:
                 merged.append(line)
+
+        # Never delete a key the generator did not emit this run: any export
+        # line in the existing file whose variable is absent from the newly
+        # generated content (operator-added, or from a since-disabled service)
+        # is carried over verbatim instead of silently dropped.
+        emitted_vars = set()
+        for line in content.splitlines():
+            m = re.match(r'^#?\s*export (\w+)=', line)
+            if m:
+                emitted_vars.add(m.group(1))
+        carried = []
+        for line in existing.splitlines():
+            m = re.match(r'^export (\w+)=', line)
+            if m and m.group(1) not in emitted_vars:
+                carried.append(line)
+        if carried:
+            merged.append("")
+            merged.append("# Preserved from the previous .envrc — keys the generator no longer emits.")
+            merged.append("# Move these to .envrc.local (never touched by `make configure`).")
+            merged.extend(carried)
+
         content = "\n".join(merged) + "\n"
 
     tmp = path + ".new"

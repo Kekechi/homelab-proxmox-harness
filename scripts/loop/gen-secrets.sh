@@ -33,8 +33,20 @@ needs() {
     [[ -z "$v" || "$v" == CHANGE_ME* || "$v" == changeme* || "$v" == "<"* ]]
 }
 
+# Sentinel-lookalike audit: `needs` recognises the declared sentinel
+# (CHANGE_ME, from scripts/genconfig/config.py) plus a few historical forms.
+# A hand-written variant it does NOT recognise (REPLACE_ME, TODO, ...) would be
+# "kept" and ship as a real secret — fail loud on anything placeholder-shaped.
+looks_like_placeholder() {
+    local v="${1,,}"
+    [[ "$v" =~ ^(replace_?me|fill_?me|change_?this|todo|tbd|fixme|placeholder|password|secret|example|dummy|x{3,})([-_.].*)?$ ]]
+}
+
+MANAGED_KEYS=()
+
 set_if_missing() {
     local key="$1" gen="$2"
+    MANAGED_KEYS+=("$key")
     if needs "$key"; then
         local val; val="$(eval "$gen")"
         python3 "$UPSERT" "$ENVRC" "$key" "$val"
@@ -81,5 +93,18 @@ set_if_missing OTELCOL_MINIO_SECRET_KEY PW
 set_if_missing SPLUNK_ADMIN_PASSWORD PW
 set_if_missing SPLUNK_HEC_TOKEN      UUID
 set_if_missing SPLUNK_MCP_PASSWORD   PW
+
+# --- placeholder audit: re-read .envrc and reject sentinel-lookalike values --
+load_envrc
+BAD_KEYS=()
+for key in PROXMOX_VE_API_TOKEN "${MANAGED_KEYS[@]}"; do
+    v="${!key:-}"
+    if [[ -n "$v" ]] && ! needs "$key" && looks_like_placeholder "$v"; then
+        BAD_KEYS+=("$key")
+    fi
+done
+if (( ${#BAD_KEYS[@]} > 0 )); then
+    die "these keys hold placeholder-shaped values that would ship as real secrets: ${BAD_KEYS[*]} — set a real value or the CHANGE_ME sentinel, then re-run"
+fi
 
 log "secret fill complete."

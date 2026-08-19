@@ -49,3 +49,11 @@ export AWS_CA_BUNDLE=/workspace/.pki/root_ca.crt
 # Internal CA trust — uncomment after PKI setup (.pki/root_ca.crt exists)
 # Go (Terraform) and curl pick this up; no container rebuild needed.
 # export SSL_CERT_FILE=/workspace/.pki/root_ca.crt
+
+# Operator-local additions — never templated or merged by `make configure`.
+# Machine-specific env and extra secrets belong in .envrc.local (gitignored).
+_envrc_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+if [ -f "${_envrc_dir}/.envrc.local" ]; then
+    . "${_envrc_dir}/.envrc.local"
+fi
+unset _envrc_dir
