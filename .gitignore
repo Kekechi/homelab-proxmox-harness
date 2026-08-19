@@ -104,3 +104,10 @@ docs/design/splunk-hackathon-project.md
 # OS
 # ============================================================
 Thumbs.db
+
+# ============================================================
+# Downloaded tool binaries and scratch files at repo root
+# ============================================================
+/tflint
+/tflint_linux_amd64.zip
+/checksums.txt
