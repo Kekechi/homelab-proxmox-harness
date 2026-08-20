@@ -18,7 +18,7 @@ The agent runs on a dedicated controller host; agent-host connection facts live 
 - **NEVER** run `terraform apply` without a plan file (`terraform plan -out=<file>` first)
 - **NEVER** apply Terraform for production — produce a plan file and hand it to the operator
 - **NEVER** commit `.envrc`, `config/*.yml`, or any file containing tokens, passwords, or secret keys
-- **NEVER** bypass the proxy or modify network configuration
+- **NEVER** modify the agent host's network configuration or probe networks outside the sandbox
 - **NEVER** edit generated files directly (`terraform/*.tfvars`, `ansible/inventory/hosts.yml`, `ansible/ansible.cfg`, `config/*.yml.example`) — regenerate via `make configure` / `make examples`
 
 ---
@@ -31,7 +31,7 @@ The agent runs on a dedicated controller host; agent-host connection facts live 
 | **production** | `config/production.yml` | No — plan only | `tfstate-production` |
 
 Switch environments with `ENV=`: `make plan ENV=production`
-Production token (`operator-production`) is not in the dev container — applies would fail at auth. This is intentional.
+Production credentials (`operator-production` token, production MinIO key) never exist on the agent host — applies would fail at auth. This is intentional.
 
 ---
 
@@ -85,26 +85,23 @@ docs/                     proxmox-iam.md, network-policy.md, threat-model.md, vi
   design/                 cross-cutting design records (component-architecture.md, etc.)
   guides/                 operational how-to (deployment-guide.md, pki-setup.md, etc.)
 .claude/
-  agents/                 iac-planner, iac-generator, tf-reviewer
+  agents/                 tf-reviewer (single-pass code review)
   skills/
-    design/               Design exploration for net-new infrastructure (pre-planning)
-    retro/                Session retrospective — prompting lessons and skill lifecycle
-    auto-plan/            Plan an autonomous long-running session (boundary + workstreams + brief)
-    auto-run/             Execute an autonomous long-running session from an /auto-plan brief
-    infra-plan/           Plan infrastructure changes (iac-planner, Opus)
-    generate/             Generate Terraform/Ansible code (iac-generator, Sonnet)
-    review/               Review code for security and correctness (tf-reviewer, Sonnet)
-    polish/               Iterative review-fix loop for design, plan, or code — until APPROVE
-    tf-deploy/            Full PGE pipeline for Terraform: plan → generate → review → apply
-    ansible-deploy/       Full PGE pipeline for Ansible: plan → generate → review → run
-    ansible-run/          Pre-flight + run + verify for Ansible (code already written)
+    design/               Design exploration — one decision at a time → design record
+                          (the record, once agreed, is the go signal)
+    free-run/             Execute an agreed design record autonomously — journal,
+                          per-slice commits, verify gates; no orchestration ceremony
+    review/               Review code for security, correctness, and component fit
+                          (tf-reviewer, Sonnet) — APPROVE/WARN/BLOCK
     handoff/              Package production plan for operator handoff
     assess/               Structured project assessment with discussion
+    sanity-sweep/         Tier-2 judgment sweep over live state (record-only)
+    retro/                Session retrospective — prompting lessons and skill lifecycle
     day2-ops/             Day-2 operations: resize, snapshots, network, cloud-init
-    proxmox-module/       bpg/proxmox module authoring patterns (reference)
+    proxmox-module/       bpg/proxmox primitive-module authoring patterns (reference)
     tf-plan-apply/        Terraform init/plan/apply workflow (reference)
     tf-troubleshoot/      Diagnostic runbooks for failed Terraform operations (reference)
-  rules/                  sandbox-isolation, terraform-style, iam-model, network-policy,
+  rules/                  sandbox-isolation, terraform-style, iam-model,
                           ansible-workflow, config-management
 Makefile                  make help for all targets
 ```
@@ -141,22 +138,21 @@ Full workflow detail: see `.claude/skills/tf-plan-apply/SKILL.md`
 
 ## Available Skills
 
+The workflow is design-record-driven: `/design` ends in a record, operator agreement on
+the record is the go, execution is direct (or `/free-run` for long autonomous runs),
+and behavioral verification (`make verify-all`, `/sanity-sweep`) closes the loop.
+There are no plan→generate→review pipelines.
+
 | Skill | Purpose |
 |---|---|
-| `/design <rough idea>` | Explore and decide on a design before planning — one decision at a time |
-| `/retro` | Retrospective on a completed session — surfaces prompting lessons, recommends no action / memory / skill update / new skill |
-| `/auto-plan <goal>` | Plan an autonomous long-running session — safety boundary, sequenced workstreams, session-bricking risks → executable brief |
-| `/auto-run <brief>` | Execute an autonomous session from an `/auto-plan` brief — orchestrator-only main thread, delegated execution, journaled, idempotency-verified |
-| `/infra-plan <description>` | Plan infrastructure change using iac-planner (Opus) |
-| `/generate` | Write code from an approved plan using iac-generator |
-| `/review [files]` | Review Terraform/Ansible code with tf-reviewer (single pass) |
-| `/polish [code\|plan\|design] [name]` | Iterative review-fix loop until APPROVE — all cycles in subagents |
-| `/tf-deploy <description>` | Full pipeline for Terraform infrastructure changes |
-| `/ansible-deploy <description>` | Full pipeline for Ansible role/playbook deployments |
-| `/ansible-run` | Pre-flight + run + verify (code already written and reviewed) |
+| `/design <rough idea>` | Explore and decide a design — one decision at a time → committed design record (incl. execution boundary for autonomous runs) |
+| `/free-run <record>` | Execute an agreed design record autonomously — journaled, per-slice commits, verify gates, failures journaled as lessons |
+| `/review [files]` | Single-pass review with tf-reviewer — security, bpg/proxmox correctness, component-architecture fit |
 | `/handoff` | Package production plan with context for operator handoff |
 | `/assess <scope + concerns>` | Structured project assessment with discussion |
-| `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs |
+| `/sanity-sweep` | Tier-2 judgment sweep over deployed components — record-only |
+| `/retro` | Retrospective on a completed session — surfaces prompting lessons, recommends no action / memory / skill update / new skill |
+| `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs (config edits, never `.tf` edits) |
 
 ---
 
