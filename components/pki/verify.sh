@@ -2,7 +2,7 @@
 # verify-issuing-ca.sh — Tier-1 behavioral verify for the step-ca issuing CA.
 # READ-ONLY. Does NOT modify the CA, its provisioners, or any trust config.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "issuing-ca"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/verify/lib.sh" "issuing-ca"
 GROUP="pki_issuing_ca"
 hdr
 

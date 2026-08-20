@@ -3,7 +3,7 @@
 # resolver / load balancer). READ-ONLY.
 # Reuses in-role verify.yml logic (dig via dnsdist + webserver API).
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "dnsdist"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/verify/lib.sh" "dnsdist"
 GROUP="dns_dist"
 hdr
 

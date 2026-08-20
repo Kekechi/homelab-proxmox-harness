@@ -3,7 +3,7 @@
 # sidecar (DNSTap receiver -> syslog forwarder), co-located on the dns_dist
 # host. READ-ONLY.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "dns-collector"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/verify/lib.sh" "dns-collector"
 GROUP="dns_dist"
 hdr
 

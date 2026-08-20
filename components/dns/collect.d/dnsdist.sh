@@ -5,7 +5,7 @@
 # Dumps the dnsdist ACLs, configured backends/pools, and the dns-collector
 # pipeline config (dnstap receiver -> syslog forwarder).
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/collect/lib.sh"
 GROUP="dns_dist"
 collect_header "dnsdist"
 

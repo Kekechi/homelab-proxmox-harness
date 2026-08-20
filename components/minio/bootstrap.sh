@@ -10,7 +10,7 @@
 # Run once per environment, against that environment's MinIO instance.
 #
 # Usage:
-#   bash scripts/bootstrap-minio.sh [ENV]
+#   bash components/minio/bootstrap.sh [ENV]
 #   ENV defaults to the value in .env.mk (or "sandbox" if not found).
 #
 # Requirements:
@@ -29,7 +29,7 @@ set -euo pipefail
 if [[ "${1:-}" != "" ]]; then
     ENV="${1}"
 else
-    ENVMK_FILE="$(dirname "$0")/../.env.mk"
+    ENVMK_FILE="$(dirname "$0")/../../.env.mk"
     if [[ -f "${ENVMK_FILE}" ]]; then
         ENV=$(grep -E '^ENV\s*:?=' "${ENVMK_FILE}" | head -1 | sed 's/.*:*=\s*//' | tr -d '[:space:]')
         ENV="${ENV:-sandbox}"
@@ -127,8 +127,8 @@ mcli admin policy attach "${ALIAS}" "${POLICY_NAME}" \
 # from .envrc. .envrc is gitignored and the pre-commit guard blocks it, so the
 # secret never leaves the dev container.
 # ---------------------------------------------------------------------------
-ENVRC_FILE="$(dirname "$0")/../.envrc"
-UPSERT="$(dirname "$0")/loop/envrc-upsert.py"
+ENVRC_FILE="$(dirname "$0")/../../.envrc"
+UPSERT="$(dirname "$0")/../../scripts/loop/envrc-upsert.py"
 python3 "${UPSERT}" "${ENVRC_FILE}" MINIO_ACCESS_KEY "${ACCESS_KEY}"
 python3 "${UPSERT}" "${ENVRC_FILE}" MINIO_SECRET_KEY "${SECRET_KEY}"
 

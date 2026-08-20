@@ -7,7 +7,7 @@
 #   - the authority-level x509 name policy (the wildcard-scope ground truth)
 #   - the served-cert subject / issuer chain / SANs (TLS termination truth)
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/collect/lib.sh"
 GROUP="pki_issuing_ca"
 collect_header "issuing-ca"
 

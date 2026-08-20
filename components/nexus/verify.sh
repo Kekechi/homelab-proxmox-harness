@@ -3,7 +3,7 @@
 # READ-ONLY. Reuses the in-role verify.yml logic (writable status, docker v2,
 # repo list) but queried live and reduced to a few critical assertions.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "nexus"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/verify/lib.sh" "nexus"
 GROUP="nexus"
 hdr
 

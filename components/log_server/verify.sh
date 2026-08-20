@@ -2,7 +2,7 @@
 # verify-log-server.sh — Tier-1 behavioral verify for the otelcol-contrib log
 # server (syslog receivers -> awss3 MinIO sink). READ-ONLY.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "log-server"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/verify/lib.sh" "log-server"
 GROUP="log_server"
 hdr
 

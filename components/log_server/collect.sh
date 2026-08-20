@@ -6,7 +6,7 @@
 # Dumps the effective otelcol config (receivers / processors / exporters /
 # pipelines) with secrets stripped, plus the bound listener sockets.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/collect/lib.sh"
 GROUP="log_server"
 collect_header "log-server"
 

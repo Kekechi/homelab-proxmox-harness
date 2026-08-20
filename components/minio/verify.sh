@@ -2,7 +2,7 @@
 # verify-minio.sh — Tier-1 behavioral verify for MinIO (object store +
 # Terraform state backend). READ-ONLY.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "minio"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/verify/lib.sh" "minio"
 GROUP="minio"
 hdr
 

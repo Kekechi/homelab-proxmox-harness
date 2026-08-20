@@ -1,0 +1,11 @@
+---
+# dns component entrypoint — auth+recursor backend, zone records, then the
+# client-facing DNSdist front-end, in dependency order.
+- name: DNS auth + recursor
+  ansible.builtin.import_playbook: auth-setup.yml
+
+- name: DNS zone records
+  ansible.builtin.import_playbook: records.yml
+
+- name: DNSdist front-end
+  ansible.builtin.import_playbook: dist-setup.yml

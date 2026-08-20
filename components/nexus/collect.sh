@@ -6,7 +6,7 @@
 # used; otherwise the public repository-browse path is dumped and the privileged
 # sections note that creds were absent (so the reader knows the dump is partial).
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/collect/lib.sh"
 GROUP="nexus"
 collect_header "nexus"
 

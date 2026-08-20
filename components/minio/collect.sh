@@ -11,7 +11,7 @@
 # rather than over ssh. All commands are read-only (admin info / policy / user
 # list + bucket ls). Falls back to a noted on-host inventory if mcli is absent.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../scripts/collect/lib.sh"
 GROUP="minio"
 collect_header "minio"
 

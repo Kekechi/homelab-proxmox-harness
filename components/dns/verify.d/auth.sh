@@ -3,7 +3,7 @@
 # Recursor (co-deployed on the dns_auth host). READ-ONLY.
 # Reuses in-role verify.yml logic (API health + zone presence + dig).
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh" "dns-auth"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/verify/lib.sh" "dns-auth"
 GROUP="dns_auth"
 hdr
 

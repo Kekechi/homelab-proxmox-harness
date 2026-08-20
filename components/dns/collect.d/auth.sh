@@ -5,7 +5,7 @@
 # Dumps zones served by Auth, the records in the internal zone, and the
 # Recursor's forward/backend configuration — the resolver-topology ground truth.
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/collect/lib.sh"
 GROUP="dns_auth"
 collect_header "dns-auth"
 
