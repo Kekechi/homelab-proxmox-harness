@@ -111,3 +111,8 @@ Thumbs.db
 /tflint
 /tflint_linux_amd64.zip
 /checksums.txt
+
+# ============================================================
+# Generated ansible.cfg (agent-host facts from config agent: section)
+# ============================================================
+ansible/ansible.cfg

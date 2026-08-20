@@ -38,6 +38,7 @@ from .validation import (
     validate_nexus_raw_hosted_repos,
     validate_schema,
 )
+from .emit.ansible_cfg import gen_ansible_cfg
 from .emit.env_mk import gen_env_mk
 from .emit.envrc import gen_envrc
 from .emit.inventory import gen_inventory
@@ -68,6 +69,7 @@ __all__ = [
     "validate_nexus_apt_proxy_repos",
     "validate_nexus_raw_hosted_repos",
     "validate_schema",
+    "gen_ansible_cfg",
     "gen_env_mk",
     "gen_envrc",
     "gen_inventory",
@@ -104,6 +106,10 @@ def main():
     # 2. ansible/inventory/hosts.yml
     inventory_path = os.path.join(REPO_ROOT, "ansible", "inventory", "hosts.yml")
     write_file(inventory_path, gen_inventory(cfg, env), "inventory")
+
+    # 2b. ansible/ansible.cfg — agent-host facts from config's agent: section
+    ansible_cfg_path = os.path.join(REPO_ROOT, "ansible", "ansible.cfg")
+    write_file(ansible_cfg_path, gen_ansible_cfg(cfg, env), "ansible.cfg")
 
     # 4. .envrc
     envrc_path = os.path.join(REPO_ROOT, ".envrc")

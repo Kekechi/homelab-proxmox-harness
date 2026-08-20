@@ -106,6 +106,7 @@ def _emitters():
         "tfvars": gen.gen_tfvars(FIXTURE, ENV),
         "inventory": gen.gen_inventory(FIXTURE, ENV),
         "env_mk": gen.gen_env_mk(FIXTURE, ENV),
+        "ansible_cfg": gen.gen_ansible_cfg(FIXTURE, ENV),
         "envrc": gen.gen_envrc(FIXTURE, ENV),
     }
     root_ca_vars, issuing_ca_vars = gen.gen_pki_group_vars(FIXTURE, ENV)
