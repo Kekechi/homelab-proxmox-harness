@@ -191,8 +191,12 @@ if active deploy; then
             RCA_USER="$(cfg services.pki.root_ca.ansible_user)"; : "${RCA_USER:=root}"
             rca_deadline=$(( $(date +%s) + 600 )); rca_consec=0
             until (( $(date +%s) >= rca_deadline )); do
+                # Agent-host connection facts come from config (agent.ssh_extra_args
+                # carries a proxy hop when one exists; direct otherwise).
+                _agent_ssh_extra="$(cfg agent.ssh_extra_args)"
+                # shellcheck disable=SC2086
                 if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                       -o ConnectTimeout=8 -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+                       -o ConnectTimeout=8 ${_agent_ssh_extra} \
                        "${RCA_USER}@${RCA_IP}" true 2>/dev/null; then
                     rca_consec=$(( rca_consec + 1 ))
                     log "  root-ca handshake ok (${rca_consec}/3)"

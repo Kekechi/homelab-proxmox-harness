@@ -53,6 +53,20 @@ echo "    Bucket   : ${BUCKET}"
 echo "    IAM user : ${IAM_USER}"
 echo ""
 
+# The provisioning play's "Restart minio" handler fires seconds before this
+# script runs — probe readiness first or the mcli alias set races the restart
+# (observed live: connection refused while the daemon was mid-restart).
+echo "==> Waiting for MinIO readiness at ${MINIO_ENDPOINT} ..."
+_ready_deadline=$(( $(date +%s) + 120 ))
+until curl -sk -o /dev/null -w '%{http_code}' "${MINIO_ENDPOINT}/minio/health/live" 2>/dev/null | grep -q 200; do
+    if (( $(date +%s) >= _ready_deadline )); then
+        echo "ERROR: MinIO did not become healthy at ${MINIO_ENDPOINT} within 120s." >&2
+        exit 1
+    fi
+    sleep 3
+done
+echo "    healthy."
+
 echo "==> Configuring mcli alias..."
 mcli alias set "${ALIAS}" "${MINIO_ENDPOINT}" \
     "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
