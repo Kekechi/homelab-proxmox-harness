@@ -63,7 +63,7 @@ terraform:
 # shape is declared by components/<name>/component.yml; `make configure`
 # derives the Ansible inventory group and endpoint wiring from it.
 # This file is ASSEMBLED by `make examples` — edit the component fragment
-# (components/<name>/config.example.yml) or the core skeleton
+# (components/<name>/config.example.yml.in) or the core skeleton
 # (config/example-core/<env>.yml.in), not this file.
 services:
   minio:

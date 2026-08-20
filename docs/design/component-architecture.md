@@ -58,7 +58,7 @@ plan-file gate, no secrets in tree, golden tests as the generator's correctness 
 components/                    # public components, one dir each
   <name>/
     component.yml              # manifest — single source of truth (see §4)
-    config.example.yml         # this component's config fragment (schema-by-example)
+    config.example.yml.in      # config fragment (schema-by-example; assembled into config/*.yml.example)
     roles/<role>/              # its ansible role(s)
     playbook.yml               # entrypoint play
     verify.sh                  # was scripts/verify/verify-<name>.sh

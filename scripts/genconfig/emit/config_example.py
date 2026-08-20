@@ -2,7 +2,7 @@
 
 The committed example configs are ASSEMBLED, never hand-edited as a whole:
   config/example-core/<env>.yml.in       env skeleton (infra, terraform, agent)
-  components/*/config.example.yml        one service fragment per component
+  components/*/config.example.yml.in     one service fragment per component
   + a generated services: header and hosts: tail.
 
 This keeps examples from going stale against the component set and keeps
@@ -23,7 +23,7 @@ _SERVICES_HEADER = """\
 # shape is declared by components/<name>/component.yml; `make configure`
 # derives the Ansible inventory group and endpoint wiring from it.
 # This file is ASSEMBLED by `make examples` — edit the component fragment
-# (components/<name>/config.example.yml) or the core skeleton
+# (components/<name>/config.example.yml.in) or the core skeleton
 # (config/example-core/<env>.yml.in), not this file.
 services:
 """
@@ -64,7 +64,7 @@ def gen_config_example(env: str, components: dict | None = None) -> str:
     for comp in sorted(components.values(), key=component_order):
         if comp["source"] != "public":
             continue  # private shapes never leak into committed examples
-        frag_path = os.path.join(comp["dir"], "config.example.yml")
+        frag_path = os.path.join(comp["dir"], "config.example.yml.in")
         if not os.path.isfile(frag_path):
             continue
         with open(frag_path) as f:
