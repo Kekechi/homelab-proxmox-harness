@@ -52,9 +52,3 @@ def load_config(env: str) -> dict:
     return cfg
 
 
-def is_inside_container() -> bool:
-    """Detect if we're running inside the dev container."""
-    if os.path.exists("/.dockerenv"):
-        return True
-    proxy = os.environ.get("http_proxy", "") or os.environ.get("HTTP_PROXY", "")
-    return "squid-proxy" in proxy

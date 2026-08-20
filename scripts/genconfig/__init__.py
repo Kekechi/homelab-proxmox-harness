@@ -1,7 +1,7 @@
 """genconfig — environment config generator (split from generate-configs.py).
 
 Single source of truth is config/<env>.yml; this package renders every
-generated artifact (tfvars, inventory, allowed-cidrs, .envrc, .env.mk, PKI
+generated artifact (tfvars, inventory, ansible.cfg, .envrc, .env.mk, PKI
 group_vars). Output is byte-stable for unchanged input — scripts/test-golden.py
 is the regression gate.
 

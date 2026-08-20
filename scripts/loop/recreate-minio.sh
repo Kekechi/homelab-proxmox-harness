@@ -134,9 +134,9 @@ except Exception: print("")' 2>/dev/null || echo "")"
 wait_task "$NODE" "$UPID" || die "create task did not complete OK"
 log "MinIO LXC created and started."
 
-# --- wait for SSH (through the Squid CONNECT proxy) --------------------------
-# Layered readiness probe (WS2). A freshly created LXC's path through the Squid
-# proxy is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
+# --- wait for SSH ------------------------------------------------------------
+# Layered readiness probe (WS2). A freshly created LXC's network path (observed
+# under the retired proxy setup) is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
 # KEX stalls while a 1-RTT banner grab can still squeak through). ROOT CAUSE
 # (CONFIRMED 2026-06-20, supersedes the earlier fwbr-settling guess): the loop
 # reuses MinIO's fixed IP but Proxmox assigns a fresh random MAC each recreate, so

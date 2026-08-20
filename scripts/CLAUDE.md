@@ -61,7 +61,7 @@ derivations that a service split would shatter):
 ```
 scripts/genconfig/
   main.py config.py helpers.py validation.py
-  emit/{tfvars,inventory,allowed_cidrs,envrc,env_mk,pki_group_vars}.py
+  emit/{tfvars,inventory,ansible_cfg,config_example,envrc,env_mk,pki_group_vars}.py
 ```
 
 `generate-configs.py` is a thin shim importing `genconfig.main` (CLI + public

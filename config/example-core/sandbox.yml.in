@@ -30,7 +30,7 @@ infrastructure:
     insecure: true                       # true = accept self-signed TLS cert
   nodes:
     pve1:
-      ip: "192.168.X.X"   # Node management IP — added to Squid allowlist
+      ip: "192.168.X.X"   # Node management IP
   # For multi-node clusters, uncomment and add additional nodes:
   #   pve2:
   #     ip: "192.168.X.X"

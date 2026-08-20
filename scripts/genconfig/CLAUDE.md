@@ -10,7 +10,7 @@ Don't read the whole package to make a small change — use the routing table.
 | File | Holds |
 |---|---|
 | `main.py` | CLI entry (`main`, `--examples`), the write-orchestration sequence, and the public symbol re-export surface the shim + test harnesses rely on |
-| `config.py` | `REPO_ROOT`, `CHANGE_ME`, `load_config` (deep-merges `config/<env>.local.yml`), `is_inside_container` |
+| `config.py` | `REPO_ROOT`, `CHANGE_ME`, `load_config` (deep-merges `config/<env>.local.yml`) |
 | `discovery.py` | component discovery (`components/` + `components.local/`, collision = error), manifest validation, `instance_tf_key`/`instance_group`/`instance_config` |
 | `capabilities.py` | consumes/provides resolution (`build_providers`, `resolve_consumes`, `CORE_CONSUMES`), re-convergence reporting |
 | `helpers.py` | shared primitives: `_hcl_str` (null-if-empty), `_strip_prefix`, `resolve_network`, `_derive_dns_records`, `validate_cidr`, `validate_domain_name`, `atomic_write` (`.envrc` smart-merge, never deletes unknown keys), `write_file`, `_envrc_secret_vars` (derived from manifests) |

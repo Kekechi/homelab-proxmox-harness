@@ -14,7 +14,7 @@
 #   ENV defaults to the value in .env.mk (or "sandbox" if not found).
 #
 # Requirements:
-#   - mcli (MinIO Client) installed in the dev container
+#   - mcli (MinIO Client) installed on the controller host
 #   - MinIO must be running and reachable at MINIO_ENDPOINT
 #   - MINIO_ROOT_USER and MINIO_ROOT_PASSWORD must be set in .envrc
 #

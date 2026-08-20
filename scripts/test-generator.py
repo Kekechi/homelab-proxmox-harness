@@ -4,7 +4,7 @@ test-generator.py — Comprehensive tests for generate-configs.py
 
 Tests are grouped into:
   - Validation errors (generator must exit 1 with a clear message)
-  - Output content (generator must produce correct tfvars / inventory / Squid allowlist)
+  - Output content (generator must produce correct tfvars / inventory / ansible.cfg)
 
 Usage:
   python3 scripts/test-generator.py

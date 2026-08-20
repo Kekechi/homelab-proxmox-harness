@@ -12,7 +12,7 @@ import re
 import sys
 
 # Public surface re-exported for the shim and the test harnesses.
-from .config import CHANGE_ME, REPO_ROOT, is_inside_container, load_config
+from .config import CHANGE_ME, REPO_ROOT, load_config
 from .capabilities import (
     CORE_CONSUMES,
     build_providers,
@@ -65,7 +65,6 @@ __all__ = [
     "instance_tf_key",
     "CHANGE_ME",
     "REPO_ROOT",
-    "is_inside_container",
     "load_config",
     "_envrc_secret_vars",
     "_derive_dns_records",
