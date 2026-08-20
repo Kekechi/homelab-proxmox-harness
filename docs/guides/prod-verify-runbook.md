@@ -57,53 +57,47 @@ authoritative.
 make verify-all ENV=production
 ```
 
-Runs every per-service Tier-1 verify in trust/dependency order (CA → repo →
-resolver chain → storage → telemetry) and aggregates to a single hard exit:
-`0` = all green, `1` = any service failed. Splunk is verified only when
-`services.splunk.enabled` is true in `config/production.yml`; it is skipped
-gracefully otherwise. Driver: `scripts/verify/verify-all.sh`.
+Runs every enabled component's Tier-1 verify in component manifest order
+(MinIO → PKI → Nexus → DNS → log server → Splunk) and aggregates to a single
+hard exit: `0` = all green, `1` = any component failed. A component whose
+`services.<name>.enabled` is not true in `config/production.yml` is skipped as
+off-by-design; a component that is enabled but ships no `verify.sh` is reported
+as an explicit SKIP so the gap stays visible (Splunk is currently in this
+category — see below). Driver: `scripts/verify/verify-all.sh`.
 
-> **Scope note.** `verify-all` runs the seven per-service verifies below
-> (issuing-ca, nexus, dns-auth, dnsdist, dns-collector, minio, log-server) plus
-> Splunk when enabled. It does **not** run `verify-isolation` — that is a
-> dev-container network check and is run separately (see below).
+> **Scope note.** `verify-all` is discovery-driven: components are discovered
+> from `components/` plus the private `components.local/` overlay, never
+> hand-listed. Whatever enabled components exist on disk are what gets
+> verified; the per-component targets below run the same scripts individually.
 
 A green `verify-all` is the headline gate. Run the individual targets below only
-to drill into a specific failure, or when you want to verify one service in
+to drill into a specific failure, or when you want to verify one component in
 isolation.
 
-### Per-service targets
+### Per-component targets
 
-Each target queries the running daemon and exits `0`/`1`. All honor
-`ENV=production`.
+Each `make verify-<component>` target runs that component's `verify.sh`, keyed
+by the component directory name exactly (note the underscore in `log_server`).
+Each queries the running daemons and exits `0`/`1`. All honor `ENV=production`.
 
 | Target | What it checks |
 |---|---|
-| `make verify-issuing-ca` | step-ca issuing CA: liveness + served `/health` + provisioner list |
+| `make verify-pki` | step-ca issuing CA: liveness + served `/health` validated against the root CA cert + live provisioner list with ACME present. (The root CA is powered off by design and is not probed.) |
 | `make verify-nexus` | Nexus: liveness + writable status + docker v2 + apt-proxy repo |
-| `make verify-dns-auth` | PowerDNS Auth+Recursor: API health + zone + `dig` resolution |
-| `make verify-dnsdist` | DNSdist: liveness + `:53` resolution + webserver API |
-| `make verify-dns-collector` | dns-collector: liveness + dnstap receiver bound |
+| `make verify-dns` | The whole DNS component, three sub-checks: PowerDNS Auth+Recursor (API health + zone + `dig`), DNSdist (liveness + `:53` resolution + webserver API), dns-collector (liveness + dnstap receiver bound) |
 | `make verify-minio` | MinIO: liveness + `health/live` + `health/ready` |
-| `make verify-log-server` | otelcol log server: liveness + `health_check` + syslog receivers + awss3 sink |
+| `make verify-log_server` | otelcol log server: liveness + `health_check` + syslog receivers bound + awss3 (MinIO) sink wired |
+
+Splunk currently has no Tier-1 `verify.sh`; when enabled, `verify-all` reports
+it as an explicit SKIP. Verify it through the deploy-sequence prerequisites
+above and the Tier-2 sweep.
 
 Example:
 
 ```bash
-make verify-issuing-ca ENV=production
-make verify-log-server ENV=production
+make verify-pki ENV=production
+make verify-log_server ENV=production
 ```
-
-### Network isolation: `make verify-isolation`
-
-```bash
-make verify-isolation
-```
-
-Runs the dev-container network isolation verification
-(`scripts/verify-isolation.sh`): confirms internal endpoints are reachable and
-that direct internet egress is blocked where it should be. This is a separate
-check from the per-service behavioral gate and is **not** part of `verify-all`.
 
 ---
 
@@ -125,7 +119,7 @@ confusing naming, or over-broad scope?* Findings are written to
 (provisioner names/scopes/signing) are recorded only and are a `/design` item —
 never remediated inside the sweep. Other-layer findings (DNS records, otelcol
 routing, IAM breadth, Nexus repo/role hygiene) are likewise recorded only; they
-may feed a later `/infra-plan` or `/design` session.
+may feed a later `/design` session or directly agreed follow-up work.
 
 > To enrich the Nexus dump with privileged sections (roles/privileges/users),
 > export `NEXUS_ADMIN_PASSWORD` before running.
@@ -142,21 +136,18 @@ may feed a later `/infra-plan` or `/design` session.
    ```
    - **GREEN** → proceed to step 4.
    - **RED** → go to step 3.
-3. **Drill into the failure.** Re-run the specific failing per-service target
+3. **Drill into the failure.** Re-run the specific failing per-component target
    with `ENV=production` (e.g. `make verify-nexus ENV=production`), read its
    output, fix the root cause, then re-run `make verify-all ENV=production`.
    Loop until green.
-4. **Run the network isolation check:**
-   ```bash
-   make verify-isolation
-   ```
-5. **Run the Tier-2 sweep:**
+4. **Run the Tier-2 sweep:**
    ```
    /sanity-sweep
    ```
    Review `.claude/session/verification-findings.md`. Triage findings: a
-   trust-model finding becomes a `/design` session; another-layer finding becomes
-   an `/infra-plan` session. **Do not remediate from inside the sweep.**
-6. **Prod verified** when: `verify-all` is GREEN, `verify-isolation` passes, and
-   the Tier-2 findings have been triaged (each either accepted or queued as a
-   follow-up plan/design item).
+   trust-model finding becomes a `/design` session; another-layer finding
+   becomes a `/design` session or directly agreed follow-up work. **Do not
+   remediate from inside the sweep.**
+5. **Prod verified** when: `verify-all` is GREEN and the Tier-2 findings have
+   been triaged (each either accepted or queued as a follow-up design/work
+   item).

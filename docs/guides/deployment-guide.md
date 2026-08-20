@@ -41,11 +41,10 @@ make configure
 ```
 
 The generator writes `terraform/sandbox.tfvars`, `ansible/inventory/hosts.yml`,
-`.devcontainer/squid/allowed-cidrs.conf`, `.envrc` (with `CHANGE_ME` placeholders),
-`.env.mk`, and `ansible/inventory/group_vars/pki_*/vars.yml`.
-
-> If `allowed-cidrs.conf` changed, run `make build` and reopen the dev container
-> so Squid picks up the new allowlist.
+`ansible/ansible.cfg` (agent-host connection facts from the config `agent:` section),
+`.envrc` (with `CHANGE_ME` placeholders; it sources the gitignored `.envrc.local`
+for operator-local additions), `.env.mk`, and
+`ansible/inventory/group_vars/pki_*/vars.yml`.
 
 Fill in secrets in `.envrc` — these are marked `CHANGE_ME` by the generator:
 
@@ -80,6 +79,7 @@ Then initialize Terraform and validate the empty plan:
 
 ```bash
 direnv allow          # reload .envrc with the new keys
+make verify-minio     # behavioral check: unit active, health/live + health/ready
 make init
 make plan             # expect: 0 resources to add/change/destroy (all enables are false)
 ```
@@ -117,7 +117,8 @@ make ansible-env          # distribute root CA cert (no-op until Phase 4 — saf
 make ansible-nexus        # install + configure Nexus CE; TLS disabled at this phase
 ```
 
-Verify: Nexus UI is reachable on port 8081 from the MGMT network.
+Verify with `make verify-nexus` (liveness, writable status, docker v2 connector,
+apt-proxy repo). The Nexus UI is also reachable on port 8081 from the MGMT network.
 
 After verifying, tighten the firewall to block direct internet from the MGMT VLAN
 (Nexus becomes the APT proxy for subsequent phases).
@@ -152,14 +153,15 @@ make apply
 dns-auth and dns-dist LXCs are created, both using the router as their initial DNS.
 
 ```bash
-make ansible-dns            # deploy PowerDNS Auth + Recursor
-make ansible-dns  # records play is part of the dns component    # populate A records in the zone
-make ansible-dns  # dist play is part of the dns component       # deploy DNSdist, wire forwarding to Recursor
+make ansible-dns    # deploys the whole dns component in one run: its playbook
+                    # imports three plays in order — PowerDNS Auth + Recursor,
+                    # zone A records, then DNSdist wired to the Recursor
 ```
 
 Verify DNS is resolving before switching:
 ```bash
-# From the dev container, through Squid:
+make verify-dns     # behavioral checks for auth+recursor, DNSdist, and dns-collector
+# Or spot-check from the agent host:
 sandbox-ssh root@<dns-dist-ip> "dig +short nexus.<domain>"
 ```
 
@@ -179,18 +181,10 @@ MinIO is not Terraform-managed — update its resolver manually or via a targete
 Ansible task before Phase 5 (required for MinIO TLS cert issuance to resolve
 `ca.<domain>`).
 
-**One-time: point the dev container Squid at internal DNS.**
-This allows the dev container to resolve internal FQDNs through the proxy —
-required so `make init` can connect to MinIO by hostname in Phase 5.
-
-```bash
-echo "dns_nameservers <dns-dist-ip>" >> .devcontainer/squid/squid.conf.local
-make build
-# Reopen the dev container when prompted
-```
-
-> `squid.conf.local` is gitignored (`*.local`). This step only needs to be
-> redone if you delete the file or rebuild from scratch.
+**One-time: make sure the controller host resolves internal FQDNs.**
+Point the controller host's resolver at DNSdist (using whatever resolver
+mechanism you manage on that host) — required so `make init` can connect to
+MinIO by hostname in Phase 5.
 
 ---
 
@@ -227,8 +221,11 @@ make ansible-env    # distribute root CA cert to all managed hosts
 
 **Operator step:** Power off the root-ca VM in the Proxmox UI.
 
-Verify from any managed host:
+Verify:
 ```bash
+make verify-pki     # step-ca liveness, served /health validated against the
+                    # root CA cert, live provisioner list with ACME present
+# Or spot-check from any managed host:
 sandbox-ssh root@<issuing-ca-ip> "step ca health --ca-url https://ca.<domain> --root /etc/step-ca/certs/root_ca.crt"
 # expected: ok
 ```
@@ -250,8 +247,8 @@ services:
 make configure
 ```
 
-> `MINIO_ENDPOINT` in `.envrc` is FQDN-based when `tls: true`. The dev container
-> Squid proxy resolves it via DNSdist (configured in Phase 3) — no IP SAN needed.
+> `MINIO_ENDPOINT` in `.envrc` is FQDN-based when `tls: true`. The controller
+> host resolves it via DNSdist (resolver switch done in Phase 3) — no IP SAN needed.
 
 ```bash
 make ansible-minio    # issues TLS cert from Issuing CA, restarts MinIO on HTTPS
@@ -264,8 +261,9 @@ make ansible-env      # rewrite APT sources on all managed hosts to the HTTPS Ne
 
 Final verification:
 ```bash
-make verify-isolation
+make verify-all
 ```
 
-Expected: all internal endpoints reachable over HTTPS, direct internet blocked from
-MGMT VLAN.
+Expected: a GREEN summary — every enabled component's behavioral verify passes.
+(Blocking direct internet from the MGMT VLAN is enforced and confirmed at the
+firewall, outside this harness.)

@@ -15,7 +15,8 @@ Three steps, in order:
 ## Step 1 — Add a DNS record
 
 For hosts in `config/<env>.yml` (IaC-managed services), records are populated automatically
-by `make ansible-dns  # records play is part of the dns component`. Skip this step for those hosts.
+by the dns component — its playbook includes the records play, so `make ansible-dns` covers
+them. Skip this step for those hosts.
 
 For hosts not in config, add the record manually via the PowerDNS Auth API. The API is
 bound to loopback on the dns-auth LXC, so the call must be made from that host:
@@ -38,8 +39,9 @@ ssh root@<dns-auth-host> "curl -s -X PATCH \
 
 The `PDNS_AUTH_API_KEY` is in `.envrc`. A 204 response indicates success.
 
-> **Note:** Records added this way are not tracked in `config/<env>.yml`. The
-> `dns-records.yml` playbook will report them as stale but will not delete them.
+> **Note:** Records added this way are not tracked in `config/<env>.yml`. The dns
+> component's records play (`components/dns/records.yml`) will report them as stale
+> but will not delete them.
 
 Verify resolution before proceeding:
 
@@ -64,7 +66,8 @@ curl -k https://ca.<your-domain>/roots.pem -o root_ca.crt
 Or copy it from the controller:
 
 ```bash
-scp /workspace/.pki/root_ca.crt <host>:/tmp/root_ca.crt
+# From the repo root on the controller
+scp .pki/root_ca.crt <host>:/tmp/root_ca.crt
 ```
 
 **Install on Debian/Ubuntu-based hosts:**
@@ -174,7 +177,7 @@ the issuing CA also has a JWK provisioner (confusingly, also named `acme`). This
 `step` CLI, the `--provisioner` name, and the `STEP_CA_PROVISIONER_PASSWORD` from `.envrc`.
 Renewal is manual.
 
-See `ansible/roles/minio/tasks/tls.yml` for a reference implementation — it issues a cert with
+See `components/minio/roles/minio/tasks/tls.yml` for a reference implementation — it issues a cert with
 `step ca certificate ... --provisioner acme --provisioner-password-file <file> --ca-url
 https://ca.<your-domain> --root <root-ca.crt>` and certs are scoped to `*.<domain_name>` by the
 issuing CA's x509 name policy.

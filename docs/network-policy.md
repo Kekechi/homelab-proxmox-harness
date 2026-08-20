@@ -1,126 +1,44 @@
 # Network Policy
 
+Intent-level description of the network boundary around the IaC agent. This repository
+is public — specific subnets, addresses, and vendor products are deliberately absent;
+they live in `config/<env>.yml` (gitignored).
+
 ## Architecture
 
-The dev container runs on a Docker network with `internal: true`, which means it has
-**no direct internet or LAN access**. All outbound traffic must pass through the
-Squid forward proxy, which enforces an allowlist.
+The agent (Claude Code) runs on a **dedicated controller host** provisioned by the
+operator. The host's network position *is* the network boundary:
 
-```
-[WSL2 host] ──── full LAN + internet access
-      │
-      │  Docker
-      ▼
-[squid-proxy container]
-  ├── internal network (shared with devcontainer)
-  └── external network (bridge to WSL2 → LAN)
-        │
-        │  ACL allowlist:
-        │   ✓ Sandbox Proxmox VLAN CIDR
-        │   ✓ MinIO LXC IP:9000
-        │   ✓ registry.terraform.io
-        │   ✓ releases.hashicorp.com
-        │   ✓ github.com
-        │   ✓ objects.githubusercontent.com
-        │   ✓ CONNECT port 22 → sandbox CIDR (Ansible SSH)
-        │   ✗ everything else
-        ▼
-[devcontainer]
-  └── isolated network only (internal:true)
-      http_proxy → squid-proxy:3128
-```
+- It can reach the **sandbox segment**: the Proxmox API, sandbox instances (SSH), and
+  the sandbox MinIO state backend.
+- **Production segments are not routable from this host** by the operator's network
+  design. The production MinIO instance and any production hosts are unreachable, and
+  their credentials are never present on this host (see `docs/proxmox-iam.md`).
+- Outbound internet egress is the host's own; there is no forward-proxy allowlist in
+  front of the agent. Version pinning of providers and collections
+  (`.terraform.lock.hcl`, `requirements.yml`) is correspondingly load-bearing — see
+  `docs/threat-model.md`.
 
----
+The previous architecture (containerized agent behind a deny-by-default forward proxy)
+is retired; this host-based model trades the proxy layer for IAM-first enforcement plus
+operator-managed segmentation.
 
-## Squid Config Files
+## SSH
 
-Both files are baked into the Squid Docker image at build time and are **not** accessible
-as writable files from the workspace. To update them:
+- `ansible/ansible.cfg` is **generated** from the `agent:` section of `config/<env>.yml`
+  (key path, extra SSH args). There is no ProxyCommand; Ansible connects directly to
+  hosts the controller can route to.
+- Claude Code's own tool permissions deny raw `ssh`/`scp` in shell calls; the
+  `sandbox-ssh`/`sandbox-scp` aliases exist so the agent's interactive SSH to sandbox
+  hosts passes through that permission layer deliberately (see CLAUDE.md). This is a
+  workflow control, not a network control.
 
-1. Edit `.devcontainer/squid/allowed-cidrs.conf` or `.devcontainer/squid/squid.conf`
-2. Run `docker compose build squid-proxy` (or `make build`)
-3. Reopen the dev container
+## Reconfiguring
 
-### `allowed-cidrs.conf`
-
-One CIDR or IP per line. Controls which LAN addresses the devcontainer can reach:
-```
-192.168.X.0/24   # Sandbox VLAN subnet (set in config/sandbox.yml → network.cidr)
-192.168.X.X/32   # MinIO LXC IP (set in config/sandbox.yml → minio.host_cidr)
-```
-
-### `squid.conf`
-
-Controls allowed domains and ports. Domains use exact matching (no wildcards):
-```squid
-acl allowed_domains dstdomain registry.terraform.io
-acl allowed_domains dstdomain releases.hashicorp.com
-acl allowed_domains dstdomain github.com
-acl allowed_domains dstdomain objects.githubusercontent.com
-```
-
----
-
-## Ansible SSH Through Squid
-
-Squid allows `CONNECT` on port 22 to addresses in `allowed_cidrs`. Ansible uses
-`ncat` as a ProxyCommand to tunnel SSH through Squid:
-
-```ini
-# ansible/ansible.cfg
-[ssh_connection]
-ssh_args = -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p"
-```
-
-This means:
-- Ansible can SSH to sandbox VMs at IPs within the allowed CIDR
-- Ansible CANNOT SSH to production VMs or arbitrary internet hosts
-- SSH to any non-allowed IP is denied by Squid's ACL
-
----
-
-## MinIO Through Squid
-
-MinIO is on the Proxmox LAN (not in Docker). The devcontainer has no direct LAN access,
-so Terraform S3 backend calls go through Squid:
-
-```
-Terraform → http_proxy → squid-proxy:3128 → MinIO @ 192.168.X.X:9000
-```
-
-Terraform's S3 backend respects `http_proxy` automatically. The `no_proxy` env var
-intentionally does NOT include the MinIO IP — all MinIO traffic must go through Squid.
-
-Other devices on the LAN access MinIO directly and are unaffected by Squid.
-
----
-
-## WSL2 Networking Notes
-
-The `internal:true` Docker network behaviour on WSL2 depends on the networking mode:
-
-- **NAT mode (default):** `internal:true` works correctly — devcontainer cannot route to LAN directly.
-- **Mirrored mode:** Behaviour differs. Do NOT use mirrored networking with this setup.
-
-Check your WSL2 networking mode:
-```bash
-# On Windows, in %USERPROFILE%\.wslconfig:
-[wsl2]
-networkingMode=NAT   # ensure this is NAT, not mirrored
-```
-
-Run `make verify-isolation` after rebuilding the dev container to confirm isolation is active.
-
----
-
-## Reconfiguring for a Different Network Topology
-
-| What changed | Files to update | Command |
+| What changed | Where to change it | Command |
 |---|---|---|
-| Sandbox VLAN CIDR | `.devcontainer/squid/allowed-cidrs.conf` | `make build` |
-| MinIO IP | `.devcontainer/squid/allowed-cidrs.conf` | `make build` |
-| Add allowed domain | `.devcontainer/squid/squid.conf` | `make build` |
-| MinIO endpoint URL | `.envrc` | `direnv allow` |
-| Proxmox API URL | `.envrc` | `direnv allow` |
-| Proxmox API token | `.envrc` | `direnv allow` |
-| Terraform structural config | `terraform/sandbox.tfvars` or `terraform/production.tfvars` | `terraform init` |
+| Sandbox network (bridge/CIDR/gateway) | `config/<env>.yml` → `infrastructure.networks` | `make configure` |
+| MinIO endpoint | `config/<env>.yml` → the minio service block | `make configure`, then `direnv allow` |
+| Proxmox API endpoint | `config/<env>.yml` → `infrastructure.proxmox` | `make configure`, then `direnv allow` |
+| Agent SSH key / args | `config/<env>.yml` → `agent:` | `make configure` |
+| Secrets (tokens, keys) | `.envrc` (manual) / `.envrc.local` | `direnv allow` |

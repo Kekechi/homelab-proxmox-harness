@@ -51,7 +51,7 @@ Before starting, ensure the following are in place:
 - [ ] MinIO is running and `tfstate-sandbox` bucket exists (see `docs/guides/minio-setup.md`)
 - [ ] Sandbox VLAN is trunked on the bridge and routed on your firewall
 - [ ] Sandbox hosts can reach each other within the VLAN (east-west traffic allowed)
-- [ ] Dev container is running with `direnv allow` applied
+- [ ] `direnv allow` has been applied on the controller (agent) host
 
 ---
 
@@ -96,7 +96,7 @@ Verify it is marked as a template (gold icon).
 ## Step 2 — Configure the Environment
 
 ```bash
-# In the dev container
+# On the controller host, from the repo root
 cp config/sandbox.yml.example config/sandbox.yml
 ```
 
@@ -109,7 +109,7 @@ domain_name: "sandbox.example.com"     # used in Terraform DNS output hints
 
 services:
   pki:
-    enabled: true                       # gates the Terraform module (enable_pki); must be true to deploy
+    enabled: true                       # must be true to deploy — only enabled services enter the generated Terraform services map
     root_ca:
       node: pve1                         # Proxmox node the cloud-init template lives on
       ip: "192.168.X.X/24"             # CIDR notation required for cloud-init static IP
@@ -179,7 +179,7 @@ make apply     # applies sandbox.tfplan
 
 DNS records for the PKI hosts are derived by the config generator (including the
 `ca.<domain>` alias via `dns_aliases` on `issuing_ca`) and land in both the
-generated `/etc/hosts` mesh and the internal DNS zone (`dns-records.yml`) — no
+generated `/etc/hosts` mesh and the internal DNS zone (`components/dns/records.yml`) — no
 manual record entry needed. Terraform's `service_addresses` output shows the
 configured IPs per service.
 
@@ -193,9 +193,11 @@ cd ansible
 ansible -i inventory/hosts.yml pki_root_ca:pki_issuing_ca -m ping
 ```
 
-> **Note:** All Ansible commands in this doc must be run from `/workspace/ansible/` (where
-> `ansible.cfg` lives), or with `ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg` set.
-> Without this, the SSH ProxyCommand is not applied and hosts will be unreachable.
+> **Note:** All Ansible commands in this doc must be run from `ansible/` (where the
+> generated `ansible.cfg` lives), or with `ANSIBLE_CONFIG=ansible/ansible.cfg` set.
+> The generated cfg carries the inventory and SSH key/connection settings from
+> config — without it, hosts will be unreachable. Never hand-edit it; rerun
+> `make configure` instead.
 
 ---
 
@@ -215,7 +217,7 @@ CSR exchange and no second pass.
 # Preferred — runs ansible-playbook -i inventory/ ../components/pki/playbook.yml
 make ansible-pki
 
-# Equivalent raw invocation (ansible.cfg supplies the inventory + proxy):
+# Equivalent raw invocation (the generated ansible.cfg supplies the inventory + SSH settings):
 cd ansible && ansible-playbook ../components/pki/playbook.yml
 ```
 
@@ -225,7 +227,7 @@ The playbook runs four plays over both hosts, in order:
 2. **`step_ca_common`** — installs `step-cli` on both hosts and `step-ca` on the issuing
    CA only; creates the `step` user and directory layout.
 3. **`step_ca_root`** (root CA host) — generates the root certificate and key, then
-   fetches both to the controller staging dir `/workspace/.pki/`.
+   fetches both to the controller staging dir `.pki/` at the repo root.
 4. **`step_ca_issuing`** (issuing CA host) — runs `step ca init --acme` using the staged
    root key to sign the intermediate, applies the authority policy, sets
    `cap_net_bind_service` on the `step-ca` binary, and starts the service on `:443`. The
@@ -245,18 +247,18 @@ issuing CA (stat checks) and skips regeneration.
 From any host on the sandbox VLAN:
 
 ```bash
-# Health check — should return step-ca server info
+# Health check — should return step-ca server info (paths relative to the repo root)
 curl https://ca.<your-domain>/health \
-  --cacert /workspace/.pki/root_ca.crt
+  --cacert .pki/root_ca.crt
 
 # List provisioners
 step ca provisioner list \
   --ca-url https://ca.<your-domain> \
-  --root /workspace/.pki/root_ca.crt
+  --root .pki/root_ca.crt
 ```
 
 The root cert was already fetched to the controller staging dir during Step 5 — it lives
-at `/workspace/.pki/root_ca.crt` (the `step_ca_controller_staging_dir`). The `common` role
+at `.pki/root_ca.crt` in the repo root (the `step_ca_controller_staging_dir`). The `common` role
 distributes it to managed hosts from there.
 
 It is also downloadable from step-ca's built-in API if you need a fresh copy:
@@ -275,7 +277,7 @@ via the `common` role. Running any playbook that includes `common` (e.g. `site.y
 is sufficient — no separate step needed.
 
 ```bash
-# Run from /workspace/ansible (or set ANSIBLE_CONFIG=/workspace/ansible/ansible.cfg)
+# Run from ansible/ (or set ANSIBLE_CONFIG=ansible/ansible.cfg)
 cd ansible
 ansible-playbook playbooks/site.yml
 ```
@@ -297,7 +299,7 @@ Start it only when you need to renew the intermediate certificate (typically onc
 qm start <root-ca-vmid>
 
 # 2. Re-run the PKI setup playbook
-ansible-playbook components/pki/playbook.yml
+make ansible-pki
 
 # 3. Power off the Root CA VM
 qm stop <root-ca-vmid>
@@ -325,7 +327,8 @@ make plan ENV=production
 # Operator applies:
 terraform apply production.tfplan
 
-# Ansible (same playbooks, different inventory)
-ansible-playbook components/pki/playbook.yml
-ansible-playbook ansible/playbooks/site.yml  # common role handles cert distribution
+# Ansible (same playbooks, different inventory) — run from ansible/
+cd ansible
+ansible-playbook ../components/pki/playbook.yml
+ansible-playbook playbooks/site.yml  # common role handles cert distribution
 ```
