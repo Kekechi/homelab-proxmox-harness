@@ -17,7 +17,7 @@ TF_DIR := terraform
 
 .PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
         loop-teardown loop-minio loop-secrets \
-        verify-all collect-all ansible-lint ansible-env ansible-check \
+        examples verify-all collect-all ansible-lint ansible-env ansible-check \
         bootstrap-minio docs-gen
 
 help: ## Show this help
@@ -30,6 +30,9 @@ help: ## Show this help
 
 configure: ## Generate tfvars, inventory, and envrc from config/$(ENV).yml + component manifests
 	python3 scripts/generate-configs.py $(ENV)
+
+examples: ## Assemble config/*.yml.example from example-core skeletons + component fragments
+	python3 scripts/generate-configs.py --examples
 
 # ---------------------------------------------------------------------------
 # Dev container

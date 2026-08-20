@@ -1,0 +1,13 @@
+  minio:
+    enabled: true                        # the state backend — effectively always on
+    node: pve1
+    ip: "192.168.X.X"                    # MinIO server IP (bare IP, no prefix — not a Terraform resource)
+    port: 9000
+    ansible_user: root
+    hostname: minio-server               # Ansible inventory hostname
+    fqdn: "minio.@DOMAIN@"               # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true
+    tls: false                           # Enable TLS via step-ca ACME once PKI is deployed
+    network: @NETWORK@                   # Which named network this service is on
+    # dns_name: storage        # optional: override DNS label (default: service key "minio")
+    # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
+    # dns: false               # optional: set to false to exclude from DNS record generation

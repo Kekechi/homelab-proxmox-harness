@@ -1,0 +1,22 @@
+  dns:
+    enabled: false                       # Set true to deploy dns-auth + dns-dist LXCs
+    auth:
+      node: pve1
+      ip: "192.168.X.X/24"
+      ct_id: 203
+      ansible_user: root
+      hostname: dns-auth
+      dns_name: dns-auth                 # DNS A record label; default would be "auth" (subkey) which is ambiguous
+      network: @NETWORK@
+    dist:
+      node: pve1
+      ip: "192.168.X.X/24"
+      ct_id: 204
+      ansible_user: root
+      hostname: dns-dist
+      dns_name: dns-dist                 # DNS A record label; default would be "dist" which is ambiguous
+      network: @NETWORK@
+      # dns: false              # optional: exclude this host from DNS record generation entirely
+      # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
+      # client_cidrs:           # optional: CIDRs added to the DNSdist ACL beyond its own subnet
+      #   - "192.168.X.0/24"    # e.g. a LAN VLAN whose clients should resolve via DNSdist

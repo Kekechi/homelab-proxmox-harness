@@ -39,6 +39,7 @@ from .validation import (
     validate_schema,
 )
 from .emit.ansible_cfg import gen_ansible_cfg
+from .emit.config_example import gen_config_example
 from .emit.env_mk import gen_env_mk
 from .emit.envrc import gen_envrc
 from .emit.inventory import gen_inventory
@@ -70,6 +71,7 @@ __all__ = [
     "validate_nexus_raw_hosted_repos",
     "validate_schema",
     "gen_ansible_cfg",
+    "gen_config_example",
     "gen_env_mk",
     "gen_envrc",
     "gen_inventory",
@@ -82,6 +84,11 @@ __all__ = [
 def main():
     args = sys.argv[1:]
     force = "--force" in args
+    if "--examples" in args:
+        for ex_env in ("sandbox", "production"):
+            path = os.path.join(REPO_ROOT, "config", f"{ex_env}.yml.example")
+            write_file(path, gen_config_example(ex_env), f"{ex_env} example")
+        return
     args = [a for a in args if not a.startswith("--")]
 
     if not args:
