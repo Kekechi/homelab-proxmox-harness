@@ -61,21 +61,38 @@ def validate_schema(cfg: dict):
         if not node_cfg.get("ip"):
             sys.exit(f"Config error: 'infrastructure.nodes.{node_name}' is missing required 'ip:' field.")
 
-    # Required top-level service keys + sub-keys
+    # Component-driven service validation: every services.<name> must be a
+    # discovered component; enabled components get their manifest's per-instance
+    # required-field checks. Disabled components need nothing beyond their key.
+    from .discovery import discover_components
+    components = getattr(validate_schema, "_components_override", None) or discover_components()
     svcs = cfg.get("services", {})
-    for required_key in ("pki", "dns", "nexus"):
-        if required_key not in svcs:
+    for svc_name in svcs:
+        if svc_name not in components:
             sys.exit(
-                f"Config error: 'services.{required_key}' is required — "
-                "all three Terraform-managed service groups (pki, dns, nexus) must be present."
+                f"Config error: 'services.{svc_name}' has no component "
+                f"(known: {', '.join(sorted(components))}). Ad-hoc hosts belong "
+                f"under 'hosts:'; new services need a components/<name>/component.yml."
             )
-    for sub_path in ("pki.root_ca", "pki.issuing_ca", "dns.auth", "dns.dist"):
-        keys = sub_path.split(".")
-        obj = svcs
-        for k in keys:
-            obj = obj.get(k) if isinstance(obj, dict) else None
-        if not obj:
-            sys.exit(f"Config error: 'services.{sub_path}' is required and must be a non-empty map.")
+    for name, comp in components.items():
+        svc = svcs.get(name)
+        if not isinstance(svc, dict) or not svc.get("enabled", False):
+            continue
+        instances = comp["manifest"]["instances"]
+        single = len(instances) == 1
+        for iname, inst in instances.items():
+            blk = svc if single else svc.get(iname)
+            label = f"services.{name}" if single else f"services.{name}.{iname}"
+            if not isinstance(blk, dict):
+                sys.exit(f"Config error: '{label}' is required when '{name}' is enabled.")
+            icfg = inst.get("config") or {}
+            defaults = icfg.get("defaults") or {}
+            for req in icfg.get("required", []):
+                if req not in blk and req not in defaults:
+                    sys.exit(
+                        f"Config error: '{label}' is missing required '{req}:' "
+                        f"(declared by components/{name}/component.yml)."
+                    )
 
     # Service node: walk — every leaf service must have a valid node: field
     node_keys = set(nodes.keys())

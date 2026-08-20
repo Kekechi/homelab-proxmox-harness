@@ -1,68 +1,29 @@
 """genconfig.emit.tfvars — render terraform/<env>.tfvars.
 
 Emits shared infrastructure values plus a single `services` map (one entry per
-enabled service). The Terraform root fans two static module blocks (vm / lxc)
-over that map — adding a service is a generator change, never a new module
-block. Resource sizing lives in _SERVICE_SPECS until component manifests own
-it (phase 2 of the component refactor).
+enabled component instance with kind vm|lxc). The Terraform root fans two
+static module blocks over that map — adding a service is a component-manifest
+change, never a new module block. Sizing and lifecycle options come from each
+component's manifest (instances.<i>.resources / .options), overridable per-env
+via services.<name>.resources in config.
 """
 
 import sys
 
+from ..discovery import (
+    component_order,
+    discover_components,
+    enabled_components,
+    instance_config,
+    instance_tf_key,
+)
 from ..helpers import _hcl_str, resolve_network, validate_cidr
 
-# Per-service kind + sizing + lifecycle spec. Only values that differ from the
-# `services` variable's typed-object defaults (terraform/variables.tf) are
-# listed — omitted fields fall through to those defaults at plan time.
-_SERVICE_SPECS = {
-    "root_ca": {
-        "kind": "vm",
-        # Offline root CA: created stopped, never autostarts, no guest agent.
-        "started": False,
-        "start_on_boot": False,
-        "agent_enabled": False,
-    },
-    "issuing_ca": {"kind": "lxc"},
-    "dns_auth": {"kind": "lxc"},
-    "dns_dist": {"kind": "lxc"},
-    "nexus": {
-        "kind": "lxc",
-        "cores": 2,
-        "memory_mb": 8192,
-        "data_disk_size": "20G",
-        "data_disk_path": "/mnt/nexus-data",
-    },
-    "log_server": {"kind": "lxc", "memory_mb": 1024, "disk_size_gb": 100},
-    "splunk": {
-        "kind": "vm",
-        "cores": 4,
-        "cpu_type": "x86-64-v3",
-        "memory_mb": 12288,
-        "disk_size_gb": 150,
-        "start_on_boot": False,
-    },
-}
-
-# Fallback hostnames when config omits `hostname:` (match the pre-map layout).
-_DEFAULT_NAMES = {
-    "root_ca": "root-ca",
-    "issuing_ca": "issuing-ca",
-    "dns_auth": "dns-auth",
-    "dns_dist": "dns-dist",
-    "nexus": "nexus-server",
-    "log_server": "log-server",
-    "splunk": "splunk",
-}
-
-_DEFAULT_IDS = {
-    "root_ca": 201,
-    "issuing_ca": 202,
-    "dns_auth": 103,
-    "dns_dist": 104,
-    "nexus": 205,
-    "log_server": 206,
-    "splunk": 207,
-}
+# Canonical field order inside a services-map entry (byte-stable output).
+_OPTION_ORDER = [
+    "started", "start_on_boot", "agent_enabled", "cpu_type",
+    "os_type", "unprivileged", "nesting", "data_disk_size", "data_disk_path",
+]
 
 
 def _hcl_val(v):
@@ -75,50 +36,62 @@ def _hcl_val(v):
     return f'"{v}"'
 
 
-def _service_entry(svc_key: str, svc: dict, networks: dict, default_network, label: str) -> list[str]:
+def _service_entry(tf_key: str, inst: dict, blk: dict, networks: dict,
+                   default_network, label: str, env_resources: dict) -> list[str]:
     """Render one services-map entry as indented HCL lines."""
-    spec = _SERVICE_SPECS[svc_key]
-    addr = svc.get("ip", "")
+    kind = inst["kind"]
+    addr = blk.get("ip", "")
     validate_cidr(addr, f"services.{label}.ip")
-    net = resolve_network(svc, networks, default_network, label)
+    net = resolve_network(blk, networks, default_network, label)
 
-    id_field = "vm_id" if spec["kind"] == "vm" else "ct_id"
+    id_field = "vm_id" if kind == "vm" else "ct_id"
+    if id_field not in blk:
+        sys.exit(f"Config error: 'services.{label}' is missing required '{id_field}:'.")
+    if not blk.get("hostname"):
+        sys.exit(f"Config error: 'services.{label}' has no hostname (config or manifest default).")
+
+    resources = dict(inst.get("resources") or {})
+    resources.update(env_resources or {})  # per-env override (decision 7)
+
     pairs = [
-        ("kind", spec["kind"]),
-        ("node", svc["node"]),
-        ("id", svc.get(id_field, _DEFAULT_IDS[svc_key])),
-        ("name", svc.get("hostname", _DEFAULT_NAMES[svc_key])),
+        ("kind", kind),
+        ("node", blk["node"]),
+        ("id", blk[id_field]),
+        ("name", blk["hostname"]),
         ("bridge", net["bridge"]),
         ("ipv4_address", addr),
         ("ipv4_gateway", net["gateway"]),
     ]
-    for field in (
-        "cores", "memory_mb", "disk_size_gb", "started", "start_on_boot",
-        "clone_template_id", "agent_enabled", "cpu_type",
-        "os_type", "swap_mb", "unprivileged", "nesting",
-        "data_disk_size", "data_disk_path",
-    ):
-        if field in spec:
-            pairs.append((field, spec[field]))
-    if spec["kind"] == "vm":
-        pairs.append(("clone_template_id", svc["cloud_init_template_id"]))
+    for src, dst in (("cores", "cores"), ("memory_mb", "memory_mb"),
+                     ("disk_gb", "disk_size_gb"), ("swap_mb", "swap_mb")):
+        if src in resources:
+            pairs.append((dst, resources[src]))
+    options = inst.get("options") or {}
+    for field in _OPTION_ORDER:
+        if field in options:
+            pairs.append((field, options[field]))
+    if kind == "vm":
+        if "cloud_init_template_id" not in blk:
+            sys.exit(
+                f"Config error: 'services.{label}.cloud_init_template_id' is required "
+                f"for VM instances (the template VMID to clone)."
+            )
+        pairs.append(("clone_template_id", blk["cloud_init_template_id"]))
 
     width = max(len(k) for k, _ in pairs)
-    lines = [f"  {svc_key} = {{"]
+    lines = [f"  {tf_key} = {{"]
     lines += [f"    {k.ljust(width)} = {_hcl_val(v)}" for k, v in pairs]
     lines.append("  }")
     return lines
 
 
-def gen_tfvars(cfg: dict, env: str) -> str:
+def gen_tfvars(cfg: dict, env: str, components: dict | None = None) -> str:
     infra = cfg.get("infrastructure", {})
     networks = infra["networks"]
     default_network = infra.get("default_network")
     s = infra.get("storage", {})
     t = cfg.get("terraform", {})
     ssh = cfg.get("ssh", {})
-    svcs = cfg.get("services", {})
-    pki = svcs.get("pki", {})
 
     pool_id = t.get("pool_id", "")
     ssh_key = ssh.get("public_key", "")
@@ -150,50 +123,35 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'dns_servers = {dns_servers_hcl}',
     ]
 
-    # ------------------------------------------------------------------
-    # services map — one entry per ENABLED service. A disabled service is
-    # simply absent (the for_each fans out over what exists).
-    # ------------------------------------------------------------------
-    if pki and pki.get("issuing_ca", {}).get("lxc_template_file_id"):
-        print("ERROR: lxc_template_file_id found in services.pki.issuing_ca. "
-              "Move it to infrastructure.storage.lxc_template_file_id instead.", file=sys.stderr)
-        sys.exit(1)
+    components = components or discover_components()
+    enabled = enabled_components(components, cfg)
 
-    entries: list[tuple[str, dict, str]] = []  # (map key, service dict, config label)
-    if pki.get("enabled", False):
-        root_ca = dict(pki.get("root_ca", {}))
-        root_ca.setdefault("cloud_init_template_id", 9000)
-        entries.append(("root_ca", root_ca, "pki.root_ca"))
-        entries.append(("issuing_ca", pki.get("issuing_ca", {}), "pki.issuing_ca"))
-    dns = svcs.get("dns", {})
-    if dns.get("enabled", False):
-        entries.append(("dns_auth", dns.get("auth", {}), "dns.auth"))
-        entries.append(("dns_dist", dns.get("dist", {}), "dns.dist"))
-    nexus = svcs.get("nexus", {})
-    if nexus.get("enabled", False):
-        entries.append(("nexus", nexus, "nexus"))
-    log_server = svcs.get("log_server", {})
-    if log_server.get("enabled", False):
-        entries.append(("log_server", log_server, "log_server"))
-    splunk = svcs.get("splunk", {})
-    if splunk.get("enabled", False):
-        if "cloud_init_template_id" not in splunk:
-            sys.exit(
-                "Config error: 'services.splunk.cloud_init_template_id' is required. "
-                "Set it to the VMID of the Ubuntu 24.04 cloud-init template on your Proxmox host."
+    entry_blocks: list[str] = []
+    for comp in sorted(enabled.values(), key=component_order):
+        manifest = comp["manifest"]
+        name = manifest["name"]
+        instances = manifest["instances"]
+        single = len(instances) == 1
+        for iname, inst in instances.items():
+            if inst["kind"] == "none":
+                continue  # out-of-TF-graph (bootstrap-provisioned)
+            blk = instance_config(cfg, comp, iname)
+            tf_key = instance_tf_key(name, iname, inst, single)
+            label = name if single else f"{name}.{iname}"
+            env_resources = blk.get("resources") or {}
+            entry_blocks += _service_entry(
+                tf_key, inst, blk, networks, default_network, label, env_resources
             )
-        entries.append(("splunk", splunk, "splunk"))
 
     lines += [
         f"",
-        f"# Terraform-managed guests — one entry per enabled service (kind: vm | lxc).",
-        f"# Sizing/lifecycle defaults live in the services variable's typed object;",
-        f"# per-service overrides come from the generator's spec table.",
+        f"# Terraform-managed guests — one entry per enabled component instance",
+        f"# (kind: vm | lxc). Sizing comes from each component's manifest, with",
+        f"# per-env overrides via services.<name>.resources in config.",
     ]
-    if entries:
+    if entry_blocks:
         lines.append("services = {")
-        for svc_key, svc, label in entries:
-            lines += _service_entry(svc_key, svc, networks, default_network, label)
+        lines += entry_blocks
         lines.append("}")
     else:
         lines.append("services = {}")

@@ -1,22 +1,159 @@
 """genconfig.emit.inventory — render ansible/inventory/hosts.yml.
 
-Holds the cross-service derivations that the per-output-artifact boundary keeps
-in ONE pass (see scripts/CLAUDE.md "Cross-service couplings"):
+Groups and hosts are derived generically from the discovered component
+manifests (instances.<i>.group) plus the ad-hoc `hosts:` section. Only ENABLED
+components appear in the inventory — a disabled component contributes no group,
+no /etc/hosts entry, and no DNS record.
+
+INTERIM cross-component couplings (dissolved into capability consumes/provides
+in phase 4 of the component refactor) are quarantined in _coupling_vars below:
   - log_server reads services.minio (otelcol_minio_endpoint) and services.splunk
     (otelcol_splunk_hec_*).
-  - dns.dist reads its network CIDR + client_cidrs (pdns_dnsdist_acl_cidrs) and
-    services.log_server.ip (dns_collector syslog wiring).
+  - dns dist reads its network CIDR + client_cidrs (pdns_dnsdist_acl_cidrs), the
+    auth instance IP, and services.log_server.ip (dns_collector syslog wiring).
+  - minio/nexus/splunk read domain_name for their CA URL.
   - _derive_dns_records feeds both common_internal_hosts (/etc/hosts) and the
     dns_auth A-records.
 """
 
 import sys
 
+from ..discovery import (
+    component_order,
+    discover_components,
+    enabled_components,
+    instance_config,
+    instance_group,
+)
 from ..helpers import _derive_dns_records, _strip_prefix, resolve_network, validate_domain_name
 from ..validation import validate_nexus_apt_proxy_repos, validate_nexus_raw_hosted_repos
 
 
-def gen_inventory(cfg: dict, env: str) -> str:
+def _coupling_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
+                   networks: dict, default_network) -> list[str]:
+    """INTERIM: per-group vars that reach across components (phase 4 replaces
+    these with capability resolution). Returns YAML lines (6-space indent for
+    keys under `vars:`), or [] when the group needs none."""
+    domain_name = cfg.get("domain_name", "")
+    lines: list[str] = []
+
+    if group == "minio":
+        minio_tls = blk.get("tls", False)
+        minio_fqdn = blk.get("fqdn", "")
+        # minio_ca_url: domain-based CA URL — DNS must be deployed before the TLS
+        # phase, so ca.<domain> is resolvable by then. IP-based URLs cannot work
+        # because the CA cert has only DNS SANs.
+        lines.append(f"        minio_tls_enabled: {str(bool(minio_tls)).lower()}")
+        if minio_fqdn:
+            lines.append(f"        minio_domain: {minio_fqdn}")
+        if domain_name:
+            lines.append(f"        minio_ca_url: https://ca.{domain_name}")
+        # Cert SAN coupling: the FQDN is the primary SAN; the bare IP is a
+        # secondary SAN so IP-addressed access still validates.
+        lines.append(f"        minio_endpoint_ip: {_strip_prefix(blk['ip'])}")
+
+    elif group == "nexus":
+        nexus_fqdn = blk.get("fqdn", "")
+        nexus_tls = blk.get("tls", False)
+        apt_proxy_repos = blk.get("apt_proxy_repos", [])
+        validate_nexus_apt_proxy_repos(apt_proxy_repos, "services.nexus.apt_proxy_repos")
+        lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
+        if nexus_fqdn:
+            lines.append(f"        nexus_domain: {nexus_fqdn}")
+        if domain_name:
+            lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
+        if apt_proxy_repos:
+            lines.append(f"        nexus_apt_proxy_repos:")
+            for repo in apt_proxy_repos:
+                entry = f'{{name: "{repo["name"]}", remote_url: "{repo["remote_url"]}", distribution: "{repo["distribution"]}"'
+                if repo.get("flat") is True:
+                    entry += ", flat: true"
+                entry += "}"
+                lines.append(f"          - {entry}")
+        else:
+            lines.append(f"        nexus_apt_proxy_repos: []")
+        raw_hosted_repos = blk.get("raw_hosted_repos", [])
+        if raw_hosted_repos:
+            validate_nexus_raw_hosted_repos(raw_hosted_repos, "services.nexus.raw_hosted_repos")
+            lines.append(f"        nexus_raw_hosted_repos:")
+            for repo in raw_hosted_repos:
+                lines.append(f'          - {{name: "{repo["name"]}"}}')
+        else:
+            lines.append(f"        nexus_raw_hosted_repos: []")
+
+    elif group == "log_server":
+        minio_svc = enabled_svcs.get("minio", {})
+        minio_tls = minio_svc.get("tls", False)
+        minio_fqdn = minio_svc.get("fqdn", "")
+        minio_ip = _strip_prefix(minio_svc.get("ip", ""))
+        minio_port = minio_svc.get("port", 9000)
+        if minio_tls and minio_fqdn:
+            otelcol_endpoint = f"https://{minio_fqdn}:{minio_port}"
+        elif minio_ip:
+            otelcol_endpoint = f"http://{minio_ip}:{minio_port}"
+        else:
+            otelcol_endpoint = ""
+        if not otelcol_endpoint:
+            print(
+                "ERROR: services.log_server is enabled but otelcol_minio_endpoint "
+                "cannot be derived — enable services.minio with an ip (or fqdn when "
+                "tls: true) in config/<env>.yml and re-run make configure.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        splunk_svc = enabled_svcs.get("splunk", {})
+        splunk_ip = _strip_prefix(splunk_svc.get("ip", ""))
+        splunk_hec_port = splunk_svc.get("hec_port", 8088)
+        # Splunk HEC sink only when Splunk is ENABLED with an IP (deprecation-
+        # planned; default sink is MinIO awss3).
+        splunk_hec_on = bool(splunk_ip)
+        lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
+        lines.append(f"        otelcol_splunk_hec_enabled: {str(splunk_hec_on).lower()}")
+        if splunk_hec_on:
+            lines.append(f"        otelcol_splunk_hec_url: \"http://{splunk_ip}:{splunk_hec_port}\"")
+
+    elif group == "splunk":
+        splunk_tls = blk.get("tls", False)
+        splunk_fqdn = blk.get("fqdn", "")
+        lines.append(f"        splunk_tls_enabled: {str(bool(splunk_tls)).lower()}")
+        if splunk_fqdn:
+            lines.append(f"        splunk_domain: {splunk_fqdn}")
+        if domain_name:
+            lines.append(f"        splunk_ca_url: https://ca.{domain_name}")
+
+    elif group == "dns_dist":
+        auth_blk = (enabled_svcs.get("dns", {}) or {}).get("auth", {})
+        recursor_ip = _strip_prefix(auth_blk.get("ip", ""))
+        dist_net = resolve_network(blk, networks, default_network, "dns.dist")
+        network_cidr = dist_net["cidr"]
+        client_cidrs = blk.get("client_cidrs", [])
+        seen_cidrs: list[str] = []
+        for cidr in [network_cidr] + list(client_cidrs):
+            if cidr not in seen_cidrs:
+                seen_cidrs.append(cidr)
+        lines.append(f"        pdns_recursor_address: {recursor_ip}")
+        lines.append(f"        pdns_dnsdist_acl_cidrs:")
+        for cidr in seen_cidrs:
+            lines.append(f'          - "{cidr}"')
+        log_server_ip = _strip_prefix(enabled_svcs.get("log_server", {}).get("ip", ""))
+        # When log_server is enabled, wire dns_dist → log_server syslog pipeline.
+        if log_server_ip:
+            lines.append(f'        dns_collector_syslog_endpoint: "{log_server_ip}"')
+            lines.append(f"        pdns_dnsdist_dnstap_enabled: true")
+
+    elif group == "dns_auth":
+        _dns_records = _derive_dns_records(enabled_svcs)
+        if _dns_records:
+            lines.append(f"        dns_records:")
+            for r in _dns_records:
+                lines.append(f'          - {{name: "{r["name"]}", ip: "{r["ip"]}", ttl: {r["ttl"]}}}')
+        else:
+            lines.append(f"        dns_records: []")
+
+    return lines
+
+
+def gen_inventory(cfg: dict, env: str, components: dict | None = None) -> str:
     hosts_cfg = cfg.get("hosts", {}) or {}
     ssh = cfg.get("ssh", {})
     svcs = cfg.get("services", {}) or {}
@@ -27,16 +164,18 @@ def gen_inventory(cfg: dict, env: str) -> str:
     networks = infra.get("networks", {})
     default_network = infra.get("default_network")
 
+    components = components or discover_components()
+    enabled = enabled_components(components, cfg)
+    enabled_svcs = {name: svcs[name] for name in enabled}
+
     # nexus_apt_proxy — base Nexus URL emitted into all.vars so roles can construct
-    # per-repo URLs (e.g. {{ nexus_apt_proxy }}/repository/apt-proxy-trixie/).
-    # Phase 2 (tls: false): http://<ip>:8081  — plain HTTP, before PKI is deployed.
-    # Phase 5+ (tls: true): https://<fqdn>:8443 — nginx TLS, requires fqdn to be set.
-    # Empty string when Nexus is not enabled — roles skip proxy config when falsy.
-    nexus_svc = svcs.get("nexus", {})
-    nexus_enabled = bool(nexus_svc.get("enabled", False))
-    nexus_ip = _strip_prefix(nexus_svc.get("ip", "")) if nexus_enabled else ""
-    nexus_tls = bool(nexus_svc.get("tls", False)) if nexus_enabled else False
-    nexus_fqdn_raw = nexus_svc.get("fqdn", "") if nexus_enabled else ""
+    # per-repo URLs. Phase 2 (tls: false): http://<ip>:8081. Phase 5+ (tls: true):
+    # https://<fqdn>:8443. Empty when Nexus is not enabled — roles skip proxy
+    # config when falsy.
+    nexus_svc = enabled_svcs.get("nexus", {})
+    nexus_ip = _strip_prefix(nexus_svc.get("ip", ""))
+    nexus_tls = bool(nexus_svc.get("tls", False))
+    nexus_fqdn_raw = nexus_svc.get("fqdn", "")
     if nexus_tls and nexus_fqdn_raw:
         nexus_apt_proxy = f"https://{nexus_fqdn_raw}:8443"
     elif nexus_ip:
@@ -57,192 +196,54 @@ def gen_inventory(cfg: dict, env: str) -> str:
     lines.append(f"    nexus_apt_proxy: \"{nexus_apt_proxy}\"")
     # nexus_fallback — phase-keyed run parameter, NOT per-env config. Shared
     # default 'fail' is fail-safe: when Nexus is unreachable a deploy aborts with
-    # a clear message rather than silently chasing upstream (correct in a
-    # firewalled steady state, where upstream is unreachable anyway). Bootstrap
-    # tooling (scripts/loop/run.sh cold rebuild, the prod scaffolding runbook)
-    # overrides to 'upstream' with `-e nexus_fallback=upstream`, since Nexus does
-    # not exist yet at the PKI phase. See docs/design/apt-fallback-policy.md.
+    # a clear message rather than silently chasing upstream. Bootstrap tooling
+    # overrides with `-e nexus_fallback=upstream` (Nexus does not exist yet at
+    # the PKI phase). See docs/design/apt-fallback-policy.md.
     lines.append(f"    nexus_fallback: \"fail\"")
-    log_server_svc = svcs.get("log_server", {})
-    log_server_ip_for_all = _strip_prefix(log_server_svc.get("ip", "")) if log_server_svc.get("enabled", False) else ""
+    log_server_ip_for_all = _strip_prefix(enabled_svcs.get("log_server", {}).get("ip", ""))
     if log_server_ip_for_all:
         lines.append(f'    common_log_server_address: "{log_server_ip_for_all}"')
     # Internal service FQDN → IP map for /etc/hosts (the common role writes these).
-    # Decouples cold-start TLS from the internal DNS server: services can reach
-    # ca.<domain>, nexus.<domain>, etc. before DNSdist is deployed. Reuses the
-    # DNS A-record derivation, so it honours dns_name overrides and dns: false.
+    # Decouples cold-start TLS from the internal DNS server. Only ENABLED
+    # components resolve; honours dns_name/dns_aliases overrides and dns: false.
     if domain_name:
-        internal_hosts = _derive_dns_records(svcs)
+        internal_hosts = _derive_dns_records(enabled_svcs)
         if internal_hosts:
             lines.append(f"    common_internal_hosts:")
             for rec in internal_hosts:
                 lines.append(f'      - {{ip: "{rec["ip"]}", fqdn: "{rec["name"]}.{domain_name}"}}')
     lines.append(f"  children:")
 
-    has_content = bool(svcs) or any(v for v in hosts_cfg.values())
+    has_content = bool(enabled) or any(v for v in hosts_cfg.values())
 
     if not has_content:
         lines.append(f"    {env}:")
         lines.append(f"      hosts: {{}}")
     else:
-        # Auto-derive inventory groups from services:
-        # - Flat service (has top-level 'ip'): one group, one host
-        # - Nested service (sub-dicts each with 'ip'): one group per sub-host
-        for svc_name, svc in svcs.items():
-            if not isinstance(svc, dict):
-                continue
-            if "ip" in svc:
-                # Flat service (e.g. minio)
-                hostname = svc.get("hostname", f"{svc_name}-server")
-                host_ip  = _strip_prefix(svc["ip"])
-                lines.append(f"    {svc_name}:")
-                # minio: propagate TLS config as group vars so role defaults stay deployment-agnostic
-                if svc_name == "minio":
-                    minio_tls = svc.get("tls", False)
-                    minio_fqdn = svc.get("fqdn", "")
-                    # minio_ca_url: use domain-based CA URL — DNS is required to be deployed
-                    # before the TLS phase, so ca.<domain> is resolvable by this point.
-                    # IP-based URL cannot work because the CA cert has only DNS SANs.
+        for comp in sorted(enabled.values(), key=component_order):
+            manifest = comp["manifest"]
+            name = manifest["name"]
+            instances = manifest["instances"]
+            single = len(instances) == 1
+            for iname, inst in instances.items():
+                blk = instance_config(cfg, comp, iname)
+                if "ip" not in blk:
+                    continue  # nothing to inventory without an address
+                group = instance_group(name, iname, inst, single)
+                hostname = blk.get("hostname") or (name if single else iname)
+                host_ip = _strip_prefix(blk["ip"])
+                lines.append(f"    {group}:")
+                # NOTE: each group emits at most one `vars:` block — extend
+                # _coupling_vars rather than adding a second `vars:` key.
+                coupling = _coupling_vars(group, blk, cfg, enabled_svcs, networks, default_network)
+                if coupling:
                     lines.append(f"      vars:")
-                    lines.append(f"        minio_tls_enabled: {str(bool(minio_tls)).lower()}")
-                    if minio_fqdn:
-                        lines.append(f"        minio_domain: {minio_fqdn}")
-                    if domain_name:
-                        lines.append(f"        minio_ca_url: https://ca.{domain_name}")
-                    # Cert SAN coupling: the MinIO server cert must validate for
-                    # whatever host MINIO_ENDPOINT uses. .envrc points the endpoint
-                    # at the FQDN (https://{fqdn}:{port}) when tls:true, so the FQDN
-                    # is the primary SAN (minio_domain); the bare IP is added as a
-                    # secondary SAN so IP-addressed access (and the loop's own
-                    # state-backend reachability checks) still validate.
-                    lines.append(f"        minio_endpoint_ip: {host_ip}")
-                # nexus: propagate domain, CA URL, and APT proxy repo list
-                elif svc_name == "nexus":
-                    nexus_fqdn = svc.get("fqdn", "")
-                    nexus_tls = svc.get("tls", False)
-                    apt_proxy_repos = svc.get("apt_proxy_repos", [])
-                    if nexus_enabled:
-                        validate_nexus_apt_proxy_repos(apt_proxy_repos, "services.nexus.apt_proxy_repos")
-                    lines.append(f"      vars:")
-                    lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
-                    if nexus_fqdn:
-                        lines.append(f"        nexus_domain: {nexus_fqdn}")
-                    if domain_name:
-                        lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
-                    if apt_proxy_repos:
-                        lines.append(f"        nexus_apt_proxy_repos:")
-                        for repo in apt_proxy_repos:
-                            entry = f'{{name: "{repo["name"]}", remote_url: "{repo["remote_url"]}", distribution: "{repo["distribution"]}"'
-                            if repo.get("flat") is True:
-                                entry += ", flat: true"
-                            entry += "}"
-                            lines.append(f"          - {entry}")
-                    else:
-                        lines.append(f"        nexus_apt_proxy_repos: []")
-                    raw_hosted_repos = svc.get("raw_hosted_repos", [])
-                    if nexus_enabled and raw_hosted_repos:
-                        validate_nexus_raw_hosted_repos(raw_hosted_repos, "services.nexus.raw_hosted_repos")
-                    if raw_hosted_repos:
-                        lines.append(f"        nexus_raw_hosted_repos:")
-                        for repo in raw_hosted_repos:
-                            lines.append(f'          - {{name: "{repo["name"]}"}}'  )
-                    else:
-                        lines.append(f"        nexus_raw_hosted_repos: []")
-                elif svc_name == "log_server":
-                    minio_svc = svcs.get("minio", {})
-                    minio_tls = minio_svc.get("tls", False)
-                    minio_fqdn = minio_svc.get("fqdn", "")
-                    minio_ip = _strip_prefix(minio_svc.get("ip", ""))
-                    minio_port = minio_svc.get("port", 9000)
-                    if minio_tls and minio_fqdn:
-                        otelcol_endpoint = f"https://{minio_fqdn}:{minio_port}"
-                    elif minio_ip:
-                        otelcol_endpoint = f"http://{minio_ip}:{minio_port}"
-                    else:
-                        otelcol_endpoint = ""
-                    splunk_svc = svcs.get("splunk", {})
-                    splunk_ip = _strip_prefix(splunk_svc.get("ip", ""))
-                    splunk_hec_port = splunk_svc.get("hec_port", 8088)
-                    # Splunk HEC sink only when Splunk is ENABLED with an IP.
-                    # Splunk is deprecation-planned; default sink is MinIO (awss3).
-                    splunk_hec_on = bool(splunk_svc.get("enabled", False)) and bool(splunk_ip)
-                    if otelcol_endpoint:
-                        lines.append(f"      vars:")
-                        lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
-                        lines.append(f"        otelcol_splunk_hec_enabled: {str(splunk_hec_on).lower()}")
-                        if splunk_hec_on:
-                            lines.append(f"        otelcol_splunk_hec_url: \"http://{splunk_ip}:{splunk_hec_port}\"")
-                    else:
-                        print(
-                            "ERROR: services.log_server is present but otelcol_minio_endpoint "
-                            "cannot be derived — set services.minio.ip (or services.minio.fqdn "
-                            "when tls: true) in config/<env>.yml and re-run make configure.",
-                            file=sys.stderr,
-                        )
-                        sys.exit(1)
-                elif svc_name == "splunk":
-                    splunk_cfg = svc
-                    splunk_tls = splunk_cfg.get("tls", False)
-                    splunk_fqdn = splunk_cfg.get("fqdn", "")
-                    ca_url = f"https://ca.{domain_name}" if domain_name else ""
-                    lines.append(f"      vars:")
-                    lines.append(f"        splunk_tls_enabled: {str(bool(splunk_tls)).lower()}")
-                    if splunk_fqdn:
-                        lines.append(f"        splunk_domain: {splunk_fqdn}")
-                    if ca_url:
-                        lines.append(f"        splunk_ca_url: {ca_url}")
+                    lines += coupling
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")
-                if "ansible_user" in svc:
-                    lines.append(f"          ansible_user: {svc['ansible_user']}")
-            else:
-                # Nested service (e.g. pki with root_ca / issuing_ca sub-hosts)
-                for subkey, sub in svc.items():
-                    if not isinstance(sub, dict) or "ip" not in sub:
-                        continue
-                    group    = f"{svc_name}_{subkey}"
-                    hostname = sub.get("hostname", subkey)
-                    host_ip  = _strip_prefix(sub["ip"])
-                    lines.append(f"    {group}:")
-                    # NOTE: each group may emit at most one `vars:` block.
-                    # If a group needs additional vars in the future, extend the
-                    # existing block here rather than adding a second `vars:` key
-                    # (duplicate YAML mapping keys produce invalid inventory).
-                    if group == "dns_dist":
-                        auth_sub = svc.get("auth", {})
-                        recursor_ip = _strip_prefix(auth_sub.get("ip", ""))
-                        dist_net = resolve_network(sub, networks, default_network, "dns.dist")
-                        network_cidr = dist_net["cidr"]
-                        client_cidrs = sub.get("client_cidrs", [])
-                        seen_cidrs: list[str] = []
-                        for cidr in [network_cidr] + list(client_cidrs):
-                            if cidr not in seen_cidrs:
-                                seen_cidrs.append(cidr)
-                        lines.append(f"      vars:")
-                        lines.append(f"        pdns_recursor_address: {recursor_ip}")
-                        lines.append(f"        pdns_dnsdist_acl_cidrs:")
-                        for cidr in seen_cidrs:
-                            lines.append(f'          - "{cidr}"')
-                        log_server_ip = _strip_prefix(svcs.get("log_server", {}).get("ip", ""))
-                        # When log_server is present, automatically wire dns_dist → log_server syslog pipeline.
-                        if log_server_ip:
-                            lines.append(f'        dns_collector_syslog_endpoint: "{log_server_ip}"')
-                            lines.append(f"        pdns_dnsdist_dnstap_enabled: true")
-                    if group == "dns_auth":
-                        _dns_records = _derive_dns_records(cfg.get("services", {}))
-                        lines.append(f"      vars:")
-                        if _dns_records:
-                            lines.append(f"        dns_records:")
-                            for r in _dns_records:
-                                lines.append(f'          - {{name: "{r["name"]}", ip: "{r["ip"]}", ttl: {r["ttl"]}}}')
-                        else:
-                            lines.append(f"        dns_records: []")
-                    lines.append(f"      hosts:")
-                    lines.append(f"        {hostname}:")
-                    lines.append(f"          ansible_host: {host_ip}")
-                    if "ansible_user" in sub:
-                        lines.append(f"          ansible_user: {sub['ansible_user']}")
+                if "ansible_user" in blk:
+                    lines.append(f"          ansible_user: {blk['ansible_user']}")
 
         # Manual/ad-hoc hosts
         for group, members in hosts_cfg.items():

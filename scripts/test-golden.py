@@ -5,7 +5,7 @@ test-golden.py — Golden-output regression test for generate-configs.py
 Renders every pure emitter against ONE complete, synthetic fixture config dict
 (no secrets, no committed config/*.yml) and byte-compares the result to a
 committed golden file under scripts/golden/. This is the regression net for the
-generator: any change to emitted tfvars / inventory / allowed-cidrs / env.mk /
+generator: any change to emitted tfvars / inventory / env.mk /
 PKI group_vars output is caught immediately, which makes refactors (e.g. the
 genconfig modularization) safe to verify by "golden output is unchanged".
 
@@ -60,9 +60,10 @@ FIXTURE = {
         # tls: True exercises the production-representative HTTPS state-backend path
         # (https MINIO_ENDPOINT + AWS_CA_BUNDLE + cert-SAN wiring). The generator's
         # http-scheme branch is still covered by the live sandbox config (tls:false).
-        "minio": {"node": "n1", "ip": "10.20.30.10", "port": 9000, "ansible_user": "root",
+        "minio": {"enabled": True, "node": "n1", "ip": "10.20.30.10", "port": 9000, "ansible_user": "root",
                   "hostname": "minio-server", "fqdn": "minio.lab.example.com", "tls": True, "network": "lab"},
         "pki": {
+            "enabled": True,
             "root_ca": {"node": "n1", "ip": "10.20.30.11/24", "vm_id": 311, "ansible_user": "debian",
                         "hostname": "root-ca", "cloud_init_template_id": 9000,
                         "cloud_init_template_node": "n1", "dns": False, "network": "lab"},
@@ -70,13 +71,24 @@ FIXTURE = {
                            "hostname": "issuing-ca", "dns_name": "ca", "network": "lab"},
         },
         "dns": {
+            "enabled": True,
             "auth": {"node": "n1", "ip": "10.20.30.13/24", "ct_id": 313, "ansible_user": "root",
                      "hostname": "dns-auth", "network": "lab"},
             "dist": {"node": "n1", "ip": "10.20.30.14/24", "ct_id": 314, "ansible_user": "root",
                      "hostname": "dns-dist", "network": "lab", "client_cidrs": ["10.20.10.0/24"]},
         },
-        "nexus": {"node": "n1", "ip": "10.20.30.15/24", "ct_id": 315, "ansible_user": "root",
-                  "hostname": "nexus-server", "fqdn": "nexus.lab.example.com", "network": "lab"},
+        "nexus": {"enabled": True, "node": "n1", "ip": "10.20.30.15/24", "ct_id": 315, "ansible_user": "root",
+                  "hostname": "nexus-server", "fqdn": "nexus.lab.example.com", "network": "lab",
+                  "apt_proxy_repos": [
+                      {"name": "apt-proxy-trixie", "remote_url": "http://deb.example.org/debian", "distribution": "trixie"},
+                      {"name": "apt-proxy-trixie-security", "remote_url": "http://sec.example.org/debian-security", "distribution": "trixie-security"},
+                      {"name": "apt-proxy-trixie-updates", "remote_url": "http://deb.example.org/debian", "distribution": "trixie-updates"},
+                      {"name": "apt-proxy-smallstep", "remote_url": "https://pkg.example.org/stable/debian", "distribution": "debs", "flat": True},
+                      {"name": "apt-proxy-powerdns-auth-50", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-auth-50"},
+                      {"name": "apt-proxy-powerdns-rec-54", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-rec-54"},
+                      {"name": "apt-proxy-dnsdist-21", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-dnsdist-21"},
+                  ],
+                  "raw_hosted_repos": [{"name": "artifacts"}]},
         "log_server": {"enabled": True, "node": "n1", "ip": "10.20.30.16/24", "ct_id": 316,
                        "ansible_user": "root", "hostname": "log-server", "network": "lab"},
         "splunk": {"enabled": False, "node": "n1", "ip": "10.20.30.17/24", "vm_id": 317,
@@ -93,7 +105,6 @@ def _emitters():
     out = {
         "tfvars": gen.gen_tfvars(FIXTURE, ENV),
         "inventory": gen.gen_inventory(FIXTURE, ENV),
-        "allowed_cidrs": gen.gen_allowed_cidrs(FIXTURE, ENV),
         "env_mk": gen.gen_env_mk(FIXTURE, ENV),
         "envrc": gen.gen_envrc(FIXTURE, ENV),
     }

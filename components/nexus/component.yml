@@ -1,0 +1,29 @@
+name: nexus
+description: Nexus Repository CE — APT caching proxy + raw artifact hosting
+order: 30
+
+instances:
+  nexus:
+    kind: lxc
+    resources: {cores: 2, memory_mb: 8192, disk_gb: 8}
+    options:
+      data_disk_size: "20G" # Nexus data dir, karaf.data, tmpdir
+      data_disk_path: /mnt/nexus-data
+    config:
+      required: [node, ip, ct_id]
+      optional: [ansible_user, hostname, fqdn, tls, network,
+                 apt_proxy_repos, raw_hosted_repos,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: nexus-server
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "Nexus credentials — used by the nexus component playbook"
+  vars:
+    - {name: NEXUS_ADMIN_PASSWORD, comment: "Nexus admin account password"}
+    - {name: NEXUS_READER_PASSWORD, comment: "nexus-reader account (read-only APT/artifact access)"}
+
+placeholder: CHANGE_ME

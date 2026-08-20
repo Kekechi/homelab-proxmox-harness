@@ -1,0 +1,29 @@
+name: splunk
+description: Splunk Enterprise dev instance (deprecation-planned — syslog/object-store path preferred)
+order: 60
+
+instances:
+  splunk:
+    kind: vm
+    resources: {cores: 4, memory_mb: 12288, disk_gb: 150}
+    options:
+      cpu_type: x86-64-v3
+      start_on_boot: false # operator starts it when actively developing
+    config:
+      required: [node, ip, vm_id, cloud_init_template_id]
+      optional: [ansible_user, hostname, fqdn, tls, network, hec_port,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: splunk-server
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "Splunk credentials — used by the splunk component playbook"
+  vars:
+    - {name: SPLUNK_ADMIN_PASSWORD, comment: "admin account password"}
+    - {name: SPLUNK_HEC_TOKEN, comment: "HEC token UUID (generate with uuidgen); reuse in OTel config"}
+    - {name: SPLUNK_MCP_PASSWORD, comment: "mcp service account password"}
+
+placeholder: CHANGE_ME

@@ -5,17 +5,16 @@ all:
   vars:
     ansible_user: ubuntu
     domain_name: lab.example.com
-    nexus_apt_proxy: ""
+    nexus_apt_proxy: "http://10.20.30.15:8081"
     nexus_fallback: "fail"
     common_log_server_address: "10.20.30.16"
     common_internal_hosts:
-      - {ip: "10.20.30.10", fqdn: "minio.lab.example.com"}
-      - {ip: "10.20.30.12", fqdn: "ca.lab.example.com"}
       - {ip: "10.20.30.13", fqdn: "auth.lab.example.com"}
       - {ip: "10.20.30.14", fqdn: "dist.lab.example.com"}
-      - {ip: "10.20.30.15", fqdn: "nexus.lab.example.com"}
       - {ip: "10.20.30.16", fqdn: "log-server.lab.example.com"}
-      - {ip: "10.20.30.17", fqdn: "splunk.lab.example.com"}
+      - {ip: "10.20.30.10", fqdn: "minio.lab.example.com"}
+      - {ip: "10.20.30.15", fqdn: "nexus.lab.example.com"}
+      - {ip: "10.20.30.12", fqdn: "ca.lab.example.com"}
   children:
     minio:
       vars:
@@ -37,16 +36,34 @@ all:
         issuing-ca:
           ansible_host: 10.20.30.12
           ansible_user: root
+    nexus:
+      vars:
+        nexus_tls_enabled: false
+        nexus_domain: nexus.lab.example.com
+        nexus_ca_url: https://ca.lab.example.com
+        nexus_apt_proxy_repos:
+          - {name: "apt-proxy-trixie", remote_url: "http://deb.example.org/debian", distribution: "trixie"}
+          - {name: "apt-proxy-trixie-security", remote_url: "http://sec.example.org/debian-security", distribution: "trixie-security"}
+          - {name: "apt-proxy-trixie-updates", remote_url: "http://deb.example.org/debian", distribution: "trixie-updates"}
+          - {name: "apt-proxy-smallstep", remote_url: "https://pkg.example.org/stable/debian", distribution: "debs", flat: true}
+          - {name: "apt-proxy-powerdns-auth-50", remote_url: "https://repo.example.org/debian", distribution: "trixie-auth-50"}
+          - {name: "apt-proxy-powerdns-rec-54", remote_url: "https://repo.example.org/debian", distribution: "trixie-rec-54"}
+          - {name: "apt-proxy-dnsdist-21", remote_url: "https://repo.example.org/debian", distribution: "trixie-dnsdist-21"}
+        nexus_raw_hosted_repos:
+          - {name: "artifacts"}
+      hosts:
+        nexus-server:
+          ansible_host: 10.20.30.15
+          ansible_user: root
     dns_auth:
       vars:
         dns_records:
-          - {name: "minio", ip: "10.20.30.10", ttl: 3600}
-          - {name: "ca", ip: "10.20.30.12", ttl: 3600}
           - {name: "auth", ip: "10.20.30.13", ttl: 3600}
           - {name: "dist", ip: "10.20.30.14", ttl: 3600}
-          - {name: "nexus", ip: "10.20.30.15", ttl: 3600}
           - {name: "log-server", ip: "10.20.30.16", ttl: 3600}
-          - {name: "splunk", ip: "10.20.30.17", ttl: 3600}
+          - {name: "minio", ip: "10.20.30.10", ttl: 3600}
+          - {name: "nexus", ip: "10.20.30.15", ttl: 3600}
+          - {name: "ca", ip: "10.20.30.12", ttl: 3600}
       hosts:
         dns-auth:
           ansible_host: 10.20.30.13
@@ -63,17 +80,6 @@ all:
         dns-dist:
           ansible_host: 10.20.30.14
           ansible_user: root
-    nexus:
-      vars:
-        nexus_tls_enabled: false
-        nexus_domain: nexus.lab.example.com
-        nexus_ca_url: https://ca.lab.example.com
-        nexus_apt_proxy_repos: []
-        nexus_raw_hosted_repos: []
-      hosts:
-        nexus-server:
-          ansible_host: 10.20.30.15
-          ansible_user: root
     log_server:
       vars:
         otelcol_minio_endpoint: "https://minio.lab.example.com:9000"
@@ -82,12 +88,3 @@ all:
         log-server:
           ansible_host: 10.20.30.16
           ansible_user: root
-    splunk:
-      vars:
-        splunk_tls_enabled: true
-        splunk_domain: splunk.lab.example.com
-        splunk_ca_url: https://ca.lab.example.com
-      hosts:
-        splunk-server:
-          ansible_host: 10.20.30.17
-          ansible_user: ubuntu

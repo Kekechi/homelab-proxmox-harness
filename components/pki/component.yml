@@ -1,0 +1,45 @@
+name: pki
+description: two-tier internal CA — offline root VM + always-on issuing LXC
+order: 20
+
+instances:
+  root_ca:
+    kind: vm
+    tf_key: root_ca # pre-refactor state address (module.vm["root_ca"]) — do not change
+    group: pki_root_ca
+    resources: {cores: 1, memory_mb: 512, disk_gb: 8}
+    options:
+      started: false # offline root CA: boot only to sign or rotate
+      start_on_boot: false
+      agent_enabled: false
+    config:
+      required: [node, ip, vm_id]
+      optional: [ansible_user, hostname, network, ca_name,
+                 dns_name, dns_ttl, dns_aliases, dns, cloud_init_template_id]
+      defaults:
+        cloud_init_template_id: 9000
+        hostname: root-ca
+  issuing_ca:
+    kind: lxc
+    tf_key: issuing_ca # pre-refactor state address (module.lxc["issuing_ca"])
+    group: pki_issuing_ca
+    resources: {cores: 1, memory_mb: 512, disk_gb: 8}
+    config:
+      required: [node, ip, ct_id]
+      optional: [ansible_user, hostname, network, ca_name,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: issuing-ca
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "step-ca PKI passwords — used by the pki component playbook"
+  vars:
+    - {name: STEP_CA_ROOT_PASSWORD, comment: "password protecting the Root CA private key"}
+    - {name: STEP_CA_ISSUING_PASSWORD, comment: "password protecting the Issuing CA private key"}
+    - {name: STEP_CA_LXC_ROOT_PASSWORD, comment: "root account password for the Issuing CA LXC"}
+    - {name: STEP_CA_PROVISIONER_PASSWORD, comment: "JWK provisioner password (used by minio TLS setup)"}
+
+placeholder: CHANGE_ME

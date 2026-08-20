@@ -1,0 +1,35 @@
+name: dns
+description: internal DNS — PowerDNS Auth+Recursor backend, DNSdist front-end
+order: 40
+
+instances:
+  auth:
+    kind: lxc # tf_key/group default to dns_auth (component_instance rule)
+    resources: {cores: 1, memory_mb: 512, disk_gb: 8}
+    config:
+      required: [node, ip, ct_id]
+      optional: [ansible_user, hostname, network,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: dns-auth
+  dist:
+    kind: lxc
+    resources: {cores: 1, memory_mb: 512, disk_gb: 8}
+    config:
+      required: [node, ip, ct_id]
+      optional: [ansible_user, hostname, network, client_cidrs,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: dns-dist
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "PowerDNS API keys — used by the dns component playbooks"
+  vars:
+    - {name: PDNS_AUTH_API_KEY, comment: "Auth webserver/API key"}
+    - {name: PDNS_RECURSOR_API_KEY, comment: "Recursor webserver/API key"}
+    - {name: PDNS_DNSDIST_API_KEY, comment: "DNSdist webserver/API key"}
+
+placeholder: CHANGE_ME

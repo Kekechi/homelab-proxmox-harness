@@ -67,6 +67,7 @@ BASE_SSH = {
 }
 
 BASE_MINIO = {
+    "enabled":      True,
     "network":      "lab",
     "node":         "pve",
     "ip":           "10.10.40.5",
@@ -396,122 +397,30 @@ class TestTfvarsOutput(unittest.TestCase):
         self.assertIn('bridge = "lab"', self._entry(out, "root_ca"))
         self.assertIn('bridge = "lab"', self._entry(out, "issuing_ca"))
 
-    def test_sparse_no_dns_rejected(self):
-        """Config without services.dns is invalid — schema requires pki+dns+nexus."""
+    def test_sparse_absent_component_is_valid(self):
+        """A component absent from services: is simply disabled — valid config."""
         cfg = make_cfg(services={"minio": BASE_MINIO, "pki": BASE_PKI, "nexus": BASE_NEXUS})
+        silence_stderr(lambda: gen.validate_schema(cfg))  # must not exit
+        out = self._tfvars(cfg)
+        self.assertNotIn("dns_auth = {", out)
+        self.assertNotIn("dns_dist = {", out)
+
+    def test_unknown_service_rejected(self):
+        """services.<name> with no component directory is a hard error."""
+        cfg = make_cfg()
+        cfg["services"]["mystery_box"] = {"enabled": True, "node": "pve", "ip": "10.10.40.99"}
         with self.assertRaises(SystemExit) as cm:
             silence_stderr(lambda: gen.validate_schema(cfg))
-        self.assertIn("services.dns", str(cm.exception.code))
+        self.assertIn("mystery_box", str(cm.exception.code))
 
-    def test_sparse_no_pki_rejected(self):
-        """Config without services.pki is invalid — schema requires pki+dns+nexus."""
-        cfg = make_cfg(services={"minio": BASE_MINIO, "dns": BASE_DNS, "nexus": BASE_NEXUS})
+    def test_enabled_component_missing_required_field(self):
+        """An enabled component missing a manifest-required field is rejected."""
+        import copy
+        cfg = make_cfg()
+        del cfg["services"]["nexus"]["ct_id"]
         with self.assertRaises(SystemExit) as cm:
             silence_stderr(lambda: gen.validate_schema(cfg))
-        self.assertIn("services.pki", str(cm.exception.code))
-
-
-# ---------------------------------------------------------------------------
-# Squid allowlist tests
-# ---------------------------------------------------------------------------
-
-class TestAllowedCidrs(unittest.TestCase):
-
-    def _cidrs(self, cfg):
-        return gen.gen_allowed_cidrs(cfg, "sandbox")
-
-    def test_single_network_one_cidr(self):
-        """Single network → exactly one network CIDR in allowlist."""
-        out = self._cidrs(make_cfg())
-        self.assertIn("10.10.40.0/24", out)
-
-    def test_proxmox_always_present(self):
-        """Proxmox /32 always appears regardless of service network."""
-        out = self._cidrs(make_cfg())
-        self.assertIn("10.0.0.1/32", out)
-
-    def test_two_services_same_network_one_cidr(self):
-        """Two services on the same network → CIDR appears only once."""
-        out = self._cidrs(make_cfg())
-        count = out.count("10.10.40.0/24")
-        self.assertEqual(count, 1, f"Expected 1 occurrence, got {count}")
-
-    def test_multi_network_all_cidrs_emitted(self):
-        """Services on distinct networks → all CIDRs emitted."""
-        import copy
-        cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["lan"] = {
-            "bridge":  "lan",
-            "cidr":    "10.10.10.0/24",
-            "gateway": "10.10.10.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["default_network"] = None
-        cfg["services"]["pki"]["root_ca"]["network"]    = "lab"
-        cfg["services"]["pki"]["issuing_ca"]["network"] = "lab"
-        cfg["services"]["dns"]["auth"]["network"]       = "lab"
-        cfg["services"]["dns"]["dist"]["network"]       = "lan"
-        cfg["services"]["minio"]["network"]             = "lab"
-
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)
-        self.assertIn("10.10.10.0/24", out)
-
-    def test_unused_network_not_emitted(self):
-        """Network defined but no service uses it → CIDR not emitted."""
-        cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["unused"] = {
-            "bridge":  "unused",
-            "cidr":    "172.16.0.0/24",
-            "gateway": "172.16.0.1",
-            "vlan_id": None,
-        }
-        out = self._cidrs(cfg)
-        self.assertNotIn("172.16.0.0/24", out)
-
-    def test_no_minio_slash32(self):
-        """MinIO /32 must NOT appear — covered by its network CIDR."""
-        out = self._cidrs(make_cfg())
-        # MinIO is at 10.10.40.5; /32 of that must not be present
-        self.assertNotIn("10.10.40.5/32", out)
-
-    def test_three_distinct_networks(self):
-        """Three distinct networks with services → all three CIDRs emitted."""
-        import copy
-        cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["mgmt"] = {
-            "bridge":  "mgmt",
-            "cidr":    "10.10.30.0/24",
-            "gateway": "10.10.30.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["networks"]["lan"] = {
-            "bridge":  "lan",
-            "cidr":    "10.10.10.0/24",
-            "gateway": "10.10.10.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["default_network"] = None
-        cfg["services"]["minio"]["network"]             = "lab"
-        cfg["services"]["pki"]["root_ca"]["network"]    = "mgmt"
-        cfg["services"]["pki"]["issuing_ca"]["network"] = "mgmt"
-        cfg["services"]["dns"]["auth"]["network"]       = "mgmt"
-        cfg["services"]["dns"]["dist"]["network"]       = "lan"
-
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)   # lab (minio)
-        self.assertIn("10.10.30.0/24", out)   # mgmt (pki, dns-auth)
-        self.assertIn("10.10.10.0/24", out)   # lan (dns-dist)
-
-    def test_service_without_ip_not_counted(self):
-        """Services without 'ip' field don't contribute a network CIDR."""
-        cfg = make_cfg(services={"minio": BASE_MINIO})
-        # minio is on lab; no pki/dns
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)
-        # Only the lab CIDR and proxmox /32 — no PKI or DNS networks
-        lines = [l for l in out.splitlines() if l and not l.startswith("#")]
-        self.assertEqual(len(lines), 2)  # lab CIDR + proxmox /32
+        self.assertIn("ct_id", str(cm.exception.code))
 
 
 # ---------------------------------------------------------------------------

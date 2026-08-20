@@ -55,6 +55,7 @@ terraform:
 
 services:
   minio:
+    enabled: true                        # the state backend — effectively always on
     node: pve1
     ip: "X.X.X.X"                         # MinIO server IP (bare IP, no prefix)
     port: 9000

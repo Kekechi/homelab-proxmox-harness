@@ -1,0 +1,25 @@
+name: log_server
+description: centralized log aggregation — OTel Collector, syslog in, object store out
+order: 50
+
+instances:
+  log_server:
+    kind: lxc
+    resources: {cores: 1, memory_mb: 1024, disk_gb: 100}
+    config:
+      required: [node, ip, ct_id]
+      optional: [ansible_user, hostname, network,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        hostname: log-server
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "OTel Collector credentials — used by the log_server component playbook"
+  vars:
+    - {name: OTELCOL_MINIO_ACCESS_KEY, comment: "write-scoped key for otelcol-logs bucket"}
+    - {name: OTELCOL_MINIO_SECRET_KEY, comment: "write-scoped secret"}
+
+placeholder: CHANGE_ME

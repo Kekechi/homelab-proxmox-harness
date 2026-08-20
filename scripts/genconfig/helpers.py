@@ -104,27 +104,19 @@ def _hcl_str(val: str) -> str:
 
 
 # Secret variable names written into .envrc — used to detect filled-in values.
-_ENVRC_SECRET_VARS = [
-    "PROXMOX_VE_API_TOKEN",
-    "MINIO_ROOT_USER",
-    "MINIO_ROOT_PASSWORD",
-    "MINIO_ACCESS_KEY",
-    "MINIO_SECRET_KEY",
-    "STEP_CA_ROOT_PASSWORD",
-    "STEP_CA_ISSUING_PASSWORD",
-    "STEP_CA_LXC_ROOT_PASSWORD",
-    "STEP_CA_PROVISIONER_PASSWORD",
-    "PDNS_AUTH_API_KEY",
-    "PDNS_RECURSOR_API_KEY",
-    "PDNS_DNSDIST_API_KEY",
-    "NEXUS_ADMIN_PASSWORD",
-    "NEXUS_READER_PASSWORD",
-    "OTELCOL_MINIO_ACCESS_KEY",
-    "OTELCOL_MINIO_SECRET_KEY",
-    "SPLUNK_ADMIN_PASSWORD",
-    "SPLUNK_HEC_TOKEN",
-    "SPLUNK_MCP_PASSWORD"
-]
+def _envrc_secret_vars() -> list:
+    """Secret var names whose filled values the smart-merge must preserve.
+
+    Core vars plus every var declared in a component manifest's env: block —
+    the list is derived, not hand-maintained.
+    """
+    names = ["PROXMOX_VE_API_TOKEN"]
+    from .discovery import discover_components
+    for comp in discover_components().values():
+        for var in ((comp["manifest"].get("env") or {}).get("vars") or []):
+            if var.get("name") and var["name"] not in names:
+                names.append(var["name"])
+    return names
 
 
 def atomic_write(path: str, content: str, force: bool = False):
@@ -134,9 +126,10 @@ def atomic_write(path: str, content: str, force: bool = False):
             existing = f.read()
 
         # Extract secret values the user has already filled in (i.e. not CHANGE_ME or empty).
+        secret_vars = _envrc_secret_vars()
         preserved = {}
         for line in existing.splitlines():
-            for var in _ENVRC_SECRET_VARS:
+            for var in secret_vars:
                 m = re.match(rf'^export {re.escape(var)}="([^"]*)"', line)
                 if m and m.group(1) not in ("", CHANGE_ME):
                     preserved[var] = m.group(1)
@@ -145,7 +138,7 @@ def atomic_write(path: str, content: str, force: bool = False):
         uncommented = set()
         for line in existing.splitlines():
             m = re.match(r'^export (\w+)=', line)
-            if m and m.group(1) not in _ENVRC_SECRET_VARS:
+            if m and m.group(1) not in secret_vars:
                 uncommented.add(m.group(1))
 
         # Substitute preserved secrets and restore uncommented opt-in lines.

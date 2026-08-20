@@ -13,8 +13,16 @@ import sys
 
 # Public surface re-exported for the shim and the test harnesses.
 from .config import CHANGE_ME, REPO_ROOT, is_inside_container, load_config
+from .discovery import (
+    component_order,
+    discover_components,
+    enabled_components,
+    instance_config,
+    instance_group,
+    instance_tf_key,
+)
 from .helpers import (
-    _ENVRC_SECRET_VARS,
+    _envrc_secret_vars,
     _derive_dns_records,
     _hcl_str,
     _strip_prefix,
@@ -30,7 +38,6 @@ from .validation import (
     validate_nexus_raw_hosted_repos,
     validate_schema,
 )
-from .emit.allowed_cidrs import gen_allowed_cidrs
 from .emit.env_mk import gen_env_mk
 from .emit.envrc import gen_envrc
 from .emit.inventory import gen_inventory
@@ -38,11 +45,17 @@ from .emit.pki_group_vars import gen_pki_group_vars
 from .emit.tfvars import gen_tfvars
 
 __all__ = [
+    "component_order",
+    "discover_components",
+    "enabled_components",
+    "instance_config",
+    "instance_group",
+    "instance_tf_key",
     "CHANGE_ME",
     "REPO_ROOT",
     "is_inside_container",
     "load_config",
-    "_ENVRC_SECRET_VARS",
+    "_envrc_secret_vars",
     "_derive_dns_records",
     "_hcl_str",
     "_strip_prefix",
@@ -55,7 +68,6 @@ __all__ = [
     "validate_nexus_apt_proxy_repos",
     "validate_nexus_raw_hosted_repos",
     "validate_schema",
-    "gen_allowed_cidrs",
     "gen_env_mk",
     "gen_envrc",
     "gen_inventory",
@@ -92,16 +104,6 @@ def main():
     # 2. ansible/inventory/hosts.yml
     inventory_path = os.path.join(REPO_ROOT, "ansible", "inventory", "hosts.yml")
     write_file(inventory_path, gen_inventory(cfg, env), "inventory")
-
-    # 3. .devcontainer/squid/allowed-cidrs.conf
-    cidrs_path = os.path.join(REPO_ROOT, ".devcontainer", "squid", "allowed-cidrs.conf")
-    write_file(cidrs_path, gen_allowed_cidrs(cfg, env), "allowed-cidrs")
-    if is_inside_container():
-        print()
-        print("  WARNING: Running inside dev container.")
-        print("           allowed-cidrs.conf was updated on disk, but the Squid proxy")
-        print("           will NOT reflect changes until you exit, run `make build`,")
-        print("           and reopen the dev container.")
 
     # 4. .envrc
     envrc_path = os.path.join(REPO_ROOT, ".envrc")

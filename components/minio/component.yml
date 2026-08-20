@@ -1,0 +1,30 @@
+name: minio
+description: S3-compatible object store — Terraform state backend + log archive
+order: 10
+
+instances:
+  minio:
+    kind: none # outside the TF graph: it stores the TF state (bootstrap paradox)
+    resources: {cores: 1, memory_mb: 512, disk_gb: 8}
+    config:
+      required: [node, ip]
+      optional: [port, ansible_user, hostname, fqdn, tls, network, mac,
+                 dns_name, dns_ttl, dns_aliases, dns]
+      defaults:
+        port: 9000
+        hostname: minio-server
+
+bootstrap: bootstrap.sh # creates the LXC via the Proxmox API + seeds bucket/IAM
+
+ansible:
+  playbook: playbook.yml
+
+env:
+  header: "MinIO credentials — root pair for Ansible/bootstrap, scoped pair for Terraform state"
+  vars:
+    - {name: MINIO_ROOT_USER, comment: "MinIO root/admin username"}
+    - {name: MINIO_ROOT_PASSWORD, comment: "MinIO root/admin password"}
+    - {name: MINIO_ACCESS_KEY, comment: "scoped key (read/write tfstate bucket only) — written by bootstrap"}
+    - {name: MINIO_SECRET_KEY, comment: "scoped secret — written by bootstrap"}
+
+placeholder: CHANGE_ME
