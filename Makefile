@@ -15,7 +15,7 @@ TF_PLANFILE ?= $(ENV).tfplan
 
 TF_DIR := terraform
 
-.PHONY: help build configure verify-isolation init validate fmt lint plan apply destroy \
+.PHONY: help configure init validate fmt lint plan apply destroy \
         loop-teardown loop-minio loop-secrets \
         examples verify-all collect-all ansible-lint ansible-env ansible-check \
         bootstrap-minio docs-gen
@@ -35,19 +35,8 @@ examples: ## Assemble config/*.yml.example from example-core skeletons + compone
 	python3 scripts/generate-configs.py --examples
 
 # ---------------------------------------------------------------------------
-# Dev container
-# ---------------------------------------------------------------------------
-
-build: ## Rebuild dev container images (run after make configure updates allowed-cidrs.conf)
-	@touch .devcontainer/squid/squid.conf.local
-	docker compose -f .devcontainer/docker-compose.yml build
-
-# ---------------------------------------------------------------------------
 # Verification
 # ---------------------------------------------------------------------------
-
-verify-isolation: ## Run network isolation verification inside the container
-	bash scripts/verify-isolation.sh
 
 # Tier-1 machine gate: per-component behavioral verify (queries the live daemon,
 # not its config). Components are discovered from components/ (+ .local overlay);
@@ -118,7 +107,7 @@ apply: ## Terraform apply $(ENV).tfplan (plan file required)
 	fi
 	cd $(TF_DIR) && terraform apply $(TF_PLANFILE)
 
-destroy: configure ## Terraform destroy for $(ENV) via a destroy plan file (bare destroy is blocked by the guard hook)
+destroy: configure ## Terraform destroy for $(ENV) via a destroy plan file (never run bare destroy)
 	cd $(TF_DIR) && terraform plan -destroy -var-file=$(TF_VARFILE) -out=$(TF_PLANFILE)
 	cd $(TF_DIR) && terraform apply $(TF_PLANFILE)
 
