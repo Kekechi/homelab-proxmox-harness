@@ -96,9 +96,33 @@
              | difference(managed_names) }}
       when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200)
 
-    - name: Warn about stale A records
+    # dns_records is the AUTHORITATIVE aggregate of every enabled component's
+    # dns.record capability (public and private alike) — a stale A record means
+    # its provider was disabled/removed, so the zone reconciles by deletion.
+    # Escape hatch: -e dns_records_prune=false to warn instead of delete.
+    - name: Prune stale A records (zone reconciles to the capability aggregate)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8081/api/v1/servers/localhost/zones/{{ domain_name }}."
+        method: PATCH
+        headers:
+          X-API-Key: "{{ lookup('env', 'PDNS_AUTH_API_KEY') }}"
+        body_format: json
+        body:
+          rrsets:
+            - name: "{{ item }}"
+              type: A
+              changetype: DELETE
+        status_code: 204
+      loop: "{{ stale_records }}"
+      no_log: true
+      changed_when: true
+      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200)
+            and (stale_records | length > 0) and (dns_records_prune | default(true))
+
+    - name: Warn about stale A records (pruning disabled)
       ansible.builtin.debug:
         msg: >-
           WARNING: The following A records exist in the zone but are not managed
           by dns_records. Remove manually if stale: {{ stale_records | join(', ') }}
-      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200) and (stale_records | length > 0)
+      when: (dns_records | default([]) | length > 0) and (zone_data is defined) and (zone_data.status == 200)
+            and (stale_records | length > 0) and (not (dns_records_prune | default(true)))
