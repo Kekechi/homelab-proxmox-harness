@@ -78,6 +78,7 @@ make configure ENV=production
 - `services.*` with `dns_name` → overrides the DNS A record label (default: service key, underscores → hyphens)
 - `services.*` with `dns_ttl` → overrides TTL for that host's A record (default: 3600)
 - `services.*` with `dns: false` → excludes that host from DNS record generation entirely
+- `services.*` with `dns_aliases: [<label>, ...]` → extra A records / hosts-mesh entries at the same IP (e.g. `issuing_ca: dns_aliases: ["ca"]` makes the `ca.<domain>` CA URL resolve)
 - `services.pki.*` sub-hosts → `pki_root_ca` / `pki_issuing_ca` Ansible groups
 - Per-service `network:` field → looked up in `infrastructure.networks`; `bridge` and `gateway` emitted as `<service>_bridge` and `<service>_ipv4_gateway` in tfvars
 - `infrastructure.networks.<name>.cidr` → one entry in `allowed-cidrs.conf` per network that has at least one deployed service

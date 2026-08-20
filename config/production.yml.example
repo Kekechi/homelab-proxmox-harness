@@ -87,6 +87,7 @@ services:
       ansible_user: root
       hostname: issuing-ca
       ca_name: "Homelab Issuing CA"        # CN written into the intermediate certificate
+      dns_aliases: ["ca"]                  # extra DNS labels — the CA URL is https://ca.<domain>
       network: mgmt
   dns:
     enabled: false                         # Set true to deploy dns-auth + dns-dist LXCs (Phase 3)

@@ -253,7 +253,10 @@
       apt:
         distribution: "{{ item.distribution }}"
         flat: false
-  loop: "{{ nexus_apt_proxy_repos | rejectattr('flat', 'sameas', true) | list }}"
+# 'flat:' is optional in config — filter via a defined-guard so entries without
+# the key select cleanly (newer Jinja2 raises on rejectattr over a missing key).
+  loop: "{{ (nexus_apt_proxy_repos | rejectattr('flat', 'defined') | list)
+            + (nexus_apt_proxy_repos | selectattr('flat', 'defined') | rejectattr('flat', 'sameas', true) | list) }}"
   loop_control:
     label: "{{ item.name }}"
 
@@ -281,7 +284,7 @@
       apt:
         distribution: "{{ item.distribution }}"
         flat: true
-  loop: "{{ nexus_apt_proxy_repos | selectattr('flat', 'sameas', true) | list }}"
+  loop: "{{ nexus_apt_proxy_repos | selectattr('flat', 'defined') | selectattr('flat', 'sameas', true) | list }}"
   loop_control:
     label: "{{ item.name }}"
 

@@ -68,30 +68,33 @@ def _derive_dns_records(svcs: dict) -> list[dict]:
     - Flat services (top-level 'ip'): label = service key, underscores → hyphens.
     - Nested services (sub-dicts with 'ip'): label = sub-key, underscores → hyphens.
     - dns_name: override the label; dns_ttl: override TTL (default 3600); dns: false skips the entry.
+    - dns_aliases: extra labels resolving to the same IP (e.g. issuing_ca: dns_aliases: [ca]
+      so the ca.<domain> CA URL resolves via both the /etc/hosts mesh and the zone).
     """
     records = []
+
+    def _append(entry: dict, default_label: str):
+        if entry.get("dns") is False:
+            return
+        label = entry.get("dns_name") or default_label.replace("_", "-")
+        ip = _strip_prefix(entry["ip"])
+        ttl = int(entry.get("dns_ttl", 3600))
+        records.append({"name": label, "ip": ip, "ttl": ttl})
+        for alias in entry.get("dns_aliases", []) or []:
+            records.append({"name": alias, "ip": ip, "ttl": ttl})
+
     for svc_name, svc in svcs.items():
         if not isinstance(svc, dict):
             continue
         if "ip" in svc:
             # Flat service (e.g. minio)
-            if svc.get("dns") is False:
-                continue
-            label = svc.get("dns_name") or svc_name.replace("_", "-")
-            ip = _strip_prefix(svc["ip"])
-            ttl = int(svc.get("dns_ttl", 3600))
-            records.append({"name": label, "ip": ip, "ttl": ttl})
+            _append(svc, svc_name)
         else:
             # Nested service (e.g. pki.root_ca, dns.auth)
             for subkey, sub in svc.items():
                 if not isinstance(sub, dict) or "ip" not in sub:
                     continue
-                if sub.get("dns") is False:
-                    continue
-                label = sub.get("dns_name") or subkey.replace("_", "-")
-                ip = _strip_prefix(sub["ip"])
-                ttl = int(sub.get("dns_ttl", 3600))
-                records.append({"name": label, "ip": ip, "ttl": ttl})
+                _append(sub, subkey)
     return records
 
 

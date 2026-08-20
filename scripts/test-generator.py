@@ -635,6 +635,30 @@ class TestResolveNetwork(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# DNS record derivation tests
+# ---------------------------------------------------------------------------
+
+class TestDeriveDnsRecords(unittest.TestCase):
+
+    def test_dns_aliases_emit_extra_records(self):
+        """dns_aliases on a nested service adds records at the same IP."""
+        import copy
+        pki = copy.deepcopy(BASE_PKI)
+        pki["issuing_ca"]["dns_aliases"] = ["ca"]
+        records = gen._derive_dns_records({"pki": pki})
+        by_name = {r["name"]: r for r in records}
+        self.assertIn("issuing-ca", by_name)  # primary label kept
+        self.assertIn("ca", by_name)          # alias added
+        self.assertEqual(by_name["ca"]["ip"], by_name["issuing-ca"]["ip"])
+
+    def test_dns_false_suppresses_aliases_too(self):
+        """dns: false removes the host AND its aliases from records."""
+        svc = {"web": {"ip": "10.0.0.9", "dns": False, "dns_aliases": ["www"], "node": "pve"}}
+        records = gen._derive_dns_records(svc)
+        self.assertEqual(records, [])
+
+
+# ---------------------------------------------------------------------------
 # .envrc smart-merge tests (atomic_write)
 # ---------------------------------------------------------------------------
 

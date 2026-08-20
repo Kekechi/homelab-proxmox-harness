@@ -8,7 +8,10 @@ step_ca_root_cert_duration: "87600h"        # 10 years
 step_ca_intermediate_cert_duration: "43800h" # 5 years
 step_ca_default_cert_duration: "24h"
 
-step_ca_controller_staging_dir: "/workspace/.pki"
+# Controller-local staging for the exported root cert — derived from the repo
+# tree (playbooks live in <repo>/ansible/playbooks) so it works on any
+# controller checkout, not just a fixed mount path.
+step_ca_controller_staging_dir: "{{ playbook_dir | dirname | dirname }}/.pki"
 
 step_ca_acme_provisioner_name: "acme"
 step_ca_admin_subject: "step"

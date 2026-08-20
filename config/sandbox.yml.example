@@ -81,6 +81,9 @@ services:
       ansible_user: root
       hostname: issuing-ca
       ca_name: "Homelab Issuing CA"      # CN written into the intermediate certificate
+      dns_aliases: ["ca"]                # extra DNS labels for this host — the CA URL is
+                                         # https://ca.<domain>, so "ca" must resolve
+                                         # (emitted into the /etc/hosts mesh AND the DNS zone)
   dns:
     enabled: false                         # Set true to deploy dns-auth + dns-dist LXCs (Phase 3)
     auth:
