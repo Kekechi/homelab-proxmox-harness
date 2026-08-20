@@ -10,6 +10,12 @@ ssh:
   public_key: "ssh-ed25519 AAAAC3... your-key-comment"  # SSH public key injected via cloud-init
   default_user: ubuntu                   # Default ansible_user for VMs
 
+# Agent-host facts — where the controller (Claude/operator machine) runs.
+# Feeds the generated ansible/ansible.cfg; keeps machine specifics out of git.
+agent:
+  ssh_private_key: ~/.ssh/id_ed25519     # SSH key ansible uses to reach hosts
+  # ssh_extra_args: ""                   # appended to ssh_args (e.g. a ProxyCommand hop)
+
 infrastructure:
   dns_server: ""                           # DNS server IP pushed to all LXC/VM resolv.conf via Terraform.
                                            # Phase 1-2: set to router IP. Phase 3+: switch to DNSdist IP.
@@ -20,7 +26,7 @@ infrastructure:
     insecure: true                       # true = accept self-signed TLS cert
   nodes:
     pve1:
-      ip: "192.168.X.X"   # Node management IP — added to Squid allowlist
+      ip: "192.168.X.X"   # Node management IP
   # For multi-node clusters, uncomment and add additional nodes:
   #   pve2:
   #     ip: "192.168.X.X"
@@ -45,35 +51,40 @@ terraform:
   clone_template_id: 0                   # Template VM ID to clone from (0 = create from scratch)
   state_bucket: tfstate-sandbox          # MinIO bucket for Terraform state
 
-# Services deployed to the homelab.
-# Each service is defined once here; make configure auto-derives the Ansible inventory
-# group, Squid allowlist CIDR, and endpoint URLs — no duplication needed.
+# Services deployed to the homelab — one block per component. Each block's
+# shape is declared by components/<name>/component.yml; `make configure`
+# derives the Ansible inventory group and endpoint wiring from it.
+# This file is ASSEMBLED by `make examples` — edit the component fragment
+# (components/<name>/config.example.yml.in) or the core skeleton
+# (config/example-core/<env>.yml.in), not this file.
 services:
   minio:
+    enabled: true                        # the state backend — effectively always on
     node: pve1
-    ip: "192.168.X.X"                    # MinIO server IP (bare IP, no prefix)
+    ip: "192.168.X.X"                    # MinIO server IP (bare IP, no prefix — not a Terraform resource)
     port: 9000
     ansible_user: root
     hostname: minio-server               # Ansible inventory hostname
-    fqdn: "minio.sandbox.example.com"    # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true (generator exits with error if missing)
-    tls: true                            # Enable TLS via step-ca ACME; set false for plain HTTP
-    network: sandbox                     # Which named network this service is on
+    fqdn: "minio.sandbox.example.com"               # FQDN for TLS cert and MINIO_SERVER_URL; required when tls: true
+    tls: false                           # Enable TLS via step-ca ACME once PKI is deployed
+    network: sandbox                   # Which named network this service is on
     # dns_name: storage        # optional: override DNS label (default: service key "minio")
     # dns_ttl: 300             # optional: per-record TTL in seconds (default: 3600)
     # dns: false               # optional: set to false to exclude from DNS record generation
+
   pki:
-    enabled: false                         # Set true to deploy Issuing CA LXC + Root CA VM (Phase 4)
+    enabled: false                       # Set true to deploy Issuing CA LXC + Root CA VM
     root_ca:
       node: pve1
-      ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
+      ip: "192.168.X.X/24"               # CIDR notation required — Terraform uses prefix for cloud-init
       vm_id: 201                         # must not conflict with existing VMs
       ansible_user: debian
       hostname: root-ca
       ca_name: "Homelab Root CA"         # CN written into the root certificate
-      cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on Proxmox host
-      # Cross-node clone note: template must be registered on the same node as root_ca.node.
-      # If template was created on a different node, migrate it first (GUI: right-click → Migrate).
-      # Disk stays on NFS — migration only moves the .conf, completes in seconds.
+      cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on the Proxmox host
+      # Cross-node clone note: the template must be registered on the same node as root_ca.node.
+      # If it was created on a different node, migrate it first (GUI: right-click → Migrate).
+      network: sandbox
     issuing_ca:
       node: pve1
       ip: "192.168.X.X/24"
@@ -81,35 +92,19 @@ services:
       ansible_user: root
       hostname: issuing-ca
       ca_name: "Homelab Issuing CA"      # CN written into the intermediate certificate
-  dns:
-    enabled: false                         # Set true to deploy dns-auth + dns-dist LXCs (Phase 3)
-    auth:
-      node: pve1
-      ip: "192.168.X.X/24"
-      ct_id: 203
-      ansible_user: root
-      hostname: dns-auth
-      dns_name: dns-auth        # DNS A record label; default would be "auth" (subkey) which is ambiguous
-    dist:
-      node: pve1
-      ip: "192.168.X.X/24"
-      ct_id: 204
-      ansible_user: root
-      hostname: dns-dist
-      dns_name: dns-dist        # DNS A record label; default would be "dist" which is ambiguous
-      # dns: false              # optional: set to false to exclude this host from DNS record generation entirely
-      # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
-      # client_cidrs:           # optional: CIDRs added to DNSdist ACL beyond the sandbox VLAN
-      #   - "192.168.X.0/24"   # e.g. LAN VLAN — add any network whose clients should resolve via DNSdist
+      dns_aliases: ["ca"]                # extra DNS labels — the CA URL is https://ca.<domain>,
+                                         # so "ca" must resolve (hosts mesh AND DNS zone)
+      network: sandbox
+
   nexus:
-    enabled: false                         # Set true to deploy Nexus Repository CE LXC (Phase 2)
+    enabled: false                       # Set true to deploy Nexus Repository CE LXC
     node: pve1
-    ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
-    ct_id: 205                         # must not conflict with existing containers
+    ip: "192.168.X.X/24"                 # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 205                           # must not conflict with existing containers
     ansible_user: root
     hostname: nexus-server
-    fqdn: "nexus.sandbox.example.com"  # FQDN for TLS cert and nginx server_name
-    tls: false                         # Set true (Phase 5) to issue cert from internal CA and enable nginx HTTPS
+    fqdn: "nexus.sandbox.example.com"               # FQDN for TLS cert and nginx server_name
+    tls: false                           # Set true to issue a cert from the internal CA and enable nginx HTTPS
     network: sandbox
     apt_proxy_repos:
       # --- IaC-required: do not remove ---
@@ -143,33 +138,57 @@ services:
         remote_url: "http://download.proxmox.com/debian/ceph-squid"
         distribution: trixie
     raw_hosted_repos:
-      - name: splunkbase               # Splunk app packages (.tgz) — operator uploads post-Phase-1-step-1
+      - name: splunkbase                 # raw artifact hosting (e.g. Splunk app .tgz uploads)
+
+  dns:
+    enabled: false                       # Set true to deploy dns-auth + dns-dist LXCs
+    auth:
+      node: pve1
+      ip: "192.168.X.X/24"
+      ct_id: 203
+      ansible_user: root
+      hostname: dns-auth
+      dns_name: dns-auth                 # DNS A record label; default would be "auth" (subkey) which is ambiguous
+      network: sandbox
+    dist:
+      node: pve1
+      ip: "192.168.X.X/24"
+      ct_id: 204
+      ansible_user: root
+      hostname: dns-dist
+      dns_name: dns-dist                 # DNS A record label; default would be "dist" which is ambiguous
+      network: sandbox
+      # dns: false              # optional: exclude this host from DNS record generation entirely
+      # dns_ttl: 300            # optional: override TTL for this host's A record (default 3600)
+      # client_cidrs:           # optional: CIDRs added to the DNSdist ACL beyond its own subnet
+      #   - "192.168.X.0/24"    # e.g. a LAN VLAN whose clients should resolve via DNSdist
 
   log_server:
-    enabled: false                         # Set true to deploy OTel Collector log aggregation LXC
+    enabled: false                       # Set true to deploy the OTel Collector log aggregation LXC
     node: pve1
-    ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
-    ct_id: 206                         # must not conflict with existing containers (201–205 occupied)
+    ip: "192.168.X.X/24"                 # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 206                           # must not conflict with existing containers
     ansible_user: root
     hostname: log-server
     network: sandbox
 
   splunk:
-    enabled: false                         # Set true to deploy Splunk Enterprise VM (hackathon lifecycle)
+    enabled: false                       # Set true to deploy the Splunk Enterprise VM (deprecation-planned)
     node: pve1
-    ip: "192.168.X.X/24"              # CIDR notation required — Terraform uses prefix for cloud-init
-    vm_id: 207                         # must not conflict (201–206 occupied)
-    ansible_user: ubuntu               # Ubuntu 24.04 default user
+    ip: "192.168.X.X/24"                 # CIDR notation required — Terraform uses prefix for cloud-init
+    vm_id: 207                           # must not conflict with existing VMs
+    ansible_user: ubuntu                 # Ubuntu 24.04 default user
     hostname: splunk-server
-    cloud_init_template_id: 9001       # VMID of Ubuntu 24.04 cloud-init template — operator creates pre-phase
+    cloud_init_template_id: 9001         # VMID of the Ubuntu 24.04 cloud-init template — operator creates it beforehand
     network: sandbox
-    fqdn: "splunk.sandbox.example.com"   # FQDN for TLS cert SAN; required when tls: true
-    tls: false                           # Set true to issue cert from internal CA and enable mgmt port TLS
-    # hec_port: 8088                  # optional: Splunk HEC ingest port (default 8088); used to emit otelcol_splunk_hec_url
+    fqdn: "splunk.sandbox.example.com"              # FQDN for TLS cert SAN; required when tls: true
+    tls: false                           # Set true to issue a cert from the internal CA and enable mgmt-port TLS
+    # hec_port: 8088                     # optional: Splunk HEC ingest port (default 8088)
 
 # Ad-hoc hosts not covered by a named service above.
 # Each top-level key is an Ansible group; hosts within are inventory entries.
 hosts:
   sandbox:
-    # sandbox-vm-01:
+    # example-vm-01:
     #   ansible_host: 192.168.X.X
+    #   ansible_user: ubuntu

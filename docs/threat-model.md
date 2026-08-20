@@ -1,122 +1,92 @@
 # Threat Model
 
-This document defines what the isolation architecture protects against and what it does not.
+This document defines what the isolation architecture protects against and what it does
+not, under the **controller-host model**: the agent runs on a dedicated host with only
+sandbox-scoped credentials, and enforcement is IAM-first. (The earlier containerized
+model with a deny-by-default forward proxy is retired; this document describes what
+replaced it, honestly — including where the old model was stronger.)
 
 ## What This Protects Against
 
-### Claude Code reaching production Proxmox API
+### Claude Code reaching production Proxmox resources
 
-**Mechanism:** Two-layer enforcement.
+**Mechanism:** IAM, two mutually reinforcing facts.
 
-1. **Network:** The devcontainer is on `internal:true` Docker network. Squid ACL only
-   allows the sandbox VLAN CIDR — production Proxmox IPs are not in `allowed-cidrs.conf`.
-   A request to the production Proxmox API is denied at the Squid layer before it reaches
-   the network.
+1. Claude's token (`terraform@pve!claude-sandbox`) has ACL only on `/pool/sandbox` —
+   the Proxmox API returns 403 for any resource outside the sandbox pool.
+2. The operator token (`operator-production`) is never present on the controller host,
+   so a production apply fails at authentication before touching anything.
 
-2. **IAM:** Claude's token (`terraform@pve!claude-sandbox`) has ACL only on `/pool/sandbox`.
-   Even if the network restriction were somehow bypassed, the token would receive a
-   403 Forbidden from the Proxmox API for any resource outside the sandbox pool.
-
-### Claude Code accessing arbitrary internet
-
-**Mechanism:** Squid allowlist. The devcontainer has no direct internet access.
-All HTTP/HTTPS traffic goes through Squid, which denies anything not in the domain
-or CIDR allowlist. Blocked: social media, exfiltration endpoints, package repos not
-in the allowlist, etc.
+Network segmentation backs this up: the operator places the controller host so that
+production segments are not routable from it.
 
 ### Claude Code reading or corrupting production Terraform state
 
-**Mechanism:** MinIO IAM policy. Claude's MinIO access key is bound to a policy that
-allows read/write only on the `tfstate-sandbox` bucket. It cannot list, read, or write
-`tfstate-production`. The operator's MinIO admin key is held separately and never
-appears in the devcontainer.
+**Mechanism:** MinIO IAM plus absence. Claude's MinIO key is bound to a policy scoped
+to the `tfstate-sandbox` bucket on the sandbox MinIO instance. The production MinIO
+instance is on a segment the controller host cannot reach, and its credentials never
+exist on the host.
 
 ### Claude Code escalating Proxmox privileges
 
-**Mechanism:** `privsep=1` on the token. The token cannot exceed the privileges of
-the `terraform@pve` user. Since the user has no global privileges, the token cannot
-either — even if a role with broader privileges were accidentally assigned at a
-higher path.
-
-The `TerraformSandbox` role excludes `Permissions.Modify` and `User.Modify`,
-so Claude cannot create new tokens, modify roles, or grant itself broader access.
-
-### Ansible SSH to non-sandbox hosts
-
-**Mechanism:** Squid CONNECT. Port 22 CONNECT is allowed only to IPs in
-`allowed_cidrs`. SSH to production VMs or arbitrary internet hosts is denied
-by Squid before the connection is established.
-
----
+**Mechanism:** `privsep=1` on the token — it cannot exceed the `terraform@pve` user's
+privileges. The `TerraformSandbox` role excludes `Permissions.Modify` and
+`User.Modify`, so the agent cannot create tokens, modify roles, or grant itself
+broader access; `Pool.Allocate` is excluded, so it cannot move resources between pools.
 
 ## What This Does NOT Protect Against
 
-### Claude Code modifying `.devcontainer/` config files
+### Arbitrary internet access
 
-Claude Code has write access to the entire workspace mount, including
-`.devcontainer/squid/allowed-cidrs.conf` and `.devcontainer/squid/squid.conf`.
+The retired proxy model denied all egress by default; the controller-host model does
+not. The agent has the host's own internet egress. This is an **accepted trade-off**:
+the harness relies on Claude Code's permission layer, the operator's review of session
+activity, and the absence of production credentials — not on network egress control.
 
-**Mitigations:**
-- These files are baked into the Squid Docker image at build time. Modifying them
-  in the workspace has no effect on the running proxy.
-- Changes only take effect after the operator runs `docker compose build squid-proxy`
-  and rebuilds the dev container. The operator reviews `git diff .devcontainer/`
-  before rebuilding.
-- CLAUDE.md explicitly prohibits modifying `.devcontainer/` files.
-- A pre-commit hook flags changes to `.devcontainer/` for operator review.
-- Both containers run with `cap_drop: ALL`, preventing a rogue process from adding
-  its own iptables rules or modifying network configuration from inside the container.
+### Exfiltration through git history
 
-**Residual risk:** If an operator rebuilds without reviewing the diff, modified Squid
-config could expand network access.
+The agent can commit anything to the local repo. Mitigations: `git push` is denied to
+the agent's shell; the operator reviews history before pushing; rules require
+intent-level docs (no internal IPs/hostnames/domains) and forbid committing secrets.
+A staged-secrets git pre-commit hook is a planned reinstatement (deferred — see the
+harness-rebuild design record). **Residual risk:** an unreviewed push publishes
+whatever was committed.
+
+### SSH within the sandbox segment
+
+There is no per-destination SSH ACL anymore. Raw `ssh`/`scp` are denied at the agent's
+permission layer (the `sandbox-ssh` alias is the deliberate pass-through), and the host
+routes only to sandbox segments — but within the sandbox, SSH reach is uniform. The
+sandbox is built to be expendable; this is accepted.
 
 ### State corruption from concurrent sandbox applies
 
-Terraform's S3 backend with MinIO does not support state locking (MinIO lacks DynamoDB
-compatibility). If Claude Code and the operator both run `terraform apply` against
-the sandbox simultaneously, state corruption is possible.
+MinIO's S3 backend has no real state locking (no DynamoDB equivalent). Concurrent
+applies can corrupt state. **Mitigation:** plan-file workflow (short apply window) and
+operator coordination. Recovery: MinIO object versioning + the destroy→rebuild loop.
 
-**Mitigation:** Claude Code always uses the plan-file workflow
-(`terraform plan -out=sandbox.tfplan` → `terraform apply sandbox.tfplan`), which
-reduces the apply window. Coordinate with the operator before applying.
+### Secrets on the controller host
 
-### DNS information leaks
+The agent can read `.envrc` — this is by design (it needs the sandbox credentials to
+work). The trust boundary is that *only sandbox-scoped* secrets exist there. Anything
+placed on the controller host must be assumed readable by the agent.
 
-Docker containers on `internal:true` networks can still use Docker's embedded DNS
-(127.0.0.11) to resolve arbitrary hostnames. Claude Code can resolve `production-host.local`
-to an IP even though it cannot connect to it.
+### Supply chain attacks via providers or collections
 
-**Impact:** Information leak only, not a bypass vector. Network connections to resolved
-IPs still fail at Squid.
-
-### Claude Code reading files in the workspace mount
-
-The devcontainer can read any file in the workspace (`/workspace`). This includes
-`.envrc.example` and any documentation. It cannot read the host filesystem outside
-the workspace mount.
-
-**Mitigation:** The actual `.envrc` (with secrets) is gitignored and mounted at
-the workspace root only if the operator has populated it on the host. The Squid config
-with actual CIDRs is baked into the image, not a file in the workspace.
-
-### Supply chain attacks via Terraform providers or Ansible collections
-
-The Squid allowlist permits downloads from `github.com` and `releases.hashicorp.com`.
-A compromised provider or collection could execute arbitrary code inside the container.
-
-**Mitigation:** Pin provider versions in `versions.tf` and commit `.terraform.lock.hcl`.
-Pin Ansible collection versions in `requirements.yml`. Review changelogs before upgrading.
-
----
+Without an egress allowlist, this surface is **larger** than under the proxy model.
+**Mitigation (load-bearing):** pin provider versions in `versions.tf`, commit
+`.terraform.lock.hcl`, pin collection versions in `requirements.yml`, review
+changelogs before upgrading.
 
 ## Isolation Strength Summary
 
 | Threat | Layer 1 | Layer 2 | Protected? |
 |---|---|---|---|
-| Reach production Proxmox | Network (Squid ACL) | IAM (token ACL) | Yes — dual layer |
-| Access arbitrary internet | Network (internal:true + Squid) | — | Yes |
-| Read production state | MinIO IAM policy | — | Yes |
-| Escalate Proxmox privileges | privsep=1 | Role excludes Permissions.Modify | Yes |
-| Modify Squid config | Files baked into image | Operator review before rebuild | Partial |
+| Reach production Proxmox | IAM (token ACL, privsep) | Credentials absent + segmentation | Yes |
+| Read/corrupt production state | MinIO scoped key | Instance unreachable, creds absent | Yes |
+| Escalate Proxmox privileges | privsep=1 | Role exclusions | Yes |
+| Arbitrary internet egress | — | Permission layer + operator review | No — accepted |
+| Exfiltration via git | Push denied to agent | Operator pre-push review | Partial |
 | Concurrent apply | Plan-file workflow | Operator coordination | Partial |
-| DNS resolution of private hosts | — | — | No (information only) |
+| Secrets on controller host | Sandbox-only secrets present | — | Accepted by design |
+| Supply chain | Version pinning + lockfiles | Changelog review | Partial |

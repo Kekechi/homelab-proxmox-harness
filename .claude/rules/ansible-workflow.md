@@ -1,22 +1,33 @@
 ---
 paths:
   - "ansible/**"
+  - "components/*/playbook.yml"
+  - "components/*/roles/**"
 ---
 
 # Ansible Workflow Rules
 
-## SSH Connectivity
+## Running plays
 
-- All SSH to sandbox VMs goes through Squid CONNECT (configured in `ansible.cfg`)
-- Sandbox VM IPs must be within the CIDR in `.devcontainer/squid/allowed-cidrs.conf`
-- SSH to production VMs or non-sandbox hosts is blocked by Squid
+- `ansible/ansible.cfg` is GENERATED from the `agent:` section of `config/<env>.yml`
+  (SSH key path, extra ssh args) — NEVER hand-edit it; run `make configure` instead
+- Deploy one component with `make ansible-<component>` — it resolves
+  `components/<name>/playbook.yml` (or `components.local/<name>/`) and runs it from
+  `ansible/` so the generated cfg and inventory apply; roles resolve adjacent to the
+  playbook
+- The common baseline for all hosts is `make ansible-env` (`ansible/playbooks/site.yml`)
+- If invoking `ansible-playbook` directly, run it from `ansible/` (or set
+  `ANSIBLE_CONFIG=ansible/ansible.cfg`) — without the cfg, the inventory, key, and SSH
+  settings are wrong
 
 ## Playbook Conventions
 
 - Use FQCN (fully qualified collection names): `ansible.builtin.copy`, not `copy`
 - No hardcoded IPs in roles — use inventory variables or role defaults
-- Single inventory file `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` — NEVER edit directly
-- Always run `ansible-lint` before committing playbook changes
+- Component roles live in `components/<name>/roles/`; `ansible/roles/` holds genuinely
+  shared roles only (`common`, `step_client`)
+- Always run `ansible-lint` before committing playbook changes (`make ansible-lint`
+  covers core playbooks + every component)
 
 ## Package Installation — Prefer OS Package Manager
 
@@ -45,14 +56,14 @@ Do not add collections to `requirements.yml` without pinning a version.
 
 ## Inventory
 
-A single `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` by `make configure`. NEVER edit it directly.
+A single `ansible/inventory/hosts.yml` is generated from `config/<env>.yml` by
+`make configure` — enabled components get auto-derived groups; ad-hoc hosts come from
+the `hosts:` section. NEVER edit it directly.
 
-To add a VM after `terraform apply`:
-1. Get its IP: `cd terraform && terraform output -json`
-2. Add it to `config/<env>.yml` under `hosts.<group>.<hostname>.ansible_host`
+To bring a new host under management:
+1. Component instance → add its `services.<key>:` block to `config/<env>.yml`
+2. Ad-hoc host → add it under `hosts.<group>.<hostname>.ansible_host`
 3. Run `make configure` to regenerate the inventory
 
-Target specific environments with `--limit`:
-- `--limit sandbox` — only sandbox group hosts
-- `--limit minio` — only minio group hosts
-- BLOCK: never run without `--limit` when production hosts are present
+Target specific groups with `--limit` (e.g. `--limit minio`). BLOCK: never run without
+`--limit` when production hosts are present in the inventory.

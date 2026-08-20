@@ -1,0 +1,23 @@
+  pki:
+    enabled: false                       # Set true to deploy Issuing CA LXC + Root CA VM
+    root_ca:
+      node: pve1
+      ip: "192.168.X.X/24"               # CIDR notation required — Terraform uses prefix for cloud-init
+      vm_id: 201                         # must not conflict with existing VMs
+      ansible_user: debian
+      hostname: root-ca
+      ca_name: "Homelab Root CA"         # CN written into the root certificate
+      cloud_init_template_id: 9000       # VMID of Debian cloud-init template — operator runs scripts/setup-vm-template.sh once on the Proxmox host
+      # Cross-node clone note: the template must be registered on the same node as root_ca.node.
+      # If it was created on a different node, migrate it first (GUI: right-click → Migrate).
+      network: @NETWORK@
+    issuing_ca:
+      node: pve1
+      ip: "192.168.X.X/24"
+      ct_id: 202
+      ansible_user: root
+      hostname: issuing-ca
+      ca_name: "Homelab Issuing CA"      # CN written into the intermediate certificate
+      dns_aliases: ["ca"]                # extra DNS labels — the CA URL is https://ca.<domain>,
+                                         # so "ca" must resolve (hosts mesh AND DNS zone)
+      network: @NETWORK@

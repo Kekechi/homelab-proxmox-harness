@@ -1,7 +1,7 @@
 # MinIO Setup
 
 MinIO runs as an LXC container on Proxmox and serves as the Terraform remote state backend.
-It is accessible from the dev container via the Squid proxy.
+It is reached directly from the controller (agent) host over SSH and HTTP(S).
 
 Each environment has its own MinIO instance on its own VNet. **Run this entire setup process
 once per environment**, pointing at that environment's MinIO host.
@@ -16,21 +16,21 @@ once per environment**, pointing at that environment's MinIO host.
 
 ---
 
-## Step 0 — Generate SSH keypair (dev container, one-time)
+## Step 0 — Generate SSH keypair (controller host, one-time)
 
-Generate an SSH keypair in the dev container; the public key is injected into the
-MinIO LXC at create time (via cloud-init in Step 1). Use a comment that names the
-environment so the key is identifiable — substitute the env name literally.
+Generate an SSH keypair on the controller (agent) host; the public key is injected
+into the MinIO LXC at create time (via cloud-init in Step 1). Use a comment that
+names the environment so the key is identifiable — substitute the env name literally.
 
 ```bash
-# From the dev container workspace root (replace <ENV> with sandbox/production)
-mkdir -p .ssh
-ssh-keygen -t ed25519 -C "claude-<ENV>" -f .ssh/id_ed25519 -N ""
-cat .ssh/id_ed25519.pub  # Copy this into config/<ENV>.yml (ssh.public_key)
+# On the controller host (replace <ENV> with sandbox/production)
+ssh-keygen -t ed25519 -C "claude-<ENV>" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub  # Copy this into config/<ENV>.yml (ssh.public_key)
 ```
 
-The key lives at `.ssh/id_ed25519` (gitignored). It is accessible inside the container at
-`/workspace/.ssh/id_ed25519` via the existing workspace bind mount — no extra volume needed.
+The private key lives wherever `agent.ssh_private_key` in `config/<ENV>.yml` points
+(default `~/.ssh/id_ed25519`) — `make configure` writes that path into the generated
+`ansible/ansible.cfg`, so Ansible and manual SSH use the same key.
 
 Update `config/<ENV>.yml` with the public key and regenerate:
 ```bash
@@ -38,14 +38,9 @@ Update `config/<ENV>.yml` with the public key and regenerate:
 make configure ENV=<ENV>
 ```
 
-**Host access (optional):** Symlink into host `~/.ssh` for manual SSH:
-```bash
-ln -s /path/to/project/.ssh/id_ed25519 ~/.ssh/id_ed25519_<ENV>
-```
-
 ---
 
-## Step 1 — Create the MinIO LXC (dev container, API + cloud-init)
+## Step 1 — Create the MinIO LXC (controller host, API + cloud-init)
 
 MinIO is outside the Terraform graph (it holds the TF state bucket — bootstrap
 paradox), so it is created with a direct Proxmox API call and cloud-init, then
@@ -61,14 +56,18 @@ bash scripts/loop/recreate-minio.sh <ENV>
 
 This creates an unprivileged LXC (nesting enabled, 8G rootfs) on the node and
 network from `config/<ENV>.yml`, injects the public key via cloud-init, starts
-it, and blocks until sshd is reachable through the proxy. Verify from the dev
-container (replace `<MINIO_HOST>` with the IP from `config/<ENV>.yml`):
+it, and blocks until sshd is reachable. Verify from the controller host (replace
+`<MINIO_HOST>` with the IP from `config/<ENV>.yml`):
 
 ```bash
-sandbox-ssh -i /workspace/.ssh/id_ed25519 \
+sandbox-ssh -i ~/.ssh/id_ed25519 \
     -o StrictHostKeyChecking=accept-new \
     root@<MINIO_HOST> hostname
 ```
+
+`sandbox-ssh` is an agent-host alias for plain `ssh` — it exists only to satisfy
+Claude Code's Bash permission rules for `ssh`. When running these steps by hand
+as the operator, plain `ssh` is equivalent.
 
 <details>
 <summary>Legacy fallback — manual SSH bootstrap via the Proxmox node shell</summary>
@@ -118,14 +117,14 @@ Fetch the MinIO binary checksum from the LXC (which has direct internet access):
 sandbox-ssh root@<MINIO_HOST> \
   "curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio.sha256sum" \
   | awk '{print $1}'
-# Set the result in ansible/roles/minio/defaults/main.yml -> minio_checksum
+# Set the result in components/minio/roles/minio/defaults/main.yml -> minio_checksum
 ```
 
 Run the playbook:
 ```bash
 make ansible-minio
-# or manually:
-ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
+# or manually (from ansible/ so the generated cfg + inventory apply):
+cd ansible && ansible-playbook -i inventory/ ../components/minio/playbook.yml --limit minio
 ```
 
 Verify (canonical — auto-selects the scheme from `minio.tls` and checks both
@@ -134,8 +133,7 @@ liveness and readiness):
 make verify-minio
 ```
 
-Or manually (use `https://` when `minio.tls: true`; the dev container reaches
-MinIO through the proxy):
+Or manually (use `https://` when `minio.tls: true`):
 ```bash
 curl -s http://<MINIO_HOST>:9000/minio/health/live   # Expected: HTTP 200
 ```
@@ -144,20 +142,18 @@ curl -s http://<MINIO_HOST>:9000/minio/health/live   # Expected: HTTP 200
 
 ## Step 3 — Bootstrap Bucket and IAM
 
-The `mcli` (MinIO Client) binary must be installed in the dev container. It is included in the
-Dockerfile — rebuild the container if not already present:
-```bash
-make build  # then reopen dev container
-```
+The `mcli` (MinIO Client) binary must be installed on the controller host. If
+`mcli --version` fails, install the MinIO client from its official distribution
+before continuing.
 
 Ensure `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` are filled in `.envrc`
 (`MINIO_ENDPOINT` is already generated by `make configure`), then run the
 bootstrap script for your environment:
 
 ```bash
-bash scripts/bootstrap-minio.sh <ENV>
-# e.g.: bash scripts/bootstrap-minio.sh sandbox
-#        bash scripts/bootstrap-minio.sh production
+bash components/minio/bootstrap.sh <ENV>
+# e.g.: bash components/minio/bootstrap.sh sandbox
+#        bash components/minio/bootstrap.sh production
 ```
 
 Or via Make (picks up `ENV` from `.env.mk`):

@@ -12,9 +12,23 @@ import re
 import sys
 
 # Public surface re-exported for the shim and the test harnesses.
-from .config import CHANGE_ME, REPO_ROOT, is_inside_container, load_config
+from .config import CHANGE_ME, REPO_ROOT, load_config
+from .capabilities import (
+    CORE_CONSUMES,
+    build_providers,
+    report_reconvergence,
+    resolve_consumes,
+)
+from .discovery import (
+    component_order,
+    discover_components,
+    enabled_components,
+    instance_config,
+    instance_group,
+    instance_tf_key,
+)
 from .helpers import (
-    _ENVRC_SECRET_VARS,
+    _envrc_secret_vars,
     _derive_dns_records,
     _hcl_str,
     _strip_prefix,
@@ -30,7 +44,8 @@ from .validation import (
     validate_nexus_raw_hosted_repos,
     validate_schema,
 )
-from .emit.allowed_cidrs import gen_allowed_cidrs
+from .emit.ansible_cfg import gen_ansible_cfg
+from .emit.config_example import gen_config_example
 from .emit.env_mk import gen_env_mk
 from .emit.envrc import gen_envrc
 from .emit.inventory import gen_inventory
@@ -38,11 +53,20 @@ from .emit.pki_group_vars import gen_pki_group_vars
 from .emit.tfvars import gen_tfvars
 
 __all__ = [
+    "CORE_CONSUMES",
+    "build_providers",
+    "report_reconvergence",
+    "resolve_consumes",
+    "component_order",
+    "discover_components",
+    "enabled_components",
+    "instance_config",
+    "instance_group",
+    "instance_tf_key",
     "CHANGE_ME",
     "REPO_ROOT",
-    "is_inside_container",
     "load_config",
-    "_ENVRC_SECRET_VARS",
+    "_envrc_secret_vars",
     "_derive_dns_records",
     "_hcl_str",
     "_strip_prefix",
@@ -55,7 +79,8 @@ __all__ = [
     "validate_nexus_apt_proxy_repos",
     "validate_nexus_raw_hosted_repos",
     "validate_schema",
-    "gen_allowed_cidrs",
+    "gen_ansible_cfg",
+    "gen_config_example",
     "gen_env_mk",
     "gen_envrc",
     "gen_inventory",
@@ -68,6 +93,11 @@ __all__ = [
 def main():
     args = sys.argv[1:]
     force = "--force" in args
+    if "--examples" in args:
+        for ex_env in ("sandbox", "production"):
+            path = os.path.join(REPO_ROOT, "config", f"{ex_env}.yml.example")
+            write_file(path, gen_config_example(ex_env), f"{ex_env} example")
+        return
     args = [a for a in args if not a.startswith("--")]
 
     if not args:
@@ -85,6 +115,11 @@ def main():
     # Validate schema before generating any files
     validate_schema(cfg)
 
+    # Capability graph: snapshot the provider set; when it changed, print the
+    # stale-consumer re-run list (re-convergence is computed, not tribal memory).
+    components = discover_components()
+    report_reconvergence(cfg, components, build_providers(cfg, components))
+
     # 1. terraform/<env>.tfvars
     tfvars_path = os.path.join(REPO_ROOT, "terraform", f"{env}.tfvars")
     write_file(tfvars_path, gen_tfvars(cfg, env), "tfvars")
@@ -93,15 +128,9 @@ def main():
     inventory_path = os.path.join(REPO_ROOT, "ansible", "inventory", "hosts.yml")
     write_file(inventory_path, gen_inventory(cfg, env), "inventory")
 
-    # 3. .devcontainer/squid/allowed-cidrs.conf
-    cidrs_path = os.path.join(REPO_ROOT, ".devcontainer", "squid", "allowed-cidrs.conf")
-    write_file(cidrs_path, gen_allowed_cidrs(cfg, env), "allowed-cidrs")
-    if is_inside_container():
-        print()
-        print("  WARNING: Running inside dev container.")
-        print("           allowed-cidrs.conf was updated on disk, but the Squid proxy")
-        print("           will NOT reflect changes until you exit, run `make build`,")
-        print("           and reopen the dev container.")
+    # 2b. ansible/ansible.cfg — agent-host facts from config's agent: section
+    ansible_cfg_path = os.path.join(REPO_ROOT, "ansible", "ansible.cfg")
+    write_file(ansible_cfg_path, gen_ansible_cfg(cfg, env), "ansible.cfg")
 
     # 4. .envrc
     envrc_path = os.path.join(REPO_ROOT, ".envrc")

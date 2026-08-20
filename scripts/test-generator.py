@@ -4,7 +4,7 @@ test-generator.py — Comprehensive tests for generate-configs.py
 
 Tests are grouped into:
   - Validation errors (generator must exit 1 with a clear message)
-  - Output content (generator must produce correct tfvars / inventory / Squid allowlist)
+  - Output content (generator must produce correct tfvars / inventory / ansible.cfg)
 
 Usage:
   python3 scripts/test-generator.py
@@ -34,7 +34,10 @@ spec.loader.exec_module(gen)
 # ---------------------------------------------------------------------------
 
 BASE_INFRA = {
-    "proxmox": {"ip": "10.0.0.1", "port": 8006, "node": "pve", "insecure": True},
+    "proxmox": {"ip": "10.0.0.1", "port": 8006, "insecure": True},
+    "nodes": {
+        "pve": {"ip": "10.0.0.1"},
+    },
     "networks": {
         "lab": {
             "bridge": "lab",
@@ -47,6 +50,7 @@ BASE_INFRA = {
     "storage": {
         "datastore_id":           "local-lvm",
         "cloudinit_datastore_id": "local",
+        "lxc_template_file_id":   "local:vztmpl/debian-12.tar.xz",
     },
 }
 
@@ -63,7 +67,9 @@ BASE_SSH = {
 }
 
 BASE_MINIO = {
+    "enabled":      True,
     "network":      "lab",
+    "node":         "pve",
     "ip":           "10.10.40.5",
     "port":         9000,
     "ansible_user": "root",
@@ -73,7 +79,9 @@ BASE_MINIO = {
 }
 
 BASE_PKI = {
+    "enabled": True,
     "root_ca": {
+        "node":                  "pve",
         "ip":                    "10.10.40.10/24",
         "vm_id":                 201,
         "ansible_user":          "debian",
@@ -81,28 +89,52 @@ BASE_PKI = {
         "cloud_init_template_id": 9000,
     },
     "issuing_ca": {
+        "node":                  "pve",
         "ip":                    "10.10.40.11/24",
         "ct_id":                 202,
         "ansible_user":          "root",
         "hostname":              "issuing-ca",
-        "lxc_template_file_id": "local:vztmpl/debian-12.tar.xz",
     },
 }
 
 BASE_DNS = {
+    "enabled": True,
     "auth": {
+        "node":         "pve",
         "ip":           "10.10.40.12/24",
         "ct_id":        203,
         "ansible_user": "root",
         "hostname":     "dns-auth",
     },
     "dist": {
+        "node":         "pve",
         "ip":           "10.10.40.13/24",
         "ct_id":        204,
         "ansible_user": "root",
         "hostname":     "dns-dist",
         "client_cidrs": ["10.10.10.0/24"],
     },
+}
+
+
+BASE_NEXUS = {
+    "enabled":      True,
+    "node":         "pve",
+    "ip":           "10.10.40.14/24",
+    "ct_id":        205,
+    "ansible_user": "root",
+    "hostname":     "nexus",
+    "network":      "lab",
+    # the IaC-required repo set (validate_nexus_apt_proxy_repos enforces it)
+    "apt_proxy_repos": [
+        {"name": "apt-proxy-trixie", "remote_url": "http://deb.example.org/debian", "distribution": "trixie"},
+        {"name": "apt-proxy-trixie-security", "remote_url": "http://sec.example.org/debian-security", "distribution": "trixie-security"},
+        {"name": "apt-proxy-trixie-updates", "remote_url": "http://deb.example.org/debian", "distribution": "trixie-updates"},
+        {"name": "apt-proxy-smallstep", "remote_url": "https://pkg.example.org/stable/debian", "distribution": "debs", "flat": True},
+        {"name": "apt-proxy-powerdns-auth-50", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-auth-50"},
+        {"name": "apt-proxy-powerdns-rec-54", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-rec-54"},
+        {"name": "apt-proxy-dnsdist-21", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-dnsdist-21"},
+    ],
 }
 
 
@@ -119,6 +151,7 @@ def make_cfg(*, infra=None, services=None, extra=None):
             "minio": BASE_MINIO,
             "pki":   BASE_PKI,
             "dns":   BASE_DNS,
+            "nexus": BASE_NEXUS,
         }),
     }
     if extra:
@@ -279,20 +312,42 @@ class TestTfvarsOutput(unittest.TestCase):
     def _tfvars(self, cfg):
         return gen.gen_tfvars(cfg, "sandbox")
 
-    def test_per_service_bridge_vars_emitted(self):
-        """All four per-service bridge vars must appear in tfvars."""
+    def _entry(self, out, svc_key):
+        """Extract one services-map entry block, whitespace-normalized for assertions."""
+        import re
+        lines = out.splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith(f"  {svc_key} = {{"))
+        end = next(i for i in range(start, len(lines)) if lines[i] == "  }")
+        return "\n".join(re.sub(r"\s+", " ", l).strip() for l in lines[start:end + 1])
+
+    def test_enabled_services_present_in_map(self):
+        """Every enabled service appears as a services-map entry."""
         out = self._tfvars(make_cfg())
-        for var in ("root_ca_bridge", "issuing_ca_bridge", "dns_auth_bridge", "dns_dist_bridge"):
-            self.assertIn(var, out, f"Missing: {var}")
+        for svc_key in ("root_ca", "issuing_ca", "dns_auth", "dns_dist", "nexus"):
+            self.assertIn(f"  {svc_key} = {{", out, f"Missing map entry: {svc_key}")
+
+    def test_disabled_service_absent_from_map(self):
+        """A service without enabled: true is absent from the services map."""
+        import copy
+        services = {
+            "minio": BASE_MINIO,
+            "pki":   copy.deepcopy(BASE_PKI),
+            "dns":   BASE_DNS,
+            "nexus": BASE_NEXUS,
+        }
+        services["pki"]["enabled"] = False
+        out = self._tfvars(make_cfg(services=services))
+        self.assertNotIn("root_ca = {", out)
+        self.assertNotIn("issuing_ca = {", out)
+        self.assertIn("dns_auth = {", out)
 
     def test_global_bridge_not_emitted(self):
-        """Global 'bridge =' line must NOT appear in tfvars (only per-service *_bridge vars)."""
+        """No top-level 'bridge =' var — bridge lives inside each map entry."""
         out = self._tfvars(make_cfg())
         for line in out.splitlines():
-            stripped = line.lstrip()
             self.assertFalse(
-                stripped.startswith("bridge ") or stripped.startswith("bridge="),
-                f"Found a global 'bridge =' line: {line!r}",
+                line.startswith("bridge ") or line.startswith("bridge="),
+                f"Found a top-level 'bridge =' line: {line!r}",
             )
 
     def test_vlan_id_not_emitted(self):
@@ -310,10 +365,10 @@ class TestTfvarsOutput(unittest.TestCase):
         cfg = make_cfg()
         cfg["infrastructure"]["networks"]["lab"]["gateway"] = "10.10.40.254"
         out = self._tfvars(cfg)
-        self.assertIn('root_ca_ipv4_gateway    = "10.10.40.254"', out)
-        self.assertIn('issuing_ca_ipv4_gateway = "10.10.40.254"', out)
-        self.assertIn('dns_auth_ipv4_gateway   = "10.10.40.254"', out)
-        self.assertIn('dns_dist_ipv4_gateway   = "10.10.40.254"', out)
+        for svc_key in ("root_ca", "issuing_ca", "dns_auth", "dns_dist"):
+            entry = self._entry(out, svc_key)
+            self.assertIn('ipv4_gateway = "10.10.40.254"', entry,
+                          f"{svc_key} gateway not sourced from network")
 
     def test_multi_network_bridge_per_service(self):
         """Services on different networks emit the correct bridge per service."""
@@ -333,131 +388,39 @@ class TestTfvarsOutput(unittest.TestCase):
         cfg["services"]["minio"]["network"]             = "lab"
 
         out = self._tfvars(cfg)
-        self.assertIn('dns_dist_bridge         = "lan"',  out)
-        self.assertIn('dns_dist_ipv4_gateway   = "10.10.10.1"', out)
-        self.assertIn('dns_auth_bridge         = "lab"',  out)
-        self.assertIn('dns_auth_ipv4_gateway   = "10.10.40.1"', out)
-        self.assertIn('root_ca_bridge          = "lab"',  out)
-        self.assertIn('issuing_ca_bridge       = "lab"',  out)
+        dist = self._entry(out, "dns_dist")
+        self.assertIn('bridge = "lan"', dist)
+        self.assertIn('ipv4_gateway = "10.10.10.1"', dist)
+        auth = self._entry(out, "dns_auth")
+        self.assertIn('bridge = "lab"', auth)
+        self.assertIn('ipv4_gateway = "10.10.40.1"', auth)
+        self.assertIn('bridge = "lab"', self._entry(out, "root_ca"))
+        self.assertIn('bridge = "lab"', self._entry(out, "issuing_ca"))
 
-    def test_sparse_no_dns_section(self):
-        """Config without services.dns → no DNS lines in tfvars."""
-        cfg = make_cfg(services={"minio": BASE_MINIO, "pki": BASE_PKI})
+    def test_sparse_absent_component_is_valid(self):
+        """A component absent from services: is simply disabled — valid config."""
+        cfg = make_cfg(services={"minio": BASE_MINIO, "pki": BASE_PKI, "nexus": BASE_NEXUS})
+        silence_stderr(lambda: gen.validate_schema(cfg))  # must not exit
         out = self._tfvars(cfg)
-        self.assertNotIn("dns_auth", out)
-        self.assertNotIn("dns_dist", out)
+        self.assertNotIn("dns_auth = {", out)
+        self.assertNotIn("dns_dist = {", out)
 
-    def test_sparse_no_pki_section(self):
-        """Config without services.pki → no PKI lines in tfvars."""
-        import copy
-        dns = copy.deepcopy(BASE_DNS)
-        cfg = make_cfg(services={"minio": BASE_MINIO, "dns": dns})
-        out = self._tfvars(cfg)
-        self.assertNotIn("root_ca", out)
-        self.assertNotIn("issuing_ca", out)
+    def test_unknown_service_rejected(self):
+        """services.<name> with no component directory is a hard error."""
+        cfg = make_cfg()
+        cfg["services"]["mystery_box"] = {"enabled": True, "node": "pve", "ip": "10.10.40.99"}
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: gen.validate_schema(cfg))
+        self.assertIn("mystery_box", str(cm.exception.code))
 
-
-# ---------------------------------------------------------------------------
-# Squid allowlist tests
-# ---------------------------------------------------------------------------
-
-class TestAllowedCidrs(unittest.TestCase):
-
-    def _cidrs(self, cfg):
-        return gen.gen_allowed_cidrs(cfg, "sandbox")
-
-    def test_single_network_one_cidr(self):
-        """Single network → exactly one network CIDR in allowlist."""
-        out = self._cidrs(make_cfg())
-        self.assertIn("10.10.40.0/24", out)
-
-    def test_proxmox_always_present(self):
-        """Proxmox /32 always appears regardless of service network."""
-        out = self._cidrs(make_cfg())
-        self.assertIn("10.0.0.1/32", out)
-
-    def test_two_services_same_network_one_cidr(self):
-        """Two services on the same network → CIDR appears only once."""
-        out = self._cidrs(make_cfg())
-        count = out.count("10.10.40.0/24")
-        self.assertEqual(count, 1, f"Expected 1 occurrence, got {count}")
-
-    def test_multi_network_all_cidrs_emitted(self):
-        """Services on distinct networks → all CIDRs emitted."""
+    def test_enabled_component_missing_required_field(self):
+        """An enabled component missing a manifest-required field is rejected."""
         import copy
         cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["lan"] = {
-            "bridge":  "lan",
-            "cidr":    "10.10.10.0/24",
-            "gateway": "10.10.10.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["default_network"] = None
-        cfg["services"]["pki"]["root_ca"]["network"]    = "lab"
-        cfg["services"]["pki"]["issuing_ca"]["network"] = "lab"
-        cfg["services"]["dns"]["auth"]["network"]       = "lab"
-        cfg["services"]["dns"]["dist"]["network"]       = "lan"
-        cfg["services"]["minio"]["network"]             = "lab"
-
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)
-        self.assertIn("10.10.10.0/24", out)
-
-    def test_unused_network_not_emitted(self):
-        """Network defined but no service uses it → CIDR not emitted."""
-        cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["unused"] = {
-            "bridge":  "unused",
-            "cidr":    "172.16.0.0/24",
-            "gateway": "172.16.0.1",
-            "vlan_id": None,
-        }
-        out = self._cidrs(cfg)
-        self.assertNotIn("172.16.0.0/24", out)
-
-    def test_no_minio_slash32(self):
-        """MinIO /32 must NOT appear — covered by its network CIDR."""
-        out = self._cidrs(make_cfg())
-        # MinIO is at 10.10.40.5; /32 of that must not be present
-        self.assertNotIn("10.10.40.5/32", out)
-
-    def test_three_distinct_networks(self):
-        """Three distinct networks with services → all three CIDRs emitted."""
-        import copy
-        cfg = make_cfg()
-        cfg["infrastructure"]["networks"]["mgmt"] = {
-            "bridge":  "mgmt",
-            "cidr":    "10.10.30.0/24",
-            "gateway": "10.10.30.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["networks"]["lan"] = {
-            "bridge":  "lan",
-            "cidr":    "10.10.10.0/24",
-            "gateway": "10.10.10.1",
-            "vlan_id": None,
-        }
-        cfg["infrastructure"]["default_network"] = None
-        cfg["services"]["minio"]["network"]             = "lab"
-        cfg["services"]["pki"]["root_ca"]["network"]    = "mgmt"
-        cfg["services"]["pki"]["issuing_ca"]["network"] = "mgmt"
-        cfg["services"]["dns"]["auth"]["network"]       = "mgmt"
-        cfg["services"]["dns"]["dist"]["network"]       = "lan"
-
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)   # lab (minio)
-        self.assertIn("10.10.30.0/24", out)   # mgmt (pki, dns-auth)
-        self.assertIn("10.10.10.0/24", out)   # lan (dns-dist)
-
-    def test_service_without_ip_not_counted(self):
-        """Services without 'ip' field don't contribute a network CIDR."""
-        cfg = make_cfg(services={"minio": BASE_MINIO})
-        # minio is on lab; no pki/dns
-        out = self._cidrs(cfg)
-        self.assertIn("10.10.40.0/24", out)
-        # Only the lab CIDR and proxmox /32 — no PKI or DNS networks
-        lines = [l for l in out.splitlines() if l and not l.startswith("#")]
-        self.assertEqual(len(lines), 2)  # lab CIDR + proxmox /32
+        del cfg["services"]["nexus"]["ct_id"]
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: gen.validate_schema(cfg))
+        self.assertIn("ct_id", str(cm.exception.code))
 
 
 # ---------------------------------------------------------------------------
@@ -561,7 +524,7 @@ class TestInventoryOutput(unittest.TestCase):
     def test_sparse_no_pki_no_pki_groups(self):
         """Config without pki section → no pki_ groups in inventory."""
         import copy
-        dns = {k: dict(v) for k, v in BASE_DNS.items()}
+        dns = copy.deepcopy(BASE_DNS)
         cfg = make_cfg(services={"minio": BASE_MINIO, "dns": dns})
         out = self._inv(cfg)
         self.assertNotIn("pki_root_ca", out)
@@ -615,6 +578,165 @@ class TestResolveNetwork(unittest.TestCase):
         finally:
             sys.stderr = old_stderr
         self.assertEqual(cm.exception.code, 1)
+
+
+# ---------------------------------------------------------------------------
+# DNS record derivation tests
+# ---------------------------------------------------------------------------
+
+class TestDeriveDnsRecords(unittest.TestCase):
+
+    def test_dns_aliases_emit_extra_records(self):
+        """dns_aliases on a nested service adds records at the same IP."""
+        import copy
+        pki = copy.deepcopy(BASE_PKI)
+        pki["issuing_ca"]["dns_aliases"] = ["ca"]
+        records = gen._derive_dns_records({"pki": pki})
+        by_name = {r["name"]: r for r in records}
+        self.assertIn("issuing-ca", by_name)  # primary label kept
+        self.assertIn("ca", by_name)          # alias added
+        self.assertEqual(by_name["ca"]["ip"], by_name["issuing-ca"]["ip"])
+
+    def test_dns_false_suppresses_aliases_too(self):
+        """dns: false removes the host AND its aliases from records."""
+        svc = {"web": {"ip": "10.0.0.9", "dns": False, "dns_aliases": ["www"], "node": "pve"}}
+        records = gen._derive_dns_records(svc)
+        self.assertEqual(records, [])
+
+
+# ---------------------------------------------------------------------------
+# Capability resolution tests
+# ---------------------------------------------------------------------------
+
+class TestCapabilities(unittest.TestCase):
+
+    def _resolved(self, cfg):
+        components = gen.discover_components()
+        providers = gen.build_providers(cfg, components)
+        return gen.resolve_consumes(cfg, components, providers, gen.CORE_CONSUMES)
+
+    def test_hard_consume_missing_provider_errors(self):
+        """log_server enabled without minio (s3.endpoint) → validation error."""
+        import copy
+        services = {
+            "minio": copy.deepcopy(BASE_MINIO),
+            "pki": BASE_PKI, "dns": BASE_DNS, "nexus": BASE_NEXUS,
+            "log_server": {"enabled": True, "node": "pve", "ip": "10.10.40.16/24",
+                           "ct_id": 206, "ansible_user": "root", "hostname": "log-server"},
+        }
+        services["minio"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: self._resolved(cfg))
+        self.assertIn("s3.endpoint", str(cm.exception.code))
+
+    def test_optional_consume_absent_provider_no_var(self):
+        """pki disabled → minio_ca_url does not exist (no dummy value)."""
+        import copy
+        services = {
+            "minio": BASE_MINIO,
+            "pki": copy.deepcopy(BASE_PKI),
+            "dns": BASE_DNS, "nexus": BASE_NEXUS,
+        }
+        services["pki"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        group_vars, _ = self._resolved(cfg)
+        self.assertNotIn("minio_ca_url", group_vars.get("minio", {}))
+
+    def test_optional_consume_present_provider_resolves(self):
+        """pki enabled → minio/nexus consume ca.url."""
+        cfg = make_cfg()
+        group_vars, _ = self._resolved(cfg)
+        self.assertEqual(group_vars["minio"]["minio_ca_url"], "https://ca.test.example.com")
+        self.assertEqual(group_vars["nexus"]["nexus_ca_url"], "https://ca.test.example.com")
+
+    def test_many_aggregates_dns_records(self):
+        """dns_auth consumes dns.record (many) — every enabled instance appears."""
+        cfg = make_cfg()
+        group_vars, _ = self._resolved(cfg)
+        names = {r["name"] for r in group_vars["dns_auth"]["dns_records"]}
+        self.assertIn("minio", names)
+        self.assertIn("nexus", names)
+        self.assertIn("root-ca", names)
+
+    def test_also_set_flag_only_when_resolved(self):
+        """dnstap flag set only when a syslog.target provider exists."""
+        import copy
+        cfg = make_cfg()  # no log_server in default fixture
+        group_vars, _ = self._resolved(cfg)
+        self.assertNotIn("pdns_dnsdist_dnstap_enabled", group_vars.get("dns_dist", {}))
+        services = copy.deepcopy(cfg["services"])
+        services["log_server"] = {"enabled": True, "node": "pve", "ip": "10.10.40.16/24",
+                                  "ct_id": 206, "ansible_user": "root", "hostname": "log-server"}
+        cfg2 = make_cfg(services=services)
+        group_vars2, core_vars2 = self._resolved(cfg2)
+        self.assertTrue(group_vars2["dns_dist"]["pdns_dnsdist_dnstap_enabled"])
+        self.assertEqual(core_vars2["common_log_server_address"], "10.10.40.16")
+
+    def test_core_apt_source_default_empty(self):
+        """nexus disabled → nexus_apt_proxy defaults to "" (falsy) in all.vars."""
+        import copy
+        services = {"minio": BASE_MINIO, "pki": BASE_PKI, "dns": BASE_DNS,
+                    "nexus": copy.deepcopy(BASE_NEXUS)}
+        services["nexus"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        _, core_vars = self._resolved(cfg)
+        self.assertEqual(core_vars["nexus_apt_proxy"], "")
+
+# ---------------------------------------------------------------------------
+# .envrc smart-merge tests (atomic_write)
+# ---------------------------------------------------------------------------
+
+class TestEnvrcSmartMerge(unittest.TestCase):
+
+    def _merge(self, existing, generated):
+        """Run atomic_write against a real temp .envrc and return the merged text."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".envrc")
+            with open(path, "w") as f:
+                f.write(existing)
+            return gen.atomic_write(path, generated)
+
+    def test_filled_secret_preserved(self):
+        """A filled-in secret survives regeneration over its CHANGE_ME slot."""
+        existing  = 'export MINIO_ROOT_PASSWORD="realvalue123"\n'
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        merged = self._merge(existing, generated)
+        self.assertIn('export MINIO_ROOT_PASSWORD="realvalue123"', merged)
+        self.assertNotIn(gen.CHANGE_ME, merged)
+
+    def test_operator_added_key_carried_over(self):
+        """An export the generator never emitted is carried, not deleted."""
+        existing = (
+            'export MINIO_ROOT_PASSWORD="realvalue123"\n'
+            'export OPERATOR_CUSTOM_FLAG="keep-me"\n'
+        )
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        merged = self._merge(existing, generated)
+        self.assertIn('export OPERATOR_CUSTOM_FLAG="keep-me"', merged)
+        self.assertIn(".envrc.local", merged)  # carried block points at the seam
+
+    def test_carry_over_idempotent(self):
+        """Regenerating twice does not duplicate carried lines or headers."""
+        existing  = 'export OPERATOR_CUSTOM_FLAG="keep-me"\n'
+        generated = f'export MINIO_ROOT_PASSWORD="{gen.CHANGE_ME}"\n'
+        once  = self._merge(existing, generated)
+        twice = self._merge(once, generated)
+        self.assertEqual(once.count('export OPERATOR_CUSTOM_FLAG="keep-me"'), 1)
+        self.assertEqual(twice.count('export OPERATOR_CUSTOM_FLAG="keep-me"'), 1)
+        self.assertEqual(
+            twice.count("Preserved from the previous .envrc"), 1,
+            "carry-over header must not accumulate across regenerations",
+        )
+
+    def test_emitted_commented_var_not_carried(self):
+        """A var the template emits commented-out (opt-in) is not duplicated by carry-over."""
+        existing  = 'export SSL_CERT_FILE=/workspace/.pki/root_ca.crt\n'
+        generated = '# export SSL_CERT_FILE=/workspace/.pki/root_ca.crt\n'
+        merged = self._merge(existing, generated)
+        # uncommented-opt-in restore path handles it; carry-over must not add a second copy
+        self.assertEqual(merged.count("export SSL_CERT_FILE"), 1)
 
 
 # ---------------------------------------------------------------------------

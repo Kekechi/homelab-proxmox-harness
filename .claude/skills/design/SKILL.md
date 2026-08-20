@@ -15,11 +15,11 @@ Facilitate a structured design discussion for net-new infrastructure. The goal i
 - User has a rough idea but hasn't decided what to build yet
 - User wants to think through architecture before committing to an approach
 - User says "brainstorm", "design exploration", "not implementing yet", or similar
-- The idea is too vague to hand to `/infra-plan` without design decisions first
+- The idea is too vague to execute without design decisions first
 
 ## When NOT to Activate
 
-- User already knows what they want to build → use `/infra-plan` directly
+- User already knows what they want to build → build it (sandbox work executes directly; no pipeline)
 - User wants to evaluate existing infrastructure → use `/assess`
 
 ## Session Document
@@ -27,7 +27,7 @@ Facilitate a structured design discussion for net-new infrastructure. The goal i
 Design sessions are long. At the end of Phase 1 and after every decision in Phase 2, write (or update) a session document at:
 
 ```
-.claude/session/design-<topic-slug>.md
+session/design-<topic-slug>.md
 ```
 
 This document is the source of truth for the session. If context is compacted or cleared, the user re-invokes `/design` with this file as context and nothing is lost.
@@ -83,19 +83,9 @@ Likely fine, worth confirming: ...
 
 After writing the session document, if the conversation has grown long (post Phase 1, or after 3+ decisions), say:
 
-> "SESSION.md is up to date at `.claude/session/design-<topic>.md`. If context is getting long, run `/clear` now — then re-invoke `/design` with: 'Continue from `.claude/session/design-<topic>.md`.' Everything needed to resume is in that file."
+> "SESSION.md is up to date at `session/design-<topic>.md`. If context is getting long, run `/clear` now — then re-invoke `/design` with: 'Continue from `session/design-<topic>.md`.' Everything needed to resume is in that file."
 
 Do not say this after every single decision — only when it would be genuinely useful (context is long, or a natural phase boundary has just passed).
-
-## Pre-flight: Squid allowlist check
-
-Before starting any design session involving new software, check whether that software's documentation domain is in the Squid allowed-domains list:
-
-```bash
-grep "<software-domain>" /workspace/.devcontainer/squid/squid.conf
-```
-
-If the domain is missing, ask the operator to add it **now** — before design begins. Doc verification is needed throughout design, plan review, and deployment. Discovering a blocked domain mid-session wastes time and breaks the research flow. Relevant domains to check: official docs, vendor package repos (e.g. `repo.powerdns.com`), and any GitHub raw content sources.
 
 ## Phase 1: Orient
 
@@ -184,18 +174,20 @@ One paragraph: what this infrastructure does and why.
 ## Open Items (deferred, not forgotten)
 [Things intentionally deferred with a note on when/how to revisit]
 
-## Ready for planning
-[Explicit statement that design is complete and what to hand to /infra-plan]
+## Execution boundary
+[Include when the record will be executed autonomously (/free-run): what the session
+may touch, what is out of bounds, and anything to confirm at runtime. The
+non-negotiables in sandbox-isolation.md apply regardless and need not be repeated.]
 ```
 
-Save this as `docs/design/<topic>.md` (committed). The session document at `.claude/session/design-<topic>.md` is not committed — it's session state that can be discarded once the design record is written.
+Save this as `docs/design/<topic>.md` (committed). The session document at `session/design-<topic>.md` is not committed — it's session state that can be discarded once the design record is written.
 
 ## Handoff
 
-When the user is ready, say:
-> "Run `/infra-plan` with this design as the input."
-
-Do not launch `/infra-plan` automatically. The user decides when to cross from design to planning.
+An agreed design record **is** the go signal ("looks good is a go"). Once the operator
+agrees: execute directly in-session for contained changes, or via `/free-run` for a long
+autonomous run. Production-bound work still ends at a plan file + `/handoff` — never an
+apply. Do not start executing before the operator has agreed to the record.
 
 ## Tone and Pacing
 

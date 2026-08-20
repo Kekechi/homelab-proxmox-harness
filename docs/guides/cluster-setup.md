@@ -99,9 +99,13 @@ If you have an existing `config/sandbox.yml` from a single-node setup:
 4. **Update** `infrastructure.storage.lxc_template_file_id` to:
    `"nfs-shared:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"`
 5. Run `make configure` — the generator will validate the new schema and emit
-   updated tfvars and allowed-cidrs.
+   updated tfvars, inventory, and `ansible/ansible.cfg`.
 
 If any field is missing, the generator will exit with a descriptive error message.
+
+> The schema for each service block is defined by its component's manifest
+> (`components/<name>/component.yml`). Private values can go in the gitignored
+> `config/<env>.local.yml` overlay, which deep-merges over the base config.
 
 ## 6. State Migration
 

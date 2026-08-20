@@ -1,56 +1,15 @@
-# Outputs from provisioned resources
-# Add outputs here as module calls are activated in main.tf.
-# Outputs are consumed by Ansible inventory, other modules, or operator scripts.
+# Outputs from provisioned resources — generic maps keyed by service name.
+# Consumed by operators/scripts via `terraform output -json`.
 
-# Example (uncomment when test_vm module is active):
-# output "vm_id" {
-#   description = "Provisioned VM ID"
-#   value       = module.test_vm.vm_id
-# }
-#
-# output "vm_ipv4" {
-#   description = "Provisioned VM IPv4 address (requires qemu-guest-agent)"
-#   value       = module.test_vm.ipv4_addresses
-# }
-
-# ---------------------------------------------------------------------------
-# PKI outputs — null when enable_pki = false
-# ---------------------------------------------------------------------------
-
-output "root_ca_vm_id" {
-  description = "Proxmox VM ID of the offline Root CA (null when enable_pki = false)"
-  value       = one(module.root_ca[*].vm_id)
+output "service_ids" {
+  description = "Proxmox VM/CT id per provisioned service"
+  value = merge(
+    { for name, m in module.vm : name => m.vm_id },
+    { for name, m in module.lxc : name => m.vm_id },
+  )
 }
 
-output "issuing_ca_ct_id" {
-  description = "Proxmox container ID of the Issuing CA LXC (null when enable_pki = false)"
-  value       = one(module.issuing_ca[*].vm_id)
-}
-
-output "pki_dns_records" {
-  description = "DNS A records to add to DNS for PKI hosts. IPs are null when DHCP is configured — set root_ca_ipv4_address / issuing_ca_ipv4_address in tfvars to populate."
-  value = {
-    "root-ca" = {
-      ip     = var.root_ca_ipv4_address
-      record = "root-ca.${var.domain_name}"
-    }
-    "ca" = {
-      ip     = var.issuing_ca_ipv4_address
-      record = "ca.${var.domain_name}"
-    }
-  }
-}
-
-# ---------------------------------------------------------------------------
-# DNS outputs — null when enable_dns = false
-# ---------------------------------------------------------------------------
-
-output "dns_auth_ct_id" {
-  description = "Proxmox container ID of the DNS Auth+Recursor LXC (null when enable_dns = false)"
-  value       = one(module.dns_auth[*].vm_id)
-}
-
-output "dns_dist_ct_id" {
-  description = "Proxmox container ID of the DNSdist LXC (null when enable_dns = false)"
-  value       = one(module.dns_dist[*].vm_id)
+output "service_addresses" {
+  description = "Configured IPv4 address (CIDR) per provisioned service; null = DHCP"
+  value       = { for name, svc in var.services : name => svc.ipv4_address }
 }

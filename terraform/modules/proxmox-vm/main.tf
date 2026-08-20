@@ -1,5 +1,5 @@
 resource "proxmox_virtual_environment_vm" "this" {
-  name      = var.vm_name
+  name      = var.name
   vm_id     = var.vm_id
   node_name = var.node_name
   pool_id   = var.pool_id
@@ -73,9 +73,9 @@ resource "proxmox_virtual_environment_vm" "this" {
     }
 
     dynamic "user_account" {
-      for_each = var.ssh_public_key != null ? [1] : []
+      for_each = length(var.ssh_public_keys) > 0 ? [1] : []
       content {
-        keys = [var.ssh_public_key]
+        keys = var.ssh_public_keys
       }
     }
   }

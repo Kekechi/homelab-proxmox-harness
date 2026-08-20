@@ -1,6 +1,6 @@
 ---
 name: sanity-sweep
-description: Tier-2 agent sanity sweep over the deployed services. Runs the read-only Tier-2 collectors, reads the raw behavioral-state dumps, and judges per service "is this working as intended? any smell, misconfig, confusing naming, or over-broad scope?" — writing findings to .claude/session/verification-findings.md. RECORD ONLY; never acts on any finding, and NEVER touches the trust model (provisioner names/scopes/signing) — that is a /design item.
+description: Tier-2 agent sanity sweep over the deployed services. Runs the read-only Tier-2 collectors, reads the raw behavioral-state dumps, and judges per service "is this working as intended? any smell, misconfig, confusing naming, or over-broad scope?" — writing findings to session/verification-findings.md. RECORD ONLY; never acts on any finding, and NEVER touches the trust model (provisioner names/scopes/signing) — that is a /design item.
 disable-model-invocation: false
 ---
 
@@ -41,10 +41,11 @@ make no pass/fail call. This skill drives the agent to read those dumps and
    bash scripts/collect/collect-all.sh
    ```
 
-   This writes per-service raw dumps under
-   `.claude/session/collect-dump/<UTC-timestamp>/` (one `<svc>.txt` per service)
-   and echoes them to stdout. Splunk is skipped when disabled (off by design in
-   sandbox). To enrich the Nexus dump with privileged sections
+   This writes per-component raw dumps under
+   `session/collect-dump/<UTC-timestamp>/` — collectors are discovered
+   from `components/*/collect.sh` (+ `components.local/`), so enabled private
+   components are swept too — and echoes them to stdout. Disabled components are
+   skipped (e.g. Splunk when off by design in sandbox). To enrich the Nexus dump with privileged sections
    (roles/privileges/users), export `NEXUS_ADMIN_PASSWORD` first; without it,
    those sections are noted as gaps and the public repo list is still dumped.
    The MinIO collector queries via the local `mcli` admin alias
@@ -72,12 +73,12 @@ make no pass/fail call. This skill drives the agent to read those dumps and
      `x509.allow.dns: ["*.<domain>"]` with `allowWildcardNames: true`, so any
      provisioner can mint a cert for the whole domain wildcard.
 
-   If `collect-issuing-ca.sh`'s provisioner dump no longer shows an `acme`/ACME
-   provisioner, **STOP and report** (the plant is gone — unexpected; the sweep's
+   If the pki component's collector dump (`components/pki/collect.sh`) no longer
+   shows an `acme`/ACME provisioner, **STOP and report** (the plant is gone — unexpected; the sweep's
    own validity is in question). Both halves of the plant are **trust-model**
    findings → record them, do **not** act.
 
-4. **Write the findings.** Write `.claude/session/verification-findings.md` with:
+4. **Write the findings.** Write `session/verification-findings.md` with:
    - a header (UTC timestamp, ENV, dump dir path, collector commit if known);
    - one section per service with its findings (or "no smell observed");
    - for every finding: observation (with dump citation), why-it-smells,
@@ -89,11 +90,12 @@ make no pass/fail call. This skill drives the agent to read those dumps and
 5. **Report, do not act.** Present a short summary (count of findings by
    severity, plus the plant self-check result). Do **not** open a plan, edit a
    config, or touch any service. If the operator wants to act on a finding, that
-   is a separate `/design` (trust-model) or `/infra-plan` (other layers) session.
+   is a separate `/design` session (trust-model) or a separately agreed change
+   (other layers).
 
 ## Output
 
-- `.claude/session/verification-findings.md` — the recorded findings (the
+- `session/verification-findings.md` — the recorded findings (the
   operator's async audit surface; uncommitted by default).
 - A console summary: findings-by-severity + the known-plant self-check verdict.
 

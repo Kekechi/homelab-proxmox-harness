@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
-# verify-all.sh — Tier-1 machine gate: run every per-service verify and
-# aggregate to a single hard exit 0 (all green) / 1 (any service failed).
+# verify-all.sh — Tier-1 machine gate: run every enabled component's verify.sh
+# and aggregate to a single hard exit 0 (all green) / 1 (any component failed).
 #
-# This is the cheap gate intended to run on every rebuild loop (WS2). It is
-# behavioral: each verify-<svc>.sh queries the running daemon, not its config.
-#
-# Splunk is skipped gracefully when services.splunk.enabled is false in
-# config/<env>.yml (it is OFF by design in sandbox).
+# Components are DISCOVERED, never hand-listed: components/*/verify.sh and
+# components.local/*/verify.sh (private overlay) run in manifest `order:`.
+# A component is skipped when config services.<name>.enabled is not true, or
+# when it has no verify.sh (reported, so a silent gap is visible).
 #
 # Usage: bash scripts/verify/verify-all.sh [ENV]   (default ENV=sandbox)
 # =============================================================================
@@ -18,42 +17,53 @@ export ENV="${1:-${ENV:-sandbox}}"
 # shellcheck source=lib.sh
 source "${SELF_DIR}/lib.sh" "all"
 
-# Service -> script. Order follows the trust/dependency chain: CA, then the
-# repo, then the resolver chain, then storage + telemetry.
-SERVICES=(issuing-ca nexus dns-auth dnsdist dns-collector minio log-server)
+# Discover components in manifest order (order:, ties by name), both trees.
+mapfile -t COMPONENT_DIRS < <(
+    python3 - "$REPO_ROOT" <<'PYEOF'
+import os, sys, yaml
+root = sys.argv[1]
+rows = []
+for tree in ("components", "components.local"):
+    base = os.path.join(root, tree)
+    if not os.path.isdir(base):
+        continue
+    for entry in sorted(os.listdir(base)):
+        manifest = os.path.join(base, entry, "component.yml")
+        if os.path.isfile(manifest):
+            with open(manifest) as f:
+                m = yaml.safe_load(f) or {}
+            rows.append((m.get("order", 100), m.get("name", entry), os.path.join(base, entry)))
+for _, _, path in sorted(rows):
+    print(path)
+PYEOF
+)
 
 overall=0
 declare -a results=()
 
-run_one() {
-    local svc="$1"
+for cdir in "${COMPONENT_DIRS[@]}"; do
+    name="$(basename "$cdir")"
+    enabled="$(cfg "services.${name}.enabled")"
     printf '\n'
-    if bash "${SELF_DIR}/verify-${svc}.sh"; then
-        results+=("PASS  verify-${svc}")
+    if [[ "$enabled" != "True" && "$enabled" != "true" ]]; then
+        printf '%s== verify-%s: SKIP (services.%s.enabled is not true — off by design) ==%s\n' \
+            "$_c_yel" "$name" "$name" "$_c_rst"
+        results+=("SKIP  verify-${name} (disabled)")
+        continue
+    fi
+    if [[ ! -f "${cdir}/verify.sh" ]]; then
+        printf '%s== verify-%s: SKIP (enabled but no verify.sh in %s) ==%s\n' \
+            "$_c_yel" "$name" "$cdir" "$_c_rst"
+        results+=("SKIP  verify-${name} (enabled, no verify.sh)")
+        continue
+    fi
+    if bash "${cdir}/verify.sh"; then
+        results+=("PASS  verify-${name}")
     else
-        results+=("FAIL  verify-${svc}")
+        results+=("FAIL  verify-${name}")
         overall=1
     fi
-}
-
-for svc in "${SERVICES[@]}"; do
-    run_one "$svc"
 done
-
-# Splunk — only when enabled. OFF by design in sandbox.
-printf '\n'
-splunk_enabled="$(cfg services.splunk.enabled)"
-if [[ "$splunk_enabled" == "True" ]]; then
-    if [[ -f "${SELF_DIR}/verify-splunk.sh" ]]; then
-        run_one "splunk"
-    else
-        printf '  %s[SKIP]%s verify-splunk: enabled but no verify-splunk.sh present\n' "$_c_yel" "$_c_rst"
-        results+=("SKIP  verify-splunk (enabled, no script)")
-    fi
-else
-    printf '%s== verify-splunk: SKIP (services.splunk.enabled=false — off by design) ==%s\n' "$_c_yel" "$_c_rst"
-    results+=("SKIP  verify-splunk (disabled)")
-fi
 
 # --- aggregate summary -------------------------------------------------------
 printf '\n%s================ verify-all summary (ENV=%s) ================%s\n' "$_c_cyn" "$ENV" "$_c_rst"

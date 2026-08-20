@@ -16,7 +16,6 @@ task (full routing table: `scripts/genconfig/CLAUDE.md`):
 |---|---|---|
 | Change a `terraform/<env>.tfvars` value | `genconfig/emit/tfvars.py` (`gen_tfvars`) | tfvars |
 | Change an Ansible inventory group / group_var | `genconfig/emit/inventory.py` (`gen_inventory`) | inventory/hosts.yml |
-| Change the Squid allowlist | `genconfig/emit/allowed_cidrs.py` (`gen_allowed_cidrs`) | allowed-cidrs.conf |
 | Change a non-secret `.envrc` line | `genconfig/emit/envrc.py` (`gen_envrc`); smart-merge in `helpers.atomic_write` | .envrc |
 | Change `.env.mk` (ENV/bucket) | `genconfig/emit/env_mk.py` (`gen_env_mk`) | .env.mk |
 | Change PKI root/issuing group_vars | `genconfig/emit/pki_group_vars.py` (`gen_pki_group_vars`) | group_vars/pki_* |
@@ -29,34 +28,29 @@ Rules of the road (do NOT duplicate — see `.claude/rules/config-management.md`
 - Generated files carry a DO-NOT-EDIT header; never hand-edit them.
 - Output must be **byte-stable** for unchanged input — the golden test enforces it.
 
-## Cross-service couplings that must stay in one pass (`emit/inventory.py`)
+## Cross-component values
 
-- `log_server` reads `services.minio` (→ `otelcol_minio_endpoint`) and
-  `services.splunk` (→ `otelcol_splunk_hec_enabled`/`_url`, true only when Splunk
-  is enabled — Splunk is deprecation-planned; default sink is MinIO awss3).
-- `dns.dist` reads its network CIDR + `client_cidrs` (→ `pdns_dnsdist_acl_cidrs`).
-- `_derive_dns_records` feeds both `common_internal_hosts` (/etc/hosts) and the
-  `dns_auth` A-records.
+Resolved via capability contracts (`genconfig/capabilities.py`) from each
+component manifest's consumes/provides — see `scripts/genconfig/CLAUDE.md` and
+`components/CLAUDE.md`. The emitters no longer reach across services.
 
 ## Adding to the config — the two cases
 
 - **Case A — new field on an existing service**: add it to `config/<env>.yml.example`,
   read it in the relevant `emit/*` (or `helpers.py`), emit via `_hcl_str` if
   optional, then `python3 scripts/test-golden.py --update` and review `git diff scripts/golden/`.
-- **Case B — new service**: add `services.<name>` (ip/node/network/...), extend
-  `validate_schema` (`genconfig/validation.py`), add emission to
-  `emit/tfvars.py` (TF vars + `enable_<svc>`) and `emit/inventory.py`
-  (auto-derived group), add the TF module + Ansible role/playbook.
-  The loop is the regression test; the golden fixture in `test-golden.py` should
-  gain the new service.
+- **Case B — new service**: create `components/<name>/` (manifest + fragment +
+  playbook + verify.sh) and add its `services.<name>:` block to config — no
+  central-file edits. See `components/CLAUDE.md` for the checklist.
 
 ## Tests
 
 - `test-golden.py` — golden-output regression for every emitter against one
   complete synthetic fixture (no secrets). Run it after any generator change;
   `--update` rewrites the baselines under `scripts/golden/` (review the diff).
-- `test-generator.py` — older unit tests; some fixtures are stale (predate the
-  per-service `node` requirement) and need refreshing.
+- `test-generator.py` — unit tests (validation, tfvars map, inventory,
+  capability resolution, .envrc smart-merge). Green as of the component
+  refactor; keep it green.
 
 ## Modularization — DONE
 
@@ -67,7 +61,7 @@ derivations that a service split would shatter):
 ```
 scripts/genconfig/
   main.py config.py helpers.py validation.py
-  emit/{tfvars,inventory,allowed_cidrs,envrc,env_mk,pki_group_vars}.py
+  emit/{tfvars,inventory,ansible_cfg,config_example,envrc,env_mk,pki_group_vars}.py
 ```
 
 `generate-configs.py` is a thin shim importing `genconfig.main` (CLI + public

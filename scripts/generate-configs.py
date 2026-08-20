@@ -10,7 +10,7 @@ test-golden.py, and test-generator.py keep working unchanged.
 Reads config/<env>.yml and generates:
   - terraform/<env>.tfvars
   - ansible/inventory/hosts.yml
-  - .devcontainer/squid/allowed-cidrs.conf
+  - ansible/ansible.cfg (agent-host facts from the config agent: section)
   - .envrc (non-secret portion, with CHANGE_ME placeholders for secrets)
   - .env.mk (Makefile-includable variables)
   - ansible/inventory/group_vars/pki_*/vars.yml

@@ -1,0 +1,391 @@
+---
+# bootstrap.yml — wait for Nexus ready, set password, disable anonymous, update blobstore, create repos
+
+- name: Wait for Nexus to become writable
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/status/writable"
+    method: GET
+    status_code: [200]
+    timeout: 10
+  register: nexus_status_result
+  until: nexus_status_result.status | default(-1) == 200
+  retries: 36
+  delay: 10
+  failed_when: false
+
+- name: Fail if Nexus did not become writable within timeout
+  ansible.builtin.fail:
+    msg: "Nexus did not become writable within 360 seconds"
+  when: nexus_status_result.status | default(-1) != 200
+
+- name: Stat admin.password file
+  ansible.builtin.stat:
+    path: "{{ nexus_data_dir }}/admin.password"
+  register: nexus_admin_password_file
+
+- name: Read initial admin password from file
+  ansible.builtin.slurp:
+    src: "{{ nexus_data_dir }}/admin.password"
+  register: nexus_initial_password_raw
+  when: nexus_admin_password_file.stat.exists
+  no_log: true
+
+- name: Set current admin credential
+  ansible.builtin.set_fact:
+    nexus_current_password: >-
+      {{ (nexus_initial_password_raw.content | b64decode | trim)
+         if nexus_admin_password_file.stat.exists
+         else lookup('env', 'NEXUS_ADMIN_PASSWORD') }}
+  no_log: true
+
+- name: Change admin password
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users/admin/change-password"
+    method: PUT
+    user: admin
+    password: "{{ nexus_current_password }}"
+    force_basic_auth: true
+    body: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    headers:
+      Content-Type: "text/plain"
+    status_code: [200, 204, 401]
+    timeout: 60
+  register: nexus_password_change_result
+  failed_when: nexus_password_change_result.status | default(0) not in [200, 204, 401]
+  changed_when: nexus_admin_password_file.stat.exists
+  no_log: true
+
+- name: Fail if password change returned 401
+  ansible.builtin.fail:
+    msg: >
+      Password change returned 401. If admin.password was absent, the stored password
+      differs from NEXUS_ADMIN_PASSWORD. Correct the password and re-run.
+  when: nexus_password_change_result.status == 401
+
+# EULA and telemetry run after password change so NEXUS_ADMIN_PASSWORD is valid.
+# On first run the initial random password is active until the change-password task above.
+
+- name: Get EULA state
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/system/eula"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_eula_state
+
+- name: Accept Nexus CE End User License Agreement
+  # Body must echo back the exact disclaimer string from the GET response.
+  # Nexus returns 500 if the disclaimer is missing or does not match verbatim.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/system/eula"
+    method: POST
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      accepted: true
+      disclaimer: "{{ nexus_eula_state.json.disclaimer }}"
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: not nexus_eula_state.json.accepted
+  changed_when: true
+
+- name: Get Nexus capabilities
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/capabilities"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_capabilities
+
+- name: Locate OutreachManagementCapability
+  ansible.builtin.set_fact:
+    nexus_outreach_capability: "{{ nexus_capabilities.json | selectattr('type', 'equalto', 'OutreachManagementCapability') | list | first }}"
+
+- name: Disable telemetry (OutreachManagementCapability)
+  # PUT body must be the exact original capability object with enabled flipped —
+  # any extra fields cause a NullPointerException (500) in Nexus 3.91.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/capabilities/{{ nexus_outreach_capability.id }}"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body: "{{ nexus_outreach_capability | combine({'enabled': false}) }}"
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: nexus_outreach_capability.enabled
+  changed_when: true
+
+- name: Disable anonymous access
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/anonymous"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      enabled: false
+      userId: anonymous
+      realmName: NexusAuthorizingRealm
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  changed_when: false
+  no_log: true
+
+- name: Check if nexus-reader user exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users?userId=nexus-reader"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_reader_check
+  no_log: true
+
+- name: Create nexus-reader user (read-only — APT proxy and artifact access)
+  # Assigned nx-anonymous role: browse + read on all repos.
+  # Anonymous access remains globally disabled — this user requires a password.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users"
+    method: POST
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      userId: nexus-reader
+      firstName: Nexus
+      lastName: Reader
+      emailAddress: nexus-reader@localhost
+      password: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
+      status: active
+      roles:
+        - nx-anonymous
+    body_format: json
+    status_code: [200, 201]
+    timeout: 60
+  when: nexus_reader_check.json | length == 0
+  changed_when: true
+  no_log: true
+
+- name: Update nexus-reader password
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/security/users/nexus-reader/change-password"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body: "{{ lookup('env', 'NEXUS_READER_PASSWORD') }}"
+    headers:
+      Content-Type: "text/plain"
+    status_code: [200, 204]
+    timeout: 60
+  when: nexus_reader_check.json | length > 0
+  changed_when: false
+  no_log: true
+
+- name: Get default blobstore detail
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/blobstores/file/default"
+    method: GET
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    status_code: [200]
+    timeout: 60
+  register: nexus_default_blobstore
+  no_log: true
+
+- name: Check if default blobstore has correct path
+  ansible.builtin.set_fact:
+    nexus_default_blobstore_correct: "{{ nexus_default_blobstore.json.path == nexus_blobs_dir + '/default' }}"
+
+- name: Update default blobstore path
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ nexus_http_port }}/service/rest/v1/blobstores/file/default"
+    method: PUT
+    user: admin
+    password: "{{ lookup('env', 'NEXUS_ADMIN_PASSWORD') }}"
+    force_basic_auth: true
+    body:
+      name: default
+      path: "{{ nexus_blobs_dir }}/default"
+      softQuota: null
+    body_format: json
+    status_code: [200, 204]
+    timeout: 60
+  when: not nexus_default_blobstore_correct
+  changed_when: true
+  no_log: true
+
+- name: "Create APT proxy repos (flat: false)"
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: "{{ item.name }}"
+    repo_type: apt/proxy
+    repo_body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "{{ item.remote_url }}"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: "{{ item.distribution }}"
+        flat: false
+# 'flat:' is optional in config — filter via a defined-guard so entries without
+# the key select cleanly (newer Jinja2 raises on rejectattr over a missing key).
+  loop: "{{ (nexus_apt_proxy_repos | rejectattr('flat', 'defined') | list)
+            + (nexus_apt_proxy_repos | selectattr('flat', 'defined') | rejectattr('flat', 'sameas', true) | list) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Create APT proxy repos (flat: true)"
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: "{{ item.name }}"
+    repo_type: apt/proxy
+    repo_body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "{{ item.remote_url }}"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      apt:
+        distribution: "{{ item.distribution }}"
+        flat: true
+  loop: "{{ nexus_apt_proxy_repos | selectattr('flat', 'defined') | selectattr('flat', 'sameas', true) | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create Docker hosted repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-hosted
+    repo_type: docker/hosted
+    repo_body:
+      name: docker-hosted
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+        writePolicy: allow
+      docker:
+        v1Enabled: false
+        forceBasicAuth: true
+
+- name: Create Docker proxy repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-proxy
+    repo_type: docker/proxy
+    repo_body:
+      name: docker-proxy
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "https://registry-1.docker.io"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+      docker:
+        v1Enabled: true
+        forceBasicAuth: true
+      dockerProxy:
+        indexType: "HUB"
+
+- name: Create Docker group repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: docker-group
+    repo_type: docker/group
+    repo_body:
+      name: docker-group
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      group:
+        memberNames:
+          - docker-hosted
+          - docker-proxy
+      docker:
+        v1Enabled: false
+        forceBasicAuth: true
+        httpPort: 5001
+
+- name: Create Terraform proxy repo
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: terraform-proxy
+    repo_type: terraform/proxy
+    repo_body:
+      name: terraform-proxy
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+      proxy:
+        remoteUrl: "https://registry.terraform.io"
+        contentMaxAge: 1440
+        metadataMaxAge: 1440
+      negativeCache:
+        enabled: true
+        timeToLive: 1440
+      httpClient:
+        blocked: false
+        autoBlock: true
+
+- name: Create raw hosted repos
+  ansible.builtin.include_tasks: _create_repo.yml
+  vars:
+    repo_name: "{{ item.name }}"
+    repo_type: raw/hosted
+    repo_body:
+      name: "{{ item.name }}"
+      online: true
+      storage:
+        blobStoreName: default
+        strictContentTypeValidation: true
+        writePolicy: allow
+  loop: "{{ nexus_raw_hosted_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: nexus_raw_hosted_repos | default([]) | length > 0

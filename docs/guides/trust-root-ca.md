@@ -3,10 +3,12 @@
 ## Server trust (automatic)
 
 All Ansible-managed hosts trust the internal root CA automatically via the `common`
-role. Running `ansible-playbook playbooks/site.yml` is sufficient — no separate step needed.
+role. Running `ansible-playbook playbooks/site.yml` (from `ansible/`) is sufficient —
+no separate step needed.
 
-If the root CA cert is not yet on the controller (`/workspace/.pki/root_ca.crt`),
-the role skips trust setup with a warning. Run `pki-setup.yml` first.
+If the root CA cert is not yet on the controller (`.pki/root_ca.crt` at the repo root),
+the role skips trust setup with a warning. Run `make ansible-pki`
+(`components/pki/playbook.yml`) first.
 
 ---
 

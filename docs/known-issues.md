@@ -16,3 +16,18 @@ The underlying issue is a chicken-and-egg between CA trust and apt: `apt-get upd
 
 ## Nexus TLS does not update itself
 
+
+## Hosts mesh distributes the full internal host map to every managed host
+
+The generator-emitted `/etc/hosts` mesh (`common_internal_hosts`) writes every
+enabled service's name→address mapping onto every managed host, so each host
+knows where all infrastructure lives. Within a single trust zone this is
+acceptable — the internal DNS zone exposes the same information, the mesh just
+makes it explicit and locally persistent — but it is an information-disclosure
+consideration, not a bug-free default (operator-reviewed 2026-08).
+
+If a future component lives in a different trust zone that should NOT learn the
+infra layout, the mesh (and the DNS zone view) will need scoping — e.g. a
+per-zone mesh subset or a `mesh: false`-style per-service exclusion, analogous
+to the existing `dns: false`. Revisit when the first cross-zone component
+appears; no action needed while all services share one segment.

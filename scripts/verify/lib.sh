@@ -74,10 +74,20 @@ verify_summary() {
 # cfg <dotted.path> — scalar from config/<env>.yml, or empty (mirrors loop/lib.sh).
 cfg() {
     python3 - "$CONFIG_FILE" "$1" <<'PY'
-import sys, yaml
+import os, sys, yaml
 path = sys.argv[2].split(".")
 with open(sys.argv[1]) as f:
     node = yaml.safe_load(f)
+# Deep-merge the private overlay (<env>.local.yml) — same semantics as genconfig.
+local_path = sys.argv[1].replace(".yml", ".local.yml")
+if os.path.exists(local_path):
+    def merge(a, b):
+        out = dict(a)
+        for k, v in b.items():
+            out[k] = merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+        return out
+    with open(local_path) as f:
+        node = merge(node, yaml.safe_load(f) or {})
 for key in path:
     if isinstance(node, dict) and key in node:
         node = node[key]

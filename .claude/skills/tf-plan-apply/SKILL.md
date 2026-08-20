@@ -89,7 +89,8 @@ Var-files are generated from the centralized config — do NOT create them manua
 cp config/sandbox.yml.example config/sandbox.yml
 # Edit config/sandbox.yml with your node, network, storage settings
 make configure
-# This generates terraform/sandbox.tfvars (and inventory, allowed-cidrs, .envrc)
+# Generates terraform/sandbox.tfvars, ansible/inventory/hosts.yml,
+# ansible/ansible.cfg, the non-secret .envrc portion, and .env.mk
 ```
 
 `*.tfvars` and `config/*.yml` are both gitignored. Never commit either.

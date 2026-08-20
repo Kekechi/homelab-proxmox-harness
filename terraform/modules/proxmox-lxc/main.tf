@@ -18,7 +18,7 @@ resource "proxmox_virtual_environment_container" "this" {
   }
 
   initialization {
-    hostname = var.hostname
+    hostname = var.name
 
     dynamic "ip_config" {
       for_each = var.ipv4_address != null ? [1] : []

@@ -9,10 +9,9 @@ version: "1.0"
 
 <!-- Canonical source for bpg/proxmox conventions.
      These rules are also referenced inline in:
-       .claude/agents/iac-generator.md
        .claude/agents/tf-reviewer.md
        .claude/skills/proxmox-module/SKILL.md
-     Update all four files when changing any convention here. -->
+     Update all three files when changing any convention here. -->
 
 ## Provider and Version Pinning
 
@@ -54,6 +53,10 @@ a `tags` variable to either module.
 
 ## Module Conventions
 
+- The root module is generic: `main.tf` is two `for_each` blocks (vm/lxc) over the typed
+  `var.services` map. Adding a service NEVER adds a module block, variable, or output —
+  it adds a `components/<name>/` manifest plus config. Only changes to the primitive
+  modules' shared interface touch root `.tf` files.
 - Module source paths from root: `./modules/proxmox-vm`
 - Every module must have `variables.tf`, `main.tf`, `outputs.tf`
 - Credentials never pass through modules — provider reads from env vars

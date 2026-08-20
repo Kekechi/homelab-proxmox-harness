@@ -9,16 +9,19 @@ Don't read the whole package to make a small change — use the routing table.
 
 | File | Holds |
 |---|---|
-| `main.py` | CLI entry (`main`), the write-orchestration sequence, and the public symbol re-export surface the shim + test harnesses rely on |
-| `config.py` | `REPO_ROOT`, `CHANGE_ME`, `load_config`, `is_inside_container` |
-| `helpers.py` | shared primitives: `_hcl_str` (null-if-empty), `_strip_prefix`, `resolve_network`, `_derive_dns_records`, `validate_cidr`, `validate_domain_name`, `atomic_write` (`.envrc` smart-merge), `write_file`, `_ENVRC_SECRET_VARS` |
+| `main.py` | CLI entry (`main`, `--examples`), the write-orchestration sequence, and the public symbol re-export surface the shim + test harnesses rely on |
+| `config.py` | `REPO_ROOT`, `CHANGE_ME`, `load_config` (deep-merges `config/<env>.local.yml`) |
+| `discovery.py` | component discovery (`components/` + `components.local/`, collision = error), manifest validation, `instance_tf_key`/`instance_group`/`instance_config` |
+| `capabilities.py` | consumes/provides resolution (`build_providers`, `resolve_consumes`, `CORE_CONSUMES`), re-convergence reporting |
+| `helpers.py` | shared primitives: `_hcl_str` (null-if-empty), `_strip_prefix`, `resolve_network`, `_derive_dns_records`, `validate_cidr`, `validate_domain_name`, `atomic_write` (`.envrc` smart-merge, never deletes unknown keys), `write_file`, `_envrc_secret_vars` (derived from manifests) |
 | `validation.py` | `validate_schema` and the Nexus repo validators (`validate_nexus_apt_proxy_repos`, `validate_nexus_raw_hosted_repos`, `_NEXUS_REQUIRED_APT_REPOS`) |
 | `emit/tfvars.py` | `gen_tfvars` → `terraform/<env>.tfvars` |
-| `emit/inventory.py` | `gen_inventory` → `ansible/inventory/hosts.yml` (**all cross-service derivations live here**) |
-| `emit/allowed_cidrs.py` | `gen_allowed_cidrs` → Squid allowlist |
+| `emit/inventory.py` | `gen_inventory` → `ansible/inventory/hosts.yml` (groups from manifests; capability vars injected) |
 | `emit/envrc.py` | `gen_envrc` → `.envrc` non-secret portion |
 | `emit/env_mk.py` | `gen_env_mk` → `.env.mk` |
 | `emit/pki_group_vars.py` | `gen_pki_group_vars` → `group_vars/pki_*` |
+| `emit/ansible_cfg.py` | `gen_ansible_cfg` → `ansible/ansible.cfg` (agent-host facts from config `agent:`) |
+| `emit/config_example.py` | `gen_config_example` → `config/<env>.yml.example` (core skeleton + component fragments) |
 
 ## Task → file
 
@@ -26,23 +29,25 @@ Don't read the whole package to make a small change — use the routing table.
 |---|---|
 | Change a tfvars value | `emit/tfvars.py` |
 | Change an inventory group / group_var | `emit/inventory.py` |
-| Change the Squid allowlist | `emit/allowed_cidrs.py` |
-| Change a non-secret `.envrc` line | `emit/envrc.py` (secret list → `helpers._ENVRC_SECRET_VARS`) |
+| Change a non-secret `.envrc` line | `emit/envrc.py` (per-component sections come from manifest `env:` blocks) |
 | Change `.env.mk` | `emit/env_mk.py` |
 | Change PKI root/issuing group_vars | `emit/pki_group_vars.py` |
-| Add a validation rule | `validation.py` |
+| Add a validation rule | `validation.py` (generic checks) or the component's manifest `config.required` |
+| Add/lookup a component or capability | `discovery.py` / `capabilities.py` + the component's `component.yml` |
 | DNS A-record / `/etc/hosts` derivation | `helpers._derive_dns_records` (shared) |
 | Shared HCL/IP helpers | `helpers.py` |
 
-## Cross-service couplings — must stay in one pass (`emit/inventory.py`)
+## Cross-component values — capability resolution
 
-- `log_server` reads `services.minio` (→ `otelcol_minio_endpoint`) and
-  `services.splunk` (→ `otelcol_splunk_hec_enabled`/`_url`, true only when Splunk
-  is enabled — Splunk is deprecation-planned; default sink is MinIO awss3).
-- `dns.dist` reads its network CIDR + `client_cidrs` (→ `pdns_dnsdist_acl_cidrs`)
-  and `services.log_server.ip` (→ `dns_collector_syslog_endpoint` + dnstap).
-- `_derive_dns_records` feeds both `common_internal_hosts` (/etc/hosts) and the
-  `dns_auth` A-records.
+Cross-component reaches are GONE from the emitters: values arrive via each
+manifest's `consumes:` (resolved in `capabilities.py`) — e.g.
+`otelcol_minio_endpoint` ← `s3.endpoint`, `dns_collector_syslog_endpoint` ←
+`syslog.target`, `dns_records` ← `dns.record` (many), all.vars'
+`nexus_apt_proxy`/`common_log_server_address` ← `CORE_CONSUMES`.
+`emit/inventory.py`'s `_self_vars` holds only own-config vars (TLS flags,
+FQDNs, the dnsdist ACL). `_derive_dns_records` (helpers) still feeds both the
+/etc/hosts mesh and the implicit `dns.record` providers — enabled components
+only.
 
 ## The public surface is a contract
 

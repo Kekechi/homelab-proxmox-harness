@@ -8,7 +8,7 @@ variable "pool_id" {
   type        = string
 }
 
-variable "hostname" {
+variable "name" {
   description = "Container hostname"
   type        = string
 }

@@ -134,9 +134,9 @@ except Exception: print("")' 2>/dev/null || echo "")"
 wait_task "$NODE" "$UPID" || die "create task did not complete OK"
 log "MinIO LXC created and started."
 
-# --- wait for SSH (through the Squid CONNECT proxy) --------------------------
-# Layered readiness probe (WS2). A freshly created LXC's path through the Squid
-# proxy is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
+# --- wait for SSH ------------------------------------------------------------
+# Layered readiness probe (WS2). A freshly created LXC's network path (observed
+# under the retired proxy setup) is INTERMITTENTLY LOSSY while it settles (SYN dropped early, then full SSH
 # KEX stalls while a 1-RTT banner grab can still squeak through). ROOT CAUSE
 # (CONFIRMED 2026-06-20, supersedes the earlier fwbr-settling guess): the loop
 # reuses MinIO's fixed IP but Proxmox assigns a fresh random MAC each recreate, so
@@ -165,16 +165,19 @@ if [[ "$WAIT_SSH" == 1 ]]; then
     READY_NEED=3                                 # consecutive full SSH handshakes to declare ready
     PROBE_T0="$(date +%s)"
     DEADLINE=$(( PROBE_T0 + 1500 ))              # 25 min safety net (> observed ~19.5 min settle)
-    log "Waiting for SSH on ${IP}:22 (via proxy) — need ${READY_NEED} consecutive full handshakes..."
+    log "Waiting for SSH on ${IP}:22 — need ${READY_NEED} consecutive full handshakes..."
 
+    # Agent-host connection facts come from config (agent.ssh_extra_args carries
+    # a proxy hop when one exists; direct otherwise).
+    _agent_ssh_extra="$(cfg agent.ssh_extra_args)"
     _ssh_ok() {   # full multi-RTT handshake (KEX + auth) — the real readiness signal
+        # shellcheck disable=SC2086
         ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=10 \
-            -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+            -o ConnectTimeout=10 ${_agent_ssh_extra} \
             "${SSH_USER}@${IP}" true 2>/dev/null
     }
-    _tcp_ok() {   # squid established the CONNECT tunnel = SYN passed, something on :22
-        timeout 25 ncat --proxy squid-proxy:3128 --proxy-type http "$IP" 22 </dev/null >/dev/null 2>&1
+    _tcp_ok() {   # SYN/accept on :22 — something is listening even if sshd is settling
+        timeout 10 bash -c "exec 3<>/dev/tcp/${IP}/22" 2>/dev/null
     }
 
     consec=0
@@ -194,9 +197,9 @@ if [[ "$WAIT_SSH" == 1 ]]; then
         (( consec > 0 )) && warn "  [+${elapsed}s] handshake streak broken (was ${consec}) — path still lossy, restarting count"
         consec=0
         if _tcp_ok; then
-            log "  [+${elapsed}s] TCP CONNECT ok but full handshake stalls (banner/KEX settling window)"
+            log "  [+${elapsed}s] TCP :22 open but full handshake stalls (banner/KEX settling window)"
         else
-            log "  [+${elapsed}s] TCP CONNECT failing (squid 503 = SYN dropped — path not up yet)"
+            log "  [+${elapsed}s] TCP :22 failing (SYN dropped — path not up yet)"
         fi
         sleep 5
     done

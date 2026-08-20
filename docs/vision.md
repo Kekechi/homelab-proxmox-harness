@@ -54,7 +54,7 @@ Requires Stage 1/2 validated in production first.
 
 - **HashiCorp Vault / Bitwarden Secrets Manager** (MGMT VLAN) — infrastructure secret backend. Machines and pipelines authenticate programmatically; secrets are never stored statically in CI variables or config files. Tool TBD — Vault if dynamic secrets or PKI integration needed, Bitwarden Secrets Manager if static secrets are sufficient.
 
-- **chezmoi** (client-side, no infra) — dotfile and config manager across developer devices. Private Git repo (hosted on GitLab) as source; age encryption for sensitive files at rest; Vault/Bitwarden as secret injection backend at apply time. Manages `config/sandbox.yml` on the host so the devcontainer sees it without any changes to this repo.
+- **chezmoi** (client-side, no infra) — dotfile and config manager across developer devices. Private Git repo (hosted on GitLab) as source; age encryption for sensitive files at rest; Vault/Bitwarden as secret injection backend at apply time. Manages `config/sandbox.yml` on the controller host without any changes to this repo.
 
 - **Kubernetes cluster** — potential deployment target for personal projects.
 - **Ghidra MCP server** — for fun / personal tooling.

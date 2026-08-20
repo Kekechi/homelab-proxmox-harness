@@ -6,7 +6,7 @@ Run these commands on a Proxmox node as root. These are one-time bootstrap steps
 
 | Identity | Token | ACL Paths | Role | Held By |
 |---|---|---|---|---|
-| Claude Code | `terraform@pve!claude-sandbox` | `/pool/sandbox`, `/storage/<id>` | `TerraformSandbox` | Dev container env var |
+| Claude Code | `terraform@pve!claude-sandbox` | `/pool/sandbox`, `/storage/<id>` | `TerraformSandbox` | Agent-host env var (`.envrc`) |
 | Operator | `terraform@pve!operator-production` | `/` | `TerraformOperator` | Password manager |
 
 ---
@@ -204,7 +204,7 @@ pveum acl modify / \
 
 **Store this token in your password manager.** It must NEVER be placed in:
 - The `.envrc` file in this repository
-- The dev container environment
+- Anywhere on the agent host
 - Any file committed to git
 
 ---

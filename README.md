@@ -2,7 +2,7 @@
 
 A private cloud security platform built on Proxmox VE. The stack spans infrastructure-as-code, a two-tier internal PKI, authoritative DNS with encrypted transport, an artifact supply chain mirror, centralized log aggregation, and a Splunk SIEM — wired together as a trust chain where each layer depends on the one below it.
 
-Operations are handled by a **human-in-the-loop AI pipeline** (Planner → Generator → Evaluator) built on Claude Code, with a formally modeled security boundary on the AI itself: network isolation, IAM scoping, and hook-based enforcement — the same security engineering principles applied to the infrastructure are applied to the agent operating it.
+Operations are handled by a **design-record-driven AI agent** built on Claude Code: the operator agrees a design record, the agent executes it autonomously in an expendable sandbox, and behavioral verification gates every result. The security boundary on the agent itself is IAM-first — pool-scoped credentials, credential separation, and a formally modeled threat surface — the same security engineering principles applied to the infrastructure are applied to the agent operating it.
 
 **Three pillars:** security infrastructure · infrastructure-as-code · AI-assisted operations
 
@@ -15,8 +15,8 @@ Each service layer depends only on what sits below it in the trust chain:
 ```
 ┌──────────────────────────────────────────────────────┐
 │  AI Operations Layer                                  │
-│  PGE Pipeline (plan → generate → review → apply)     │
-│  Squid proxy isolation · IAM scoping · Hook gates     │
+│  Design record → autonomous execution → verification  │
+│  IAM scoping · credential separation · sandbox pool   │
 └──────────────────┬───────────────────────────────────┘
                    │ provisions & configures
 ┌──────────────────▼───────────────────────────────────┐
@@ -62,13 +62,14 @@ Each service layer depends only on what sits below it in the trust chain:
 
 ### Infrastructure Foundation
 
-- **Terraform (bpg/proxmox v0.99+)** — provisions Proxmox VMs and LXCs via three reusable modules: `proxmox-vm` (cloud-init), `proxmox-lxc` (unprivileged Debian containers), `proxmox-network` (Linux bridges)
-- **Ansible (13 roles)** — configures all provisioned hosts; roles are idempotent and vendor-repo-sourced (not distro packages)
+- **Component architecture** — one `components/<name>/` directory owns each service vertically (manifest, Ansible playbook + roles, behavioral verify, state collector, config fragment); the core is generic and discovers components, so adding a service touches no central file. A gitignored `components.local/` overlay hosts private components through the same code path. Full design: [`docs/design/component-architecture.md`](docs/design/component-architecture.md)
+- **Terraform (bpg/proxmox v0.99+)** — a generic root module (`for_each` over a typed services map) built on three primitives: `proxmox-vm` (cloud-init), `proxmox-lxc` (unprivileged Debian containers), `proxmox-network` (Linux bridges)
+- **Ansible** — component-owned roles, idempotent and vendor-repo-sourced (not distro packages); shared baseline roles for trust and logging
 - **MinIO** — self-hosted S3 for Terraform remote state; per-environment buckets with scoped IAM keys
-- **Centralized config** — `config/<env>.yml` is the single source of truth; `make configure` generates tfvars, Ansible inventory, Squid allowlist, and `.envrc` from one file
-- **Two environments** — sandbox and production with physically separate credentials; production applies are blocked by design (the production token is never in the dev container)
+- **Centralized config** — `config/<env>.yml` is the single source of truth; component manifests define each service's schema; `make configure` generates tfvars, Ansible inventory, `ansible.cfg`, and `.envrc` from one file
+- **Two environments** — sandbox and production with physically separate credentials; production applies are blocked by design (the production token never exists on the agent host)
 
-Each service is deployment-gated via a Terraform feature flag (`enable_pki`, `enable_dns`, etc.), allowing phased rollout and clean teardown.
+A service is enabled by its presence in config — phased rollout and clean teardown fall out of the discovery model.
 
 ### PKI — Two-Tier Internal CA
 
@@ -111,17 +112,23 @@ Each service is deployment-gated via a Terraform feature flag (`enable_pki`, `en
 
 ## AI Operations Harness
 
-### Planner-Generator-Evaluator (PGE) Architecture
+### Design-Record-Driven Operations
 
-Infrastructure changes move through three purpose-scoped agent roles with human approval gates between each stage:
+The agent runs on a dedicated controller host with sandbox-scoped credentials. Work
+follows a deliberately light loop:
 
-| Role | Model | Responsibility |
-|---|---|---|
-| **iac-planner** | Claude Opus | Reads existing code and docs, researches the change, produces a structured plan — no code written |
-| **iac-generator** | Claude Sonnet | Translates the *approved* plan into Terraform/Ansible code — does not plan or review |
-| **tf-reviewer** | Claude Sonnet | Reviews generated code for security, correctness, and bpg/proxmox conventions — returns `APPROVE` / `WARN` / `BLOCK` |
+1. **Design** (`/design`) — a one-decision-at-a-time exploration ending in a committed
+   design record; operator agreement on the record is the go signal.
+2. **Execute** (`/free-run` or directly) — the agent builds against the record in the
+   expendable sandbox: journaled decisions, per-slice commits, failures captured as
+   lessons rather than halts.
+3. **Verify** — every component ships a behavioral `verify.sh` (`make verify-all` is the
+   hard gate); `/sanity-sweep` adds a judgment-based Tier-2 read of live state.
+4. **Production** — the agent only ever produces a plan file plus `/handoff` notes; the
+   operator reviews and applies.
 
-No agent can skip a gate or grant itself permission to proceed. The operator approves the plan before code is generated; the operator reviews the verdict before any apply runs.
+A single reviewer agent (**tf-reviewer**, `/review`) provides an on-demand
+`APPROVE`/`WARN`/`BLOCK` pass over Terraform, Ansible, and component changes.
 
 ### Security Boundary on the AI
 
@@ -129,10 +136,10 @@ The same engineering discipline applied to the infrastructure is applied to the 
 
 | Control | Mechanism | What it prevents |
 |---|---|---|
-| **Network isolation** | Dev container on `internal:true` Docker network; all traffic through Squid forward proxy (allowlist: sandbox VLAN, MinIO, GitHub releases, Terraform registry) | Claude reaching production infrastructure or arbitrary internet |
 | **IAM scoping** | Proxmox token ACL limited to `/pool/sandbox`; MinIO key scoped to `tfstate-sandbox` bucket; `privsep=1` blocks privilege escalation | Claude affecting production state or Proxmox IAM |
-| **PreToolUse hooks** | Block `terraform destroy`, `state rm`, `force-unlock` before execution — independent of any Claude instruction | Accidental or injected destructive operations |
-| **Credential separation** | Production Proxmox token is never provisioned in the dev container | Production apply fails at authentication even if all other controls are bypassed |
+| **Credential separation** | Production credentials never exist on the agent host | Production apply fails at authentication even if all other controls are bypassed |
+| **Network segmentation** | The controller host routes to sandbox segments only (operator-managed) | Claude reaching production infrastructure |
+| **Workflow controls** | Plan-file-gated applies, push denied to the agent, operator pre-push review | Unreviewed changes or history leaving the machine |
 
 Full analysis in [`docs/threat-model.md`](docs/threat-model.md) — including what the model *does not* protect against and residual risks.
 
@@ -140,14 +147,11 @@ Full analysis in [`docs/threat-model.md`](docs/threat-model.md) — including wh
 
 | Command | What it does |
 |---|---|
-| `/design <idea>` | Explore architecture decisions before planning — one decision at a time, no code |
-| `/infra-plan <description>` | Structured infrastructure plan via iac-planner (Opus) |
-| `/generate` | Write Terraform/Ansible from an approved plan via iac-generator |
+| `/design <idea>` | Explore architecture decisions — one decision at a time, ends in a design record |
+| `/free-run` | Execute an agreed design record autonomously — journal, per-slice commits, verify gates |
 | `/review [files]` | Single-pass code review via tf-reviewer — `APPROVE` / `WARN` / `BLOCK` |
-| `/polish [code\|plan\|design]` | Iterative review-fix loop until `APPROVE` — all cycles run in subagents |
-| `/tf-deploy <description>` | Full Terraform pipeline: design → plan → generate → review → apply |
-| `/ansible-deploy <description>` | Full Ansible pipeline: design → plan → generate → review → run |
-| `/ansible-run` | Pre-flight + run + verify for already-reviewed Ansible code |
+| `/sanity-sweep` | Tier-2 judgment sweep over live deployed state — record-only findings |
+| `/day2-ops` | Resize, snapshot, or reconfigure existing VMs/LXCs |
 | `/assess <scope>` | Structured project assessment — surfaces assumptions before remediation |
 | `/handoff` | Package a production plan for operator handoff |
 | `/retro` | Session retrospective — surfaces prompting lessons and skill lifecycle |
@@ -171,20 +175,19 @@ The observability stack is designed to generate the signal needed to write and v
 
 ## Quick Start
 
-Requires: Proxmox VE 8.x, Docker + Dev Containers, direnv.
+Requires: Proxmox VE 8.x, Terraform, Ansible, direnv on a controller host that can reach the sandbox network.
 
 ```bash
 git clone <this-repo> && cd homelab-proxmox-harness
 cp config/sandbox.yml.example config/sandbox.yml
-# Edit config/sandbox.yml — Proxmox node, network CIDRs, service flags
-make configure          # generates tfvars, inventory, Squid allowlist, .envrc
+# Edit config/sandbox.yml — Proxmox nodes, networks, service blocks, agent SSH facts
+make configure          # generates tfvars, inventory, ansible.cfg, .envrc
 # Fill in .envrc: Proxmox token, MinIO keys (see docs/proxmox-iam.md)
 direnv allow
-make build              # rebuild Squid image with updated allowlist
-# Reopen in dev container (VS Code: Ctrl+Shift+P → "Dev Containers: Reopen in Container")
-make verify-isolation   # confirm network isolation
 make init && make plan  # initialize state backend, plan infrastructure
 make apply              # apply plan file
+make ansible-<name>     # deploy a component (e.g. make ansible-pki)
+make verify-all         # behavioral verify of every enabled component
 ```
 
 Full walkthrough: [`docs/guides/deployment-guide.md`](docs/guides/deployment-guide.md)
@@ -219,7 +222,7 @@ Full walkthrough: [`docs/guides/deployment-guide.md`](docs/guides/deployment-gui
 
 - [`docs/proxmox-iam.md`](docs/proxmox-iam.md) — API token design, ACL paths, role definitions
 - [`docs/threat-model.md`](docs/threat-model.md) — Isolation model: what it covers, what it doesn't, residual risks
-- [`docs/network-policy.md`](docs/network-policy.md) — Squid allowlist, SSH tunnel architecture
+- [`docs/network-policy.md`](docs/network-policy.md) — network boundary in the controller-host model
 
 ---
 
@@ -229,7 +232,7 @@ Active development priorities as of Summer 2026:
 
 1. **Detection Engineering** — Firewall log ingestion and auth syslog from managed hosts; detection rules against DNS, network, and auth data sources; attack simulation scripts for rule validation
 
-2. **AI-Agent Abuse Defenses** — Tightening PreToolUse hook coverage, auditing agent tool scope, and documenting adversarial test cases against the PGE harness
+2. **AI-Agent Abuse Defenses** — Evolving the harness from free-run lessons: reinstating the staged-secrets check as a git pre-commit hook, auditing agent tool scope, and documenting adversarial test cases against the design-record workflow
 
 3. **Splunk Hackathon** — Packaging the OTel → Splunk pipeline, AI Toolkit integration, and detection rule set as a reproducible reference architecture for the hackathon submission
 

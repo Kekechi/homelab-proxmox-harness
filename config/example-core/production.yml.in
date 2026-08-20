@@ -1,0 +1,64 @@
+#@ network: mgmt
+#@ NOTE: assembled-example source. `make examples` renders
+#@ config/<env>.yml.example from this core + components/*/config.example.yml.
+
+# Production environment configuration
+# Copy to config/production.yml and fill in your values.
+# Run `make configure ENV=production` after editing.
+# WARNING: Production applies are blocked from the dev container.
+# `make plan ENV=production` generates production.tfplan for operator review.
+# The operator applies this plan manually from their workstation.
+
+environment: production
+domain_name: "lab.example.com"              # used in Terraform DNS output hints only
+
+ssh:
+  public_key: "ssh-ed25519 AAAAC3... your-key-comment"
+  default_user: ubuntu
+
+# Agent-host facts — where the controller (Claude/operator machine) runs.
+# Feeds the generated ansible/ansible.cfg; keeps machine specifics out of git.
+agent:
+  ssh_private_key: ~/.ssh/id_ed25519     # SSH key ansible uses to reach hosts
+  # ssh_extra_args: ""                   # appended to ssh_args (e.g. a ProxyCommand hop)
+
+infrastructure:
+  dns_server: ""                           # DNS server IP pushed to all LXC/VM resolv.conf via Terraform.
+                                           # Phase 1-2: set to router IP. Phase 3+: switch to DNSdist IP.
+                                           # Leave empty to inherit from Proxmox host defaults.
+  proxmox:
+    ip: "192.168.X.X"
+    port: 8006
+    insecure: true
+  nodes:
+    pve1:
+      ip: "192.168.X.X"   # Node management IP
+  # For multi-node clusters, uncomment and add additional nodes:
+  #   pve2:
+  #     ip: "192.168.X.X"
+  #   pve3:
+  #     ip: "192.168.X.X"
+  networks:
+    mgmt:
+      bridge: vmbr0                        # Management VNet bridge (replace with your bridge name)
+      cidr: "X.X.X.X/24"                  # Management VLAN subnet — MUST use CIDR notation; bare IPs rejected
+      gateway: "X.X.X.X"                  # Management VLAN gateway
+      vlan_id: null                        # null when Proxmox SDN VNets handle VLAN tagging; set an integer for NIC-level tagging
+    lan:
+      bridge: vmbr1                        # LAN VNet bridge (replace with your bridge name)
+      cidr: "X.X.X.X/24"                  # LAN subnet — MUST use CIDR notation
+      gateway: "X.X.X.X"                  # LAN gateway
+      vlan_id: null                        # null when Proxmox SDN VNets handle VLAN tagging; set an integer for NIC-level tagging
+  # No default_network — every service must declare its network explicitly.
+  # This prevents accidental placement on the wrong network in production.
+  storage:
+    datastore_id: local-lvm
+    cloudinit_datastore_id: local-lvm     # Directory storage with Snippets content type enabled
+    lxc_template_file_id: "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"  # verify with: pveam available --section system | grep debian
+    # Cluster setups: use "nfs-shared:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
+
+terraform:
+  pool_id: ""                              # Production resources are not pool-scoped
+  vm_id_range_start: 100                   # Production IDs start lower than sandbox (200)
+  clone_template_id: 0
+  state_bucket: tfstate-production         # Separate state bucket from sandbox

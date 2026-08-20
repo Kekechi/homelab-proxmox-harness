@@ -19,7 +19,7 @@ Operational guide for deploying and maintaining the Splunk Enterprise instance v
 | `splunk-ai-toolkit_<ver>.tgz` | AI Toolkit app from Splunkbase |
 | Splunk license `.xml` | Optional — leave `splunk_license_file: ""` to run free tier |
 
-### Checksums — update `ansible/roles/splunk/defaults/main.yml`
+### Checksums — update `components/splunk/roles/splunk/defaults/main.yml`
 
 ```bash
 sha256sum splunk-<version>-<build>-linux-amd64.deb
@@ -38,10 +38,10 @@ export SPLUNK_MCP_PASSWORD="<password>"
 export STEP_CA_PROVISIONER_PASSWORD="<provisioner password>"  # required only when splunk_tls_enabled
 ```
 
-The playbook's pre-flight play asserts all four are present (the `splunk-setup.yml`
-localhost pre-flight requires `STEP_CA_PROVISIONER_PASSWORD` because it also runs the
-`step_client` role). It also requires `NEXUS_READER_PASSWORD` for the Nexus apt/raw
-download (set when Nexus is deployed).
+The playbook's localhost pre-flight play (`components/splunk/playbook.yml`) asserts
+all four are present (it requires `STEP_CA_PROVISIONER_PASSWORD` unconditionally
+because it also runs the `step_client` role). It also requires
+`NEXUS_READER_PASSWORD` for the Nexus apt/raw download (set when Nexus is deployed).
 
 Then `direnv allow`.
 
@@ -50,13 +50,13 @@ Then `direnv allow`.
 ## Running the Playbook
 
 ```bash
-cd ansible
-ansible-playbook playbooks/splunk-setup.yml
+make ansible-splunk
 ```
 
-The playbook runs three plays against the `splunk` host (after a localhost secrets
-pre-flight): the `common` role, then `step_client` (cert client + renewal), then the
-`splunk` role. The `splunk` role (`tasks/main.yml`) does, in order:
+This resolves `components/splunk/playbook.yml` and runs it with the generated
+`ansible/ansible.cfg` and inventory. The playbook runs three plays against the
+`splunk` host (after a localhost secrets pre-flight): the `common` role, then
+`step_client` (cert client + renewal), then the `splunk` role. The `splunk` role (`tasks/main.yml`) does, in order:
 
 1. Asserts secrets and the three pinned checksums are set (not `sha256:CHANGE_ME`)
 2. **Install** (`install.yml`): downloads the `.deb` from Nexus and installs it; seeds the admin password via `user-seed.conf` (first run only — detected by the absence of `/opt/splunk/etc/passwd`); registers systemd boot-start; enables and starts `Splunkd`; waits for the management port
@@ -121,9 +121,9 @@ internal-CA cert (see TLS section). Save the returned token to `.envrc` as
 ## Upgrading Splunk or Apps
 
 1. Upload the new `.deb` or `.tgz` to Nexus
-2. Update the filename and checksum in `ansible/roles/splunk/defaults/main.yml`
+2. Update the filename and checksum in `components/splunk/roles/splunk/defaults/main.yml`
 3. For apps: manually remove `/opt/splunk/etc/apps/<AppDir>` on the host before re-running (the stat-based skip prevents re-install otherwise)
-4. Re-run the playbook
+4. Re-run the playbook (`make ansible-splunk`)
 
 ---
 
@@ -150,4 +150,4 @@ re-hardened on every run.
 |---|---|
 | OTel Collector HEC exporter → Splunk | Implemented but **disabled by default** (`otelcol_splunk_hec_enabled`, on only when `services.splunk.enabled`). Default sink is the object store. |
 | Syslog inputs (firewall, host auth, DNS) | DNS + host-auth syslog flow through the otelcol log server today; firewall logs pending |
-| MCP connectivity testing through the dev-container proxy | Pending |
+| MCP connectivity testing from the controller host | Pending |

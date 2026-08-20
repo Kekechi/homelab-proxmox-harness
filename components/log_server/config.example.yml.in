@@ -1,0 +1,8 @@
+  log_server:
+    enabled: false                       # Set true to deploy the OTel Collector log aggregation LXC
+    node: pve1
+    ip: "192.168.X.X/24"                 # CIDR notation required — Terraform uses prefix for cloud-init
+    ct_id: 206                           # must not conflict with existing containers
+    ansible_user: root
+    hostname: log-server
+    network: @NETWORK@

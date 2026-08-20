@@ -130,9 +130,9 @@ if active minio && [[ "$KEEP_MINIO" != 1 ]]; then
     # Cold rebuild: Nexus does not exist yet, so base packages MUST fall back to
     # upstream. nexus_fallback defaults to 'fail' (see apt-fallback-policy.md);
     # override to 'upstream' here so this bootstrap deploy does not abort.
-    ( cd ansible && ansible-playbook -i inventory/ playbooks/minio-setup.yml --limit minio -e nexus_fallback=upstream )
+    ( cd ansible && ansible-playbook -i inventory/ ../components/minio/playbook.yml --limit minio -e nexus_fallback=upstream )
     log "Bootstrapping MinIO bucket + scoped IAM (writes scoped key to .envrc)..."
-    bash "${REPO_ROOT}/scripts/bootstrap-minio.sh" "$ENV"
+    bash "${REPO_ROOT}/components/minio/bootstrap.sh" "$ENV"
     # re-source so the freshly-written scoped key is in this shell for init
     load_envrc
 fi
@@ -191,8 +191,12 @@ if active deploy; then
             RCA_USER="$(cfg services.pki.root_ca.ansible_user)"; : "${RCA_USER:=root}"
             rca_deadline=$(( $(date +%s) + 600 )); rca_consec=0
             until (( $(date +%s) >= rca_deadline )); do
+                # Agent-host connection facts come from config (agent.ssh_extra_args
+                # carries a proxy hop when one exists; direct otherwise).
+                _agent_ssh_extra="$(cfg agent.ssh_extra_args)"
+                # shellcheck disable=SC2086
                 if ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                       -o ConnectTimeout=8 -o ProxyCommand="ncat --proxy squid-proxy:3128 --proxy-type http %h %p" \
+                       -o ConnectTimeout=8 ${_agent_ssh_extra} \
                        "${RCA_USER}@${RCA_IP}" true 2>/dev/null; then
                     rca_consec=$(( rca_consec + 1 ))
                     log "  root-ca handshake ok (${rca_consec}/3)"
@@ -215,12 +219,12 @@ if active deploy; then
     # override to 'upstream' for the whole cold-rebuild deploy so it does not
     # abort at the PKI phase. Day-2 deploys keep the 'fail' default.
     APT_FALLBACK="-e nexus_fallback=upstream"
-    log "Phase: PKI";        ansible-playbook -i inventory/ playbooks/pki-setup.yml $APT_FALLBACK
-    log "Phase: Nexus";      ansible-playbook -i inventory/ playbooks/nexus-setup.yml --limit nexus $APT_FALLBACK
-    log "Phase: DNS auth";   ansible-playbook -i inventory/ playbooks/dns-setup.yml $APT_FALLBACK
-    log "Phase: DNS records";ansible-playbook -i inventory/ playbooks/dns-records.yml $APT_FALLBACK
-    log "Phase: DNS dist";   ansible-playbook -i inventory/ playbooks/dns-dist-setup.yml $APT_FALLBACK
-    log "Phase: log-server"; ansible-playbook -i inventory/ playbooks/log-server-setup.yml $APT_FALLBACK
+    log "Phase: PKI";        ansible-playbook -i inventory/ ../components/pki/playbook.yml $APT_FALLBACK
+    log "Phase: Nexus";      ansible-playbook -i inventory/ ../components/nexus/playbook.yml --limit nexus $APT_FALLBACK
+    # Rebuild loop = reconcile: prune zone records whose provider is gone
+    # (prod default is warn-only; see components/dns/records.yml).
+    log "Phase: DNS";        ansible-playbook -i inventory/ ../components/dns/playbook.yml $APT_FALLBACK -e dns_records_prune=true
+    log "Phase: log-server"; ansible-playbook -i inventory/ ../components/log_server/playbook.yml $APT_FALLBACK
     cd "$REPO_ROOT"
 fi
 
