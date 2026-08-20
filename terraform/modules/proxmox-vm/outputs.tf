@@ -3,7 +3,7 @@ output "vm_id" {
   value       = proxmox_virtual_environment_vm.this.vm_id
 }
 
-output "vm_name" {
+output "name" {
   description = "VM name"
   value       = proxmox_virtual_environment_vm.this.name
 }

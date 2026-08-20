@@ -1,312 +1,86 @@
-variable "root_ca_node" {
-  description = "Proxmox node for the Root CA VM"
-  type        = string
-}
+# =============================================================================
+# Root variables — unified across environments (sandbox is the superset).
+# All values come from the GENERATED terraform/<env>.tfvars (make configure);
+# never hand-edit the tfvars.
+# =============================================================================
 
-variable "issuing_ca_node" {
-  description = "Proxmox node for the Issuing CA LXC"
-  type        = string
-}
-
-variable "dns_auth_node" {
-  description = "Proxmox node for the DNS Auth+Recursor LXC"
-  type        = string
-}
-
-variable "dns_dist_node" {
-  description = "Proxmox node for the DNSdist LXC"
-  type        = string
-}
-
-variable "nexus_node" {
-  description = "Proxmox node for the Nexus Repository CE LXC"
-  type        = string
-}
-
-variable "log_server_node" {
-  description = "Proxmox node for the Log Server LXC"
-  type        = string
-}
-
-variable "splunk_node" {
-  description = "Proxmox node for the Splunk Enterprise VM"
-  type        = string
-}
+# ---------------------------------------------------------------------------
+# Shared infrastructure
+# ---------------------------------------------------------------------------
 
 variable "pool_id" {
-  description = "Proxmox resource pool ID. Use 'sandbox' for sandbox deployments (Claude-scoped token only has ACL on /pool/sandbox). Set to '' if the target environment does not use pool isolation."
+  description = "Proxmox resource pool ID all guests are scoped to (isolation boundary)"
   type        = string
-  default     = "sandbox"
 }
 
 variable "datastore_id" {
-  description = "Proxmox storage/datastore ID for VM and LXC disks"
+  description = "Proxmox storage/datastore ID for root disks"
   type        = string
+  default     = "local-lvm"
 }
 
 variable "cloudinit_datastore_id" {
-  description = "Proxmox storage ID for cloud-init snippets. Must be a directory storage with Snippets content type enabled."
+  description = "Proxmox storage ID for cloud-init disks (must have 'images' content)"
   type        = string
 }
 
-variable "root_ca_bridge" {
-  description = "Proxmox VNet bridge for the root CA VM"
+variable "lxc_template_file_id" {
+  description = "CT template file ID used by every LXC (e.g. 'shared-templates:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst')"
   type        = string
-}
-
-variable "issuing_ca_bridge" {
-  description = "Proxmox VNet bridge for the issuing CA LXC"
-  type        = string
-}
-
-variable "dns_auth_bridge" {
-  description = "Proxmox VNet bridge for the DNS auth+recursor LXC"
-  type        = string
-}
-
-variable "dns_dist_bridge" {
-  description = "Proxmox VNet bridge for the DNSdist LXC"
-  type        = string
-}
-
-variable "vm_id_range_start" {
-  description = "Starting VM ID for provisioned VMs. Increment for each additional VM to avoid conflicts."
-  type        = number
-  default     = 200
+  default     = null
 }
 
 variable "ssh_public_key" {
-  description = "SSH public key to inject via cloud-init into provisioned VMs/LXCs. Required for the issuing CA LXC unless a root_password is passed directly to the module — the LXC module enforces at least one auth method at plan time."
+  description = "SSH public key injected into every guest via cloud-init / LXC init"
   type        = string
   default     = null
-}
-
-# ---------------------------------------------------------------------------
-# PKI — Root CA (offline VM) + Issuing CA (LXC)
-# ---------------------------------------------------------------------------
-
-variable "root_ca_vm_id" {
-  description = "Proxmox VM ID for the offline Root CA VM"
-  type        = number
-  default     = 201
-}
-
-variable "root_ca_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the Root CA VM, e.g. '192.168.50.10/24'"
-  type        = string
-  default     = null
-}
-
-variable "root_ca_ipv4_gateway" {
-  description = "IPv4 gateway for the Root CA VM"
-  type        = string
-  default     = null
-}
-
-variable "issuing_ca_ct_id" {
-  description = "Proxmox container ID for the Issuing CA LXC"
-  type        = number
-  default     = 202
-}
-
-variable "issuing_ca_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the Issuing CA LXC, e.g. '192.168.50.11/24'"
-  type        = string
-  default     = null
-}
-
-variable "issuing_ca_ipv4_gateway" {
-  description = "IPv4 gateway for the Issuing CA LXC"
-  type        = string
-  default     = null
-}
-
-variable "cloud_init_template_id" {
-  description = "VM ID of the Debian 13 cloud-init template to clone from (created by scripts/setup-vm-template.sh)"
-  type        = number
-  default     = 9000
-}
-
-
-variable "lxc_template_file_id" {
-  description = "LXC template file ID for all LXC containers. Format: '<storage>:vztmpl/<filename>'. Cluster setups override this via lxc_template_file_id in infrastructure.storage config (e.g. 'nfs-shared:vztmpl/...'). Single-node setups use the default 'local:vztmpl/...' value. Verify exact filename with: pveam available --section system | grep debian"
-  type        = string
-  # Default is for single-node setups (template on local storage). Download first:
-  #   pveam update && pveam download local debian-13-standard_13.0-1_amd64.tar.zst
-  # Cluster setups: override via lxc_template_file_id in infrastructure.storage config.
-  #   pveam download nfs-shared debian-13-standard_13.0-1_amd64.tar.zst
-  default = "local:vztmpl/debian-13-standard_13.0-1_amd64.tar.zst"
-}
-
-variable "domain_name" {
-  description = "Internal domain name used in DNS output hints (e.g. 'lab.example.com'). Does not affect resource configuration — informational only. Override in tfvars; default is a placeholder."
-  type        = string
-  default     = "lab.example.com"
-}
-
-# ---------------------------------------------------------------------------
-# DNS — PowerDNS Auth+Recursor (LXC) + DNSdist (LXC)
-# ---------------------------------------------------------------------------
-
-variable "dns_auth_ct_id" {
-  description = "Proxmox container ID for the DNS Auth+Recursor LXC"
-  type        = number
-  default     = 103
-}
-
-variable "dns_auth_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the DNS Auth LXC"
-  type        = string
-  default     = null
-}
-
-variable "dns_auth_ipv4_gateway" {
-  description = "IPv4 gateway for the DNS Auth LXC"
-  type        = string
-  default     = null
-}
-
-variable "dns_dist_ct_id" {
-  description = "Proxmox container ID for the DNSdist LXC"
-  type        = number
-  default     = 104
-}
-
-variable "dns_dist_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the DNSdist LXC"
-  type        = string
-  default     = null
-}
-
-variable "dns_dist_ipv4_gateway" {
-  description = "IPv4 gateway for the DNSdist LXC"
-  type        = string
-  default     = null
-}
-
-# ---------------------------------------------------------------------------
-# Artifact Server — Nexus Repository CE (LXC)
-# ---------------------------------------------------------------------------
-
-variable "nexus_ct_id" {
-  description = "Proxmox container ID for the Nexus Repository CE LXC"
-  type        = number
-  default     = 205
-}
-
-variable "nexus_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the Nexus LXC, e.g. '192.168.50.20/24'"
-  type        = string
-  default     = null
-}
-
-variable "nexus_ipv4_gateway" {
-  description = "IPv4 gateway for the Nexus LXC"
-  type        = string
-  default     = null
-}
-
-variable "nexus_bridge" {
-  description = "Proxmox VNet bridge for the Nexus LXC. No default — generator always emits this from infrastructure.networks config."
-  type        = string
-}
-
-# ---------------------------------------------------------------------------
-# Log Server — OTel Collector (LXC)
-# ---------------------------------------------------------------------------
-
-variable "log_server_ct_id" {
-  description = "Proxmox container ID for the Log Server LXC"
-  type        = number
-  default     = 206
-}
-
-variable "log_server_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the Log Server LXC"
-  type        = string
-  default     = null
-}
-
-variable "log_server_ipv4_gateway" {
-  description = "IPv4 gateway for the Log Server LXC"
-  type        = string
-  default     = null
-}
-
-variable "log_server_bridge" {
-  description = "Proxmox VNet bridge for the Log Server LXC. No default — generator always emits this from infrastructure.networks config."
-  type        = string
-}
-
-# ---------------------------------------------------------------------------
-# Splunk Enterprise — AI Hackathon VM
-# ---------------------------------------------------------------------------
-
-variable "splunk_vm_id" {
-  description = "Proxmox VM ID for the Splunk Enterprise VM"
-  type        = number
-  default     = 207
-}
-
-variable "splunk_ipv4_address" {
-  description = "Static IPv4 address (CIDR notation) for the Splunk VM"
-  type        = string
-  default     = null
-}
-
-variable "splunk_ipv4_gateway" {
-  description = "IPv4 gateway for the Splunk VM"
-  type        = string
-  default     = null
-}
-
-variable "splunk_bridge" {
-  description = "Proxmox VNet bridge for the Splunk VM. No default — generator always emits this from infrastructure.networks config."
-  type        = string
-}
-
-variable "splunk_cloud_init_template_id" {
-  description = "VMID of the Ubuntu 24.04 cloud-init VM template used to clone the Splunk VM. Distinct from the global cloud_init_template_id (Debian 13, used by PKI root CA) — must not collide."
-  type        = number
-}
-
-# ---------------------------------------------------------------------------
-# Deployment gating — incremental deployment control
-# ---------------------------------------------------------------------------
-
-variable "enable_nexus" {
-  description = "Deploy the Nexus Repository CE LXC. Set true in config (services.nexus.enabled) when ready for Phase 2."
-  type        = bool
-  default     = false
-}
-
-variable "enable_dns" {
-  description = "Deploy the PowerDNS Auth+Recursor and DNSdist LXCs. Set true in config (services.dns.enabled) when ready for Phase 3."
-  type        = bool
-  default     = false
-}
-
-variable "enable_pki" {
-  description = "Deploy the Issuing CA LXC and Root CA VM. Set true in config (services.pki.enabled) when ready for Phase 4."
-  type        = bool
-  default     = false
-}
-
-variable "enable_log_server" {
-  description = "Deploy the Log Server LXC. Set true in config (services.log_server.enabled) when ready."
-  type        = bool
-  default     = false
-}
-
-variable "enable_splunk" {
-  description = "Deploy the Splunk Enterprise VM. Set true in config (services.splunk.enabled) when ready."
-  type        = bool
-  default     = false
 }
 
 variable "dns_servers" {
-  description = "DNS server IPs injected into all LXC/VM initialization blocks. Set to router IP for Phases 1-3; switch to DNSdist IP after Phase 3 to flip all managed hosts to internal DNS in one plan+apply."
+  description = "DNS resolver IPs injected into every guest's initialization block. Empty list = inherit Proxmox host defaults."
   type        = list(string)
   default     = []
 }
 
+# ---------------------------------------------------------------------------
+# Services — one entry per enabled Terraform-managed guest.
+# Emitted by scripts/genconfig (emit/tfvars.py) from config/<env>.yml.
+# kind selects the module; kind-specific fields are ignored by the other kind.
+# ---------------------------------------------------------------------------
+
+variable "services" {
+  description = "All Terraform-managed guests, keyed by service name (map key is the state address key: module.vm[\"<key>\"] / module.lxc[\"<key>\"])"
+  type = map(object({
+    kind          = string           # "vm" | "lxc"
+    node          = string           # Proxmox node name
+    id            = number           # cluster-unique VM/CT id
+    name          = string           # VM name / container hostname
+    bridge        = string           # network bridge for the primary NIC
+    ipv4_address  = optional(string) # CIDR notation; null = DHCP
+    ipv4_gateway  = optional(string)
+    cores         = optional(number, 1)
+    memory_mb     = optional(number, 512)
+    disk_size_gb  = optional(number, 8)
+    started       = optional(bool, true)
+    start_on_boot = optional(bool, true)
+
+    # vm-only
+    clone_template_id = optional(number, 0)
+    agent_enabled     = optional(bool, true)
+    cpu_type          = optional(string, "x86-64-v2-AES")
+
+    # lxc-only
+    os_type        = optional(string, "debian")
+    swap_mb        = optional(number, 512)
+    unprivileged   = optional(bool, true)
+    nesting        = optional(bool, true)
+    data_disk_size = optional(string) # e.g. "20G"; null = no second disk
+    data_disk_path = optional(string, "/mnt/data")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for svc in values(var.services) : contains(["vm", "lxc"], svc.kind)])
+    error_message = "services.*.kind must be \"vm\" or \"lxc\"."
+  }
+}

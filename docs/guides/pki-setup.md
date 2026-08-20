@@ -177,16 +177,11 @@ make plan      # review the plan — expect: 2 resources to create (root-ca VM, 
 make apply     # applies sandbox.tfplan
 ```
 
-After apply, Terraform outputs the DNS records to add:
-
-```
-pki_dns_records = {
-  "ca"      = { ip = "192.168.X.X/24", record = "ca.<sandbox-domain>" }
-  "root-ca" = { ip = "192.168.X.X/24", record = "root-ca.<sandbox-domain>" }
-}
-```
-
-**Add these A records to your internal DNS resolver** (strip the CIDR prefix — use the IP only).
+DNS records for the PKI hosts are derived by the config generator (including the
+`ca.<domain>` alias via `dns_aliases` on `issuing_ca`) and land in both the
+generated `/etc/hosts` mesh and the internal DNS zone (`dns-records.yml`) — no
+manual record entry needed. Terraform's `service_addresses` output shows the
+configured IPs per service.
 
 The `pki_root_ca` and `pki_issuing_ca` Ansible inventory groups are auto-derived from the
 `pki:` IPs in `config/sandbox.yml` — no manual inventory edit needed. Verify Ansible can

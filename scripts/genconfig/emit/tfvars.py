@@ -1,13 +1,117 @@
-"""genconfig.emit.tfvars — render terraform/<env>.tfvars."""
+"""genconfig.emit.tfvars — render terraform/<env>.tfvars.
+
+Emits shared infrastructure values plus a single `services` map (one entry per
+enabled service). The Terraform root fans two static module blocks (vm / lxc)
+over that map — adding a service is a generator change, never a new module
+block. Resource sizing lives in _SERVICE_SPECS until component manifests own
+it (phase 2 of the component refactor).
+"""
 
 import sys
 
 from ..helpers import _hcl_str, resolve_network, validate_cidr
 
+# Per-service kind + sizing + lifecycle spec. Only values that differ from the
+# `services` variable's typed-object defaults (terraform/variables.tf) are
+# listed — omitted fields fall through to those defaults at plan time.
+_SERVICE_SPECS = {
+    "root_ca": {
+        "kind": "vm",
+        # Offline root CA: created stopped, never autostarts, no guest agent.
+        "started": False,
+        "start_on_boot": False,
+        "agent_enabled": False,
+    },
+    "issuing_ca": {"kind": "lxc"},
+    "dns_auth": {"kind": "lxc"},
+    "dns_dist": {"kind": "lxc"},
+    "nexus": {
+        "kind": "lxc",
+        "cores": 2,
+        "memory_mb": 8192,
+        "data_disk_size": "20G",
+        "data_disk_path": "/mnt/nexus-data",
+    },
+    "log_server": {"kind": "lxc", "memory_mb": 1024, "disk_size_gb": 100},
+    "splunk": {
+        "kind": "vm",
+        "cores": 4,
+        "cpu_type": "x86-64-v3",
+        "memory_mb": 12288,
+        "disk_size_gb": 150,
+        "start_on_boot": False,
+    },
+}
+
+# Fallback hostnames when config omits `hostname:` (match the pre-map layout).
+_DEFAULT_NAMES = {
+    "root_ca": "root-ca",
+    "issuing_ca": "issuing-ca",
+    "dns_auth": "dns-auth",
+    "dns_dist": "dns-dist",
+    "nexus": "nexus-server",
+    "log_server": "log-server",
+    "splunk": "splunk",
+}
+
+_DEFAULT_IDS = {
+    "root_ca": 201,
+    "issuing_ca": 202,
+    "dns_auth": 103,
+    "dns_dist": 104,
+    "nexus": 205,
+    "log_server": 206,
+    "splunk": 207,
+}
+
+
+def _hcl_val(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if v is None:
+        return "null"
+    return f'"{v}"'
+
+
+def _service_entry(svc_key: str, svc: dict, networks: dict, default_network, label: str) -> list[str]:
+    """Render one services-map entry as indented HCL lines."""
+    spec = _SERVICE_SPECS[svc_key]
+    addr = svc.get("ip", "")
+    validate_cidr(addr, f"services.{label}.ip")
+    net = resolve_network(svc, networks, default_network, label)
+
+    id_field = "vm_id" if spec["kind"] == "vm" else "ct_id"
+    pairs = [
+        ("kind", spec["kind"]),
+        ("node", svc["node"]),
+        ("id", svc.get(id_field, _DEFAULT_IDS[svc_key])),
+        ("name", svc.get("hostname", _DEFAULT_NAMES[svc_key])),
+        ("bridge", net["bridge"]),
+        ("ipv4_address", addr),
+        ("ipv4_gateway", net["gateway"]),
+    ]
+    for field in (
+        "cores", "memory_mb", "disk_size_gb", "started", "start_on_boot",
+        "clone_template_id", "agent_enabled", "cpu_type",
+        "os_type", "swap_mb", "unprivileged", "nesting",
+        "data_disk_size", "data_disk_path",
+    ):
+        if field in spec:
+            pairs.append((field, spec[field]))
+    if spec["kind"] == "vm":
+        pairs.append(("clone_template_id", svc["cloud_init_template_id"]))
+
+    width = max(len(k) for k, _ in pairs)
+    lines = [f"  {svc_key} = {{"]
+    lines += [f"    {k.ljust(width)} = {_hcl_val(v)}" for k, v in pairs]
+    lines.append("  }")
+    return lines
+
 
 def gen_tfvars(cfg: dict, env: str) -> str:
     infra = cfg.get("infrastructure", {})
-    p = infra.get("proxmox", {})
     networks = infra["networks"]
     default_network = infra.get("default_network")
     s = infra.get("storage", {})
@@ -18,7 +122,6 @@ def gen_tfvars(cfg: dict, env: str) -> str:
 
     pool_id = t.get("pool_id", "")
     ssh_key = ssh.get("public_key", "")
-    domain_name = cfg.get("domain_name", "")
 
     # Widest key in this block: cloudinit_datastore_id (22 chars) — pad all to column 23
     lines = [
@@ -28,9 +131,7 @@ def gen_tfvars(cfg: dict, env: str) -> str:
         f'pool_id                = "{pool_id}"',
         f'datastore_id           = "{s.get("datastore_id", "local-lvm")}"',
         f'cloudinit_datastore_id = "{s.get("cloudinit_datastore_id", "local")}"',
-        f'vm_id_range_start      = {t.get("vm_id_range_start", 200)}',
         f'ssh_public_key         = {_hcl_str(ssh_key)}',
-        f'domain_name            = {_hcl_str(domain_name)}',
     ]
 
     # lxc_template_file_id — global, read from infrastructure.storage
@@ -41,150 +142,60 @@ def gen_tfvars(cfg: dict, env: str) -> str:
             f'lxc_template_file_id = {_hcl_str(lxc_tmpl)}',
         ]
 
-    # Per-service node placement
-    # minio node intentionally excluded — Ansible-only service, no Terraform consumer
-    lines += [
-        f"",
-        f'root_ca_node    = "{svcs["pki"]["root_ca"]["node"]}"',
-        f'issuing_ca_node = "{svcs["pki"]["issuing_ca"]["node"]}"',
-        f'dns_auth_node   = "{svcs["dns"]["auth"]["node"]}"',
-        f'dns_dist_node   = "{svcs["dns"]["dist"]["node"]}"',
-        f'nexus_node      = "{svcs["nexus"]["node"]}"',
-    ]
-
-    # Deployment gating — derived from services.<svc>.enabled (default false)
-    enable_pki        = bool(svcs.get("pki", {}).get("enabled", False))
-    enable_dns        = bool(svcs.get("dns", {}).get("enabled", False))
-    enable_nexus      = bool(svcs.get("nexus", {}).get("enabled", False))
-    enable_log_server = bool(svcs.get("log_server", {}).get("enabled", False))
-    enable_splunk     = bool(svcs.get("splunk", {}).get("enabled", False))
-    dns_server   = infra.get("dns_server", "").strip()
+    dns_server = infra.get("dns_server", "").strip()
     dns_servers_hcl = f'["{dns_server}"]' if dns_server else "[]"
     lines += [
-        f"",
-        f"# Deployment gating — set services.<svc>.enabled: true in config to unlock each phase",
-        f'enable_pki        = {str(enable_pki).lower()}',
-        f'enable_dns        = {str(enable_dns).lower()}',
-        f'enable_nexus      = {str(enable_nexus).lower()}',
-        f'enable_log_server = {str(enable_log_server).lower()}',
-        f'enable_splunk     = {str(enable_splunk).lower()}',
         f"",
         f"# DNS resolver injected into all LXC/VM initialization blocks",
         f'dns_servers = {dns_servers_hcl}',
     ]
 
-    # PKI section — only emitted when services.pki is present in config
-    if pki:
-        root_ca  = pki.get("root_ca", {})
-        iss_ca   = pki.get("issuing_ca", {})
+    # ------------------------------------------------------------------
+    # services map — one entry per ENABLED service. A disabled service is
+    # simply absent (the for_each fans out over what exists).
+    # ------------------------------------------------------------------
+    if pki and pki.get("issuing_ca", {}).get("lxc_template_file_id"):
+        print("ERROR: lxc_template_file_id found in services.pki.issuing_ca. "
+              "Move it to infrastructure.storage.lxc_template_file_id instead.", file=sys.stderr)
+        sys.exit(1)
 
-        root_addr = root_ca.get("ip", "")
-        iss_addr  = iss_ca.get("ip", "")
-
-        if iss_ca.get("lxc_template_file_id"):
-            print("ERROR: lxc_template_file_id found in services.pki.issuing_ca. "
-                  "Move it to infrastructure.storage.lxc_template_file_id instead.", file=sys.stderr)
-            sys.exit(1)
-
-        validate_cidr(root_addr, "services.pki.root_ca.ip")
-        validate_cidr(iss_addr, "services.pki.issuing_ca.ip")
-
-        root_net = resolve_network(root_ca, networks, default_network, "pki.root_ca")
-        iss_net  = resolve_network(iss_ca, networks, default_network, "pki.issuing_ca")
-
-        lines += [
-            f"",
-            f"# PKI",
-            f'root_ca_vm_id           = {root_ca.get("vm_id", 201)}',
-            f'root_ca_ipv4_address    = {_hcl_str(root_addr)}',
-            f'root_ca_ipv4_gateway    = {_hcl_str(root_net["gateway"])}',
-            f'root_ca_bridge          = "{root_net["bridge"]}"',
-            f'issuing_ca_ct_id        = {iss_ca.get("ct_id", 202)}',
-            f'issuing_ca_ipv4_address = {_hcl_str(iss_addr)}',
-            f'issuing_ca_ipv4_gateway = {_hcl_str(iss_net["gateway"])}',
-            f'issuing_ca_bridge       = "{iss_net["bridge"]}"',
-            f'cloud_init_template_id  = {root_ca.get("cloud_init_template_id", 9000)}',
-        ]
-
-    # DNS section — only emitted when services.dns is present in config
+    entries: list[tuple[str, dict, str]] = []  # (map key, service dict, config label)
+    if pki.get("enabled", False):
+        root_ca = dict(pki.get("root_ca", {}))
+        root_ca.setdefault("cloud_init_template_id", 9000)
+        entries.append(("root_ca", root_ca, "pki.root_ca"))
+        entries.append(("issuing_ca", pki.get("issuing_ca", {}), "pki.issuing_ca"))
     dns = svcs.get("dns", {})
-    if dns:
-        auth = dns.get("auth", {})
-        dist = dns.get("dist", {})
-
-        auth_addr = auth.get("ip", "")
-        dist_addr = dist.get("ip", "")
-
-        validate_cidr(auth_addr, "services.dns.auth.ip")
-        validate_cidr(dist_addr, "services.dns.dist.ip")
-
-        auth_net = resolve_network(auth, networks, default_network, "dns.auth")
-        dist_net = resolve_network(dist, networks, default_network, "dns.dist")
-
-        lines += [
-            f"",
-            f"# DNS",
-            f'dns_auth_ct_id        = {auth.get("ct_id", 103)}',
-            f'dns_auth_ipv4_address = {_hcl_str(auth_addr)}',
-            f'dns_auth_ipv4_gateway = {_hcl_str(auth_net["gateway"])}',
-            f'dns_auth_bridge       = "{auth_net["bridge"]}"',
-            f'dns_dist_ct_id        = {dist.get("ct_id", 104)}',
-            f'dns_dist_ipv4_address = {_hcl_str(dist_addr)}',
-            f'dns_dist_ipv4_gateway = {_hcl_str(dist_net["gateway"])}',
-            f'dns_dist_bridge       = "{dist_net["bridge"]}"',
-        ]
-
-    # Nexus section — only emitted when services.nexus is present in config
+    if dns.get("enabled", False):
+        entries.append(("dns_auth", dns.get("auth", {}), "dns.auth"))
+        entries.append(("dns_dist", dns.get("dist", {}), "dns.dist"))
     nexus = svcs.get("nexus", {})
-    if nexus:
-        nexus_addr = nexus.get("ip", "")
-        validate_cidr(nexus_addr, "services.nexus.ip")
-        nexus_net = resolve_network(nexus, networks, default_network, "nexus")
-        lines += [
-            f"",
-            f"# Nexus",
-            f'nexus_ct_id        = {nexus.get("ct_id", 205)}',
-            f'nexus_ipv4_address = {_hcl_str(nexus_addr)}',
-            f'nexus_ipv4_gateway = {_hcl_str(nexus_net["gateway"])}',
-            f'nexus_bridge       = "{nexus_net["bridge"]}"',
-        ]
-
-    # Log Server section — only emitted when services.log_server is present in config
+    if nexus.get("enabled", False):
+        entries.append(("nexus", nexus, "nexus"))
     log_server = svcs.get("log_server", {})
-    if log_server:
-        log_server_addr = log_server.get("ip", "")
-        validate_cidr(log_server_addr, "services.log_server.ip")
-        log_server_net = resolve_network(log_server, networks, default_network, "log_server")
-        lines += [
-            f"",
-            f"# Log Server",
-            f'log_server_node         = "{log_server["node"]}"',
-            f'log_server_ct_id        = {log_server.get("ct_id", 206)}',
-            f'log_server_ipv4_address = {_hcl_str(log_server_addr)}',
-            f'log_server_ipv4_gateway = {_hcl_str(log_server_net["gateway"])}',
-            f'log_server_bridge       = "{log_server_net["bridge"]}"',
-        ]
-
-    # Splunk section — only emitted when services.splunk is present in config
+    if log_server.get("enabled", False):
+        entries.append(("log_server", log_server, "log_server"))
     splunk = svcs.get("splunk", {})
-    if splunk:
+    if splunk.get("enabled", False):
         if "cloud_init_template_id" not in splunk:
             sys.exit(
                 "Config error: 'services.splunk.cloud_init_template_id' is required. "
                 "Set it to the VMID of the Ubuntu 24.04 cloud-init template on your Proxmox host."
             )
-        splunk_addr = splunk.get("ip", "")
-        validate_cidr(splunk_addr, "services.splunk.ip")
-        splunk_net = resolve_network(splunk, networks, default_network, "splunk")
-        lines += [
-            f"",
-            f"# Splunk",
-            f'splunk_node                   = "{splunk["node"]}"',
-            f'splunk_vm_id                  = {splunk.get("vm_id", 207)}',
-            f'splunk_ipv4_address           = {_hcl_str(splunk_addr)}',
-            f'splunk_ipv4_gateway           = {_hcl_str(splunk_net["gateway"])}',
-            f'splunk_bridge                 = "{splunk_net["bridge"]}"',
-            f'splunk_cloud_init_template_id = {splunk["cloud_init_template_id"]}',
-        ]
+        entries.append(("splunk", splunk, "splunk"))
+
+    lines += [
+        f"",
+        f"# Terraform-managed guests — one entry per enabled service (kind: vm | lxc).",
+        f"# Sizing/lifecycle defaults live in the services variable's typed object;",
+        f"# per-service overrides come from the generator's spec table.",
+    ]
+    if entries:
+        lines.append("services = {")
+        for svc_key, svc, label in entries:
+            lines += _service_entry(svc_key, svc, networks, default_network, label)
+        lines.append("}")
+    else:
+        lines.append("services = {}")
 
     return "\n".join(lines) + "\n"

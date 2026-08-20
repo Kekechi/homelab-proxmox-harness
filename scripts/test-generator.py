@@ -78,6 +78,7 @@ BASE_MINIO = {
 }
 
 BASE_PKI = {
+    "enabled": True,
     "root_ca": {
         "node":                  "pve",
         "ip":                    "10.10.40.10/24",
@@ -96,6 +97,7 @@ BASE_PKI = {
 }
 
 BASE_DNS = {
+    "enabled": True,
     "auth": {
         "node":         "pve",
         "ip":           "10.10.40.12/24",
@@ -115,12 +117,23 @@ BASE_DNS = {
 
 
 BASE_NEXUS = {
+    "enabled":      True,
     "node":         "pve",
     "ip":           "10.10.40.14/24",
     "ct_id":        205,
     "ansible_user": "root",
     "hostname":     "nexus",
     "network":      "lab",
+    # the IaC-required repo set (validate_nexus_apt_proxy_repos enforces it)
+    "apt_proxy_repos": [
+        {"name": "apt-proxy-trixie", "remote_url": "http://deb.example.org/debian", "distribution": "trixie"},
+        {"name": "apt-proxy-trixie-security", "remote_url": "http://sec.example.org/debian-security", "distribution": "trixie-security"},
+        {"name": "apt-proxy-trixie-updates", "remote_url": "http://deb.example.org/debian", "distribution": "trixie-updates"},
+        {"name": "apt-proxy-smallstep", "remote_url": "https://pkg.example.org/stable/debian", "distribution": "debs", "flat": True},
+        {"name": "apt-proxy-powerdns-auth-50", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-auth-50"},
+        {"name": "apt-proxy-powerdns-rec-54", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-rec-54"},
+        {"name": "apt-proxy-dnsdist-21", "remote_url": "https://repo.example.org/debian", "distribution": "trixie-dnsdist-21"},
+    ],
 }
 
 
@@ -298,20 +311,42 @@ class TestTfvarsOutput(unittest.TestCase):
     def _tfvars(self, cfg):
         return gen.gen_tfvars(cfg, "sandbox")
 
-    def test_per_service_bridge_vars_emitted(self):
-        """All four per-service bridge vars must appear in tfvars."""
+    def _entry(self, out, svc_key):
+        """Extract one services-map entry block, whitespace-normalized for assertions."""
+        import re
+        lines = out.splitlines()
+        start = next(i for i, l in enumerate(lines) if l.startswith(f"  {svc_key} = {{"))
+        end = next(i for i in range(start, len(lines)) if lines[i] == "  }")
+        return "\n".join(re.sub(r"\s+", " ", l).strip() for l in lines[start:end + 1])
+
+    def test_enabled_services_present_in_map(self):
+        """Every enabled service appears as a services-map entry."""
         out = self._tfvars(make_cfg())
-        for var in ("root_ca_bridge", "issuing_ca_bridge", "dns_auth_bridge", "dns_dist_bridge"):
-            self.assertIn(var, out, f"Missing: {var}")
+        for svc_key in ("root_ca", "issuing_ca", "dns_auth", "dns_dist", "nexus"):
+            self.assertIn(f"  {svc_key} = {{", out, f"Missing map entry: {svc_key}")
+
+    def test_disabled_service_absent_from_map(self):
+        """A service without enabled: true is absent from the services map."""
+        import copy
+        services = {
+            "minio": BASE_MINIO,
+            "pki":   copy.deepcopy(BASE_PKI),
+            "dns":   BASE_DNS,
+            "nexus": BASE_NEXUS,
+        }
+        services["pki"]["enabled"] = False
+        out = self._tfvars(make_cfg(services=services))
+        self.assertNotIn("root_ca = {", out)
+        self.assertNotIn("issuing_ca = {", out)
+        self.assertIn("dns_auth = {", out)
 
     def test_global_bridge_not_emitted(self):
-        """Global 'bridge =' line must NOT appear in tfvars (only per-service *_bridge vars)."""
+        """No top-level 'bridge =' var — bridge lives inside each map entry."""
         out = self._tfvars(make_cfg())
         for line in out.splitlines():
-            stripped = line.lstrip()
             self.assertFalse(
-                stripped.startswith("bridge ") or stripped.startswith("bridge="),
-                f"Found a global 'bridge =' line: {line!r}",
+                line.startswith("bridge ") or line.startswith("bridge="),
+                f"Found a top-level 'bridge =' line: {line!r}",
             )
 
     def test_vlan_id_not_emitted(self):
@@ -329,10 +364,10 @@ class TestTfvarsOutput(unittest.TestCase):
         cfg = make_cfg()
         cfg["infrastructure"]["networks"]["lab"]["gateway"] = "10.10.40.254"
         out = self._tfvars(cfg)
-        self.assertIn('root_ca_ipv4_gateway    = "10.10.40.254"', out)
-        self.assertIn('issuing_ca_ipv4_gateway = "10.10.40.254"', out)
-        self.assertIn('dns_auth_ipv4_gateway = "10.10.40.254"', out)
-        self.assertIn('dns_dist_ipv4_gateway = "10.10.40.254"', out)
+        for svc_key in ("root_ca", "issuing_ca", "dns_auth", "dns_dist"):
+            entry = self._entry(out, svc_key)
+            self.assertIn('ipv4_gateway = "10.10.40.254"', entry,
+                          f"{svc_key} gateway not sourced from network")
 
     def test_multi_network_bridge_per_service(self):
         """Services on different networks emit the correct bridge per service."""
@@ -352,12 +387,14 @@ class TestTfvarsOutput(unittest.TestCase):
         cfg["services"]["minio"]["network"]             = "lab"
 
         out = self._tfvars(cfg)
-        self.assertIn('dns_dist_bridge       = "lan"',  out)
-        self.assertIn('dns_dist_ipv4_gateway = "10.10.10.1"', out)
-        self.assertIn('dns_auth_bridge       = "lab"',  out)
-        self.assertIn('dns_auth_ipv4_gateway = "10.10.40.1"', out)
-        self.assertIn('root_ca_bridge          = "lab"',  out)
-        self.assertIn('issuing_ca_bridge       = "lab"',  out)
+        dist = self._entry(out, "dns_dist")
+        self.assertIn('bridge = "lan"', dist)
+        self.assertIn('ipv4_gateway = "10.10.10.1"', dist)
+        auth = self._entry(out, "dns_auth")
+        self.assertIn('bridge = "lab"', auth)
+        self.assertIn('ipv4_gateway = "10.10.40.1"', auth)
+        self.assertIn('bridge = "lab"', self._entry(out, "root_ca"))
+        self.assertIn('bridge = "lab"', self._entry(out, "issuing_ca"))
 
     def test_sparse_no_dns_rejected(self):
         """Config without services.dns is invalid — schema requires pki+dns+nexus."""
@@ -578,7 +615,7 @@ class TestInventoryOutput(unittest.TestCase):
     def test_sparse_no_pki_no_pki_groups(self):
         """Config without pki section → no pki_ groups in inventory."""
         import copy
-        dns = {k: dict(v) for k, v in BASE_DNS.items()}
+        dns = copy.deepcopy(BASE_DNS)
         cfg = make_cfg(services={"minio": BASE_MINIO, "dns": dns})
         out = self._inv(cfg)
         self.assertNotIn("pki_root_ca", out)

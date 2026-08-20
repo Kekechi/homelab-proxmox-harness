@@ -3,7 +3,7 @@ output "vm_id" {
   value       = proxmox_virtual_environment_container.this.vm_id
 }
 
-output "hostname" {
+output "name" {
   description = "Container hostname"
   value       = try(proxmox_virtual_environment_container.this.initialization[0].hostname, null)
 }

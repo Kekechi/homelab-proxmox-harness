@@ -8,7 +8,7 @@ variable "pool_id" {
   type        = string
 }
 
-variable "vm_name" {
+variable "name" {
   description = "Name of the VM as displayed in Proxmox"
   type        = string
 }
@@ -84,10 +84,10 @@ variable "ipv4_gateway" {
   default     = null
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key injected via cloud-init for the default user"
-  type        = string
-  default     = null
+variable "ssh_public_keys" {
+  description = "SSH public keys injected via cloud-init for the default user"
+  type        = list(string)
+  default     = []
 }
 
 
