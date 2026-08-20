@@ -49,8 +49,9 @@ Key rules:
   unresolved ⇒ the var DOES NOT EXIST (roles gate on defaults / `is defined`).
 - Every enabled instance with an `ip` implicitly provides `dns.record`
   (honouring `dns:`, `dns_name:`, `dns_aliases:`); the dns component consumes
-  it `many: true` and reconciles the zone to that aggregate (stale records are
-  pruned).
+  it `many: true`. Stale zone records are WARNED about by default (prod zones
+  carry hand edits); pass `-e dns_records_prune=true` to reconcile by deletion
+  — the sandbox rebuild loop does, and private-component teardown should.
 - Current capability set: `s3.endpoint`, `ca.url`, `apt.source`,
   `syslog.target`, `splunk.hec`, `dns.resolver`, `dns.record`.
 - When a provider set changes, `make configure` prints the stale-consumer

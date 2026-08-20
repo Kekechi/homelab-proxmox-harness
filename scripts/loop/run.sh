@@ -221,7 +221,9 @@ if active deploy; then
     APT_FALLBACK="-e nexus_fallback=upstream"
     log "Phase: PKI";        ansible-playbook -i inventory/ ../components/pki/playbook.yml $APT_FALLBACK
     log "Phase: Nexus";      ansible-playbook -i inventory/ ../components/nexus/playbook.yml --limit nexus $APT_FALLBACK
-    log "Phase: DNS";        ansible-playbook -i inventory/ ../components/dns/playbook.yml $APT_FALLBACK
+    # Rebuild loop = reconcile: prune zone records whose provider is gone
+    # (prod default is warn-only; see components/dns/records.yml).
+    log "Phase: DNS";        ansible-playbook -i inventory/ ../components/dns/playbook.yml $APT_FALLBACK -e dns_records_prune=true
     log "Phase: log-server"; ansible-playbook -i inventory/ ../components/log_server/playbook.yml $APT_FALLBACK
     cd "$REPO_ROOT"
 fi
