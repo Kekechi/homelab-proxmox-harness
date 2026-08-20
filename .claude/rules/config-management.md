@@ -5,115 +5,113 @@ paths:
   - "ansible/inventory/**"
   - ".envrc*"
   - "scripts/generate-configs.py"
-  - ".devcontainer/squid/allowed-cidrs.conf"
+  - "scripts/genconfig/**"
+  - "components/*/component.yml"
+  - "components/*/config.example.yml.in"
 ---
 
 # Configuration Management
 
 ## Single Source of Truth
 
-`config/<env>.yml` is the authoritative source for all non-secret environment configuration.
-NEVER edit generated files directly — they are overwritten on the next `make configure` run.
+`config/<env>.yml` is the authoritative source for all non-secret environment
+configuration. `config/<env>.local.yml` (gitignored) deep-merges over it for private
+components and machine-specific values. NEVER edit generated files directly — they carry
+DO-NOT-EDIT headers and are overwritten on the next `make configure`.
 
-## Config Structure
+## Who owns the schema
+
+Component manifests do. Each `components/<name>/component.yml` (and
+`components.local/<name>/`) declares its instances and their config keys —
+`required` / `optional` / `defaults` — plus capability contracts
+(`consumes` / `provides`). The generator (`scripts/generate-configs.py` →
+`scripts/genconfig/`) discovers components, validates `config/<env>.yml` against the
+manifests, resolves capabilities, and emits every downstream artifact. Central files
+never encode per-service knowledge; to see what keys a service accepts, read its
+manifest or the assembled `config/<env>.yml.example`.
+
+## Config structure (top level)
 
 ```yaml
 environment: <env>
 domain_name: "..."
-ssh: { public_key, default_user }
+ssh:   { public_key, default_user }
+agent: { ssh_private_key, ssh_extra_args? }   # controller-host facts → generated ansible.cfg
 
 infrastructure:
+  dns_server: "..."               # resolv.conf pushed to instances via Terraform
   proxmox: { ip, port, insecure }
-  nodes: { <name>: { ip } }  # one entry per cluster node
+  nodes: { <name>: { ip } }       # one entry per cluster node
   networks:
-    <name>:         # named network; one per Proxmox VNet
-      bridge: ...   # VNet bridge name
-      cidr: ...     # CIDR notation; used for Squid allowlist and group vars
-      gateway: ...  # injected as ipv4_gateway per service
-      vlan_id: null # optional; null when SDN VNets handle tagging
-  default_network: <name>  # optional; omit in production to force explicit placement
-  storage:  { datastore_id, cloudinit_datastore_id }
+    <name>: { bridge, cidr, gateway, vlan_id }   # cidr MUST be CIDR notation
+  default_network: <name>         # optional; omit in production to force explicit placement
+  storage: { datastore_id, cloudinit_datastore_id, lxc_template_file_id }
 
 terraform: { pool_id, vm_id_range_start, clone_template_id, state_bucket }
 
 services:
-  minio:  { node, ip, port, ansible_user, hostname, network }
-  pki:
-    root_ca:   { node, ip, vm_id, ansible_user, hostname, cloud_init_template_id, network }
-    issuing_ca: { node, ip, ct_id, ansible_user, hostname, network }
-  dns:
-    auth: { node, ip, ct_id, ansible_user, hostname, network, dns_name? }
-    dist: { node, ip, ct_id, ansible_user, hostname, network, dns_name?, dns_ttl?, dns?, client_cidrs? }
-  nexus: { node, ip, ct_id, ansible_user, hostname, fqdn, network }
+  <instance_key>: { node, ip, ... }   # keys defined by the owning component's manifest
 
 hosts:
-  <group>:    # ad-hoc VMs not covered by a named service
-    <hostname>: { ansible_host, ansible_user }
+  <group>: { <hostname>: { ansible_host, ansible_user } }   # ad-hoc, non-component hosts
 ```
 
-## Generated Files
+## Generated files
 
-| Generated file | Source in config YAML |
-|---|---|
-| `terraform/<env>.tfvars` | `infrastructure.nodes + per-service node:` → `*_node (root_ca_node, issuing_ca_node, dns_auth_node, dns_dist_node, nexus_node)`; `infrastructure.proxmox`, `infrastructure.networks` (per-service bridge/gateway resolved via service's `network:` reference), `infrastructure.storage`, `terraform`, `ssh`, `services.pki` |
-| `ansible/inventory/hosts.yml` | `services` (auto-derived groups) + `hosts` (manual/ad-hoc groups) |
-| `.devcontainer/squid/allowed-cidrs.conf` | one CIDR entry per named network that has at least one deployed service; `infrastructure.proxmox.ip` |
-| `.envrc` (non-secret portion) | `infrastructure.proxmox.ip/port/insecure`, `services.minio.ip/port` |
-| `.env.mk` | `terraform.state_bucket`, `environment` |
+| Generated file | Emitter (`scripts/genconfig/emit/`) | Notes |
+|---|---|---|
+| `terraform/<env>.tfvars` | `tfvars.py` | typed `services` map for the two `for_each` blocks + shared vars |
+| `ansible/inventory/hosts.yml` | `inventory.py` | enabled components (auto-derived groups) + `hosts:` + capability-derived group vars |
+| `ansible/ansible.cfg` | `ansible_cfg.py` | from the `agent:` section (key path, extra ssh args) |
+| `.envrc` (non-secret portion) | `envrc.py` | smart-merge preserves secret lines; sources `.envrc.local` (never templated) |
+| `.env.mk` | `env_mk.py` | `ENV`, state bucket for the Makefile |
+| `ansible/inventory/group_vars/pki_*` | `pki_group_vars.py` | PKI sub-host vars |
+| `config/*.yml.example` | `config_example.py` | assembled from `config/example-core/<env>.yml.in` + `components/*/config.example.yml.in` (via `make examples`) |
 
-After editing `config/<env>.yml`, always run:
-```
-make configure            # sandbox
-make configure ENV=production
-```
+After editing `config/<env>.yml` or a manifest: `make configure` (add `ENV=production`
+for prod). After editing example fragments: `make examples`. Generator output is
+byte-stable for unchanged input — `scripts/test-golden.py` is the oracle; run it after
+any generator change.
 
-## Derivations performed by the generator
+## Capability contracts
 
-- `infrastructure.proxmox.ip` + `port` → `https://{ip}:{port}` for envrc, `{ip}/32` for Squid
-- `services.minio.ip` + `port` → `http://{ip}:{port}` for envrc (when tls:false), bare IP for ansible_host
-- `services.minio.fqdn` + `tls` → `https://{fqdn}:{port}` for envrc (when tls:true); also emitted as `minio_domain` in `hosts.yml` minio group vars
-- `services.minio.tls` → `minio_tls_enabled` group var in `hosts.yml`
-- `domain_name` → `minio_ca_url: https://ca.{domain_name}` group var in `hosts.yml` minio group
-- `services.*` with `ip` → Ansible inventory group auto-derived (no manual `hosts:` entry needed)
-- `services.*` with `dns_name` → overrides the DNS A record label (default: service key, underscores → hyphens)
-- `services.*` with `dns_ttl` → overrides TTL for that host's A record (default: 3600)
-- `services.*` with `dns: false` → excludes that host from DNS record generation entirely
-- `services.*` with `dns_aliases: [<label>, ...]` → extra A records / hosts-mesh entries at the same IP (e.g. `issuing_ca: dns_aliases: ["ca"]` makes the `ca.<domain>` CA URL resolve)
-- `services.pki.*` sub-hosts → `pki_root_ca` / `pki_issuing_ca` Ansible groups
-- Per-service `network:` field → looked up in `infrastructure.networks`; `bridge` and `gateway` emitted as `<service>_bridge` and `<service>_ipv4_gateway` in tfvars
-- `infrastructure.networks.<name>.cidr` → one entry in `allowed-cidrs.conf` per network that has at least one deployed service
+Cross-component values flow through `consumes` / `provides` declared in manifests —
+never name-based reaches inside emitters. When a provider component's value changes,
+re-converge reporting from `make configure` lists which consumers need their playbooks
+re-run.
 
 ## Secret Boundaries
 
 | Value | Where it lives | NEVER in |
 |---|---|---|
 | Proxmox API token | `.envrc` (manual) | config YAML |
-| MinIO access key | `.envrc` (manual) | config YAML |
-| MinIO secret key | `.envrc` (manual) | config YAML |
-| MinIO root password | `.envrc` as `MINIO_ROOT_PASSWORD` (Ansible reads via `lookup('env', ...)`) | config YAML or role defaults |
-| MinIO root user | `.envrc` as `MINIO_ROOT_USER` (Ansible reads via `lookup('env', ...)`) | config YAML or role defaults |
+| MinIO access/secret key | `.envrc` (manual) | config YAML |
+| MinIO root user/password | `.envrc` (Ansible reads via `lookup('env', ...)`) | config YAML or role defaults |
+| Component service secrets (API keys etc.) | `.envrc`, declared by the manifest's `env:` section | config YAML or role defaults |
+| Machine-specific extras | `.envrc.local` (gitignored, never templated) | git |
 | SSH public key | `config/<env>.yml` | `.tf` files |
-| All other infra config | `config/<env>.yml` | hardcoded in `.tf` or playbooks |
+| All other infra config | `config/<env>.yml` (+ `.local.yml` overlay) | hardcoded in `.tf` or playbooks |
+
+The placeholder sentinel for unset secrets is `CHANGE_ME` (declared per manifest) — the
+generator and secret tooling agree on it; never invent a different sentinel.
 
 ## Constraints
 
 - NEVER put API tokens, passwords, or keys in `config/<env>.yml`
-- NEVER edit `terraform/<env>.tfvars`, `ansible/inventory/hosts.yml`, or `.devcontainer/squid/allowed-cidrs.conf` directly
-- `infrastructure.networks.<name>.cidr` MUST use CIDR notation (`/24`, `/32`) — never a bare IP
-- Service IPs (`services.*.ip`) use bare IPs for flat services; CIDR notation for PKI sub-hosts (Terraform needs the prefix for cloud-init static IPs)
-- Services with `network:` fields must reference a key in `infrastructure.networks`
-- `default_network` (if set) must also reference a key in `infrastructure.networks`
-- `gateway:` is NOT a per-service field — it belongs in `infrastructure.networks.<name>.gateway`
-- `config/<env>.yml` is gitignored. Only `*.yml.example` files are committed.
+- NEVER edit generated files (see table above) — regenerate instead
+- `infrastructure.networks.<name>.cidr` MUST use CIDR notation, never a bare IP
+- Service IPs use bare IPs for flat services; CIDR notation where the manifest requires
+  a prefix for cloud-init static addressing (e.g. PKI sub-hosts)
+- A service's `network:` (and `default_network`) must reference a key in `infrastructure.networks`
+- `gateway:` belongs to `infrastructure.networks.<name>`, never to a service
+- `config/<env>.yml` and `config/<env>.local.yml` are gitignored; only `*.yml.example` is committed
+- Name/tf_key collision between `components/` and `components.local/` is a hard error
 
 ## Adding a new service
 
-1. Add a `services.<name>:` entry with `ip`, `port` (if applicable), `ansible_user`, `hostname`, `network`
-2. Run `make configure` — the generator auto-derives the Ansible inventory group and Squid CIDR
-3. No edits to `hosts:` needed unless the service has non-standard inventory requirements
-
-## Devcontainer Exception
-
-`make configure` may regenerate `.devcontainer/squid/allowed-cidrs.conf` as a downstream output.
-This is the **only** permitted modification under `.devcontainer/`.
-The Squid proxy does NOT pick up the change at runtime — the operator must run `make build` and reopen the container for it to take effect.
+Create `components/<name>/` (manifest + config fragment + playbook + verify.sh), add its
+`services.<key>:` block to `config/<env>.yml`, run `make configure` — no central-file
+edits. Full checklist: `components/CLAUDE.md`. For a new field on an existing service:
+add it to the manifest and fragment, read it in the relevant emitter if it must be
+emitted, then update the golden baselines (`scripts/test-golden.py --update`, review the
+diff).
