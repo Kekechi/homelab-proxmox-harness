@@ -1,8 +1,12 @@
 # Design: Component/Plugin Architecture for the IaC Harness
 
-_Status: **agreed with operator, 2026-08-19** — supersedes the "Target structure" sketch
-in the operator's project note. Gate artifact before implementation ("structure-today vs
-target-structure"). Public repo: intent-level only; no environment specifics here._
+_Status: **implemented (phases 0–4), 2026-08-20** — agreed with operator 2026-08-19;
+supersedes the "Target structure" sketch in the operator's project note. Executed on the
+`refactor/plugin-modules` branch: state migration proven by empty plan, overlay proven by a
+synthetic private component (own LXC, capability consume, implicit dns.record into the
+public zone, seam write), full cold rebuild green through the loop. Phase 5 (harness
+rewrite) deferred to its own branch. Public repo: intent-level only; no environment
+specifics here._
 
 ---
 
