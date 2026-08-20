@@ -15,6 +15,12 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: splunk-server
+        hec_port: 8088
+    provides:
+      - capability: splunk.hec
+        value: "http://{ip}:{hec_port}"
+    consumes:
+      splunk_ca_url: {capability: ca.url, optional: true}
 
 ansible:
   playbook: playbook.yml

@@ -605,6 +605,85 @@ class TestDeriveDnsRecords(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Capability resolution tests
+# ---------------------------------------------------------------------------
+
+class TestCapabilities(unittest.TestCase):
+
+    def _resolved(self, cfg):
+        components = gen.discover_components()
+        providers = gen.build_providers(cfg, components)
+        return gen.resolve_consumes(cfg, components, providers, gen.CORE_CONSUMES)
+
+    def test_hard_consume_missing_provider_errors(self):
+        """log_server enabled without minio (s3.endpoint) → validation error."""
+        import copy
+        services = {
+            "minio": copy.deepcopy(BASE_MINIO),
+            "pki": BASE_PKI, "dns": BASE_DNS, "nexus": BASE_NEXUS,
+            "log_server": {"enabled": True, "node": "pve", "ip": "10.10.40.16/24",
+                           "ct_id": 206, "ansible_user": "root", "hostname": "log-server"},
+        }
+        services["minio"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        with self.assertRaises(SystemExit) as cm:
+            silence_stderr(lambda: self._resolved(cfg))
+        self.assertIn("s3.endpoint", str(cm.exception.code))
+
+    def test_optional_consume_absent_provider_no_var(self):
+        """pki disabled → minio_ca_url does not exist (no dummy value)."""
+        import copy
+        services = {
+            "minio": BASE_MINIO,
+            "pki": copy.deepcopy(BASE_PKI),
+            "dns": BASE_DNS, "nexus": BASE_NEXUS,
+        }
+        services["pki"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        group_vars, _ = self._resolved(cfg)
+        self.assertNotIn("minio_ca_url", group_vars.get("minio", {}))
+
+    def test_optional_consume_present_provider_resolves(self):
+        """pki enabled → minio/nexus consume ca.url."""
+        cfg = make_cfg()
+        group_vars, _ = self._resolved(cfg)
+        self.assertEqual(group_vars["minio"]["minio_ca_url"], "https://ca.test.example.com")
+        self.assertEqual(group_vars["nexus"]["nexus_ca_url"], "https://ca.test.example.com")
+
+    def test_many_aggregates_dns_records(self):
+        """dns_auth consumes dns.record (many) — every enabled instance appears."""
+        cfg = make_cfg()
+        group_vars, _ = self._resolved(cfg)
+        names = {r["name"] for r in group_vars["dns_auth"]["dns_records"]}
+        self.assertIn("minio", names)
+        self.assertIn("nexus", names)
+        self.assertIn("root-ca", names)
+
+    def test_also_set_flag_only_when_resolved(self):
+        """dnstap flag set only when a syslog.target provider exists."""
+        import copy
+        cfg = make_cfg()  # no log_server in default fixture
+        group_vars, _ = self._resolved(cfg)
+        self.assertNotIn("pdns_dnsdist_dnstap_enabled", group_vars.get("dns_dist", {}))
+        services = copy.deepcopy(cfg["services"])
+        services["log_server"] = {"enabled": True, "node": "pve", "ip": "10.10.40.16/24",
+                                  "ct_id": 206, "ansible_user": "root", "hostname": "log-server"}
+        cfg2 = make_cfg(services=services)
+        group_vars2, core_vars2 = self._resolved(cfg2)
+        self.assertTrue(group_vars2["dns_dist"]["pdns_dnsdist_dnstap_enabled"])
+        self.assertEqual(core_vars2["common_log_server_address"], "10.10.40.16")
+
+    def test_core_apt_source_default_empty(self):
+        """nexus disabled → nexus_apt_proxy defaults to "" (falsy) in all.vars."""
+        import copy
+        services = {"minio": BASE_MINIO, "pki": BASE_PKI, "dns": BASE_DNS,
+                    "nexus": copy.deepcopy(BASE_NEXUS)}
+        services["nexus"]["enabled"] = False
+        cfg = make_cfg(services=services)
+        _, core_vars = self._resolved(cfg)
+        self.assertEqual(core_vars["nexus_apt_proxy"], "")
+
+# ---------------------------------------------------------------------------
 # .envrc smart-merge tests (atomic_write)
 # ---------------------------------------------------------------------------
 

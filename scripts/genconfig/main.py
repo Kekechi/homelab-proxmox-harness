@@ -13,6 +13,12 @@ import sys
 
 # Public surface re-exported for the shim and the test harnesses.
 from .config import CHANGE_ME, REPO_ROOT, is_inside_container, load_config
+from .capabilities import (
+    CORE_CONSUMES,
+    build_providers,
+    report_reconvergence,
+    resolve_consumes,
+)
 from .discovery import (
     component_order,
     discover_components,
@@ -47,6 +53,10 @@ from .emit.pki_group_vars import gen_pki_group_vars
 from .emit.tfvars import gen_tfvars
 
 __all__ = [
+    "CORE_CONSUMES",
+    "build_providers",
+    "report_reconvergence",
+    "resolve_consumes",
     "component_order",
     "discover_components",
     "enabled_components",
@@ -105,6 +115,11 @@ def main():
 
     # Validate schema before generating any files
     validate_schema(cfg)
+
+    # Capability graph: snapshot the provider set; when it changed, print the
+    # stale-consumer re-run list (re-convergence is computed, not tribal memory).
+    components = discover_components()
+    report_reconvergence(cfg, components, build_providers(cfg, components))
 
     # 1. terraform/<env>.tfvars
     tfvars_path = os.path.join(REPO_ROOT, "terraform", f"{env}.tfvars")

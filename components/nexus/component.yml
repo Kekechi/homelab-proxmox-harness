@@ -16,6 +16,16 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: nexus-server
+    provides:
+      - capability: apt.source
+        value: "http://{ip}:8081"
+        value_tls: "https://{fqdn}:8443"
+    consumes:
+      nexus_ca_url: {capability: ca.url, optional: true}
+
+seam:
+  - {path: /etc/nginx/conf.d, kind: include-dir, note: "nginx front-end fragments"}
+  - {kind: admin-api, note: "Nexus REST API — repos/roles/users configurable by other components' plays (NEXUS_ADMIN_PASSWORD)"}
 
 ansible:
   playbook: playbook.yml

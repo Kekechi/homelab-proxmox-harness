@@ -116,3 +116,6 @@ Thumbs.db
 # Generated ansible.cfg (agent-host facts from config agent: section)
 # ============================================================
 ansible/ansible.cfg
+
+# Capability provider-set snapshot (re-convergence reporting)
+.genconfig-capabilities.json

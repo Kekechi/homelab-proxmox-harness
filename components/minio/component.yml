@@ -13,6 +13,12 @@ instances:
       defaults:
         port: 9000
         hostname: minio-server
+    provides:
+      - capability: s3.endpoint
+        value: "http://{ip}:{port}"
+        value_tls: "https://{fqdn}:{port}"
+    consumes:
+      minio_ca_url: {capability: ca.url, optional: true} # TLS cert issuance once PKI exists
 
 bootstrap: bootstrap.sh # creates the LXC via the Proxmox API + seeds bucket/IAM
 

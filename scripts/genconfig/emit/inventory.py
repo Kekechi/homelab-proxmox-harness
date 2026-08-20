@@ -5,15 +5,11 @@ manifests (instances.<i>.group) plus the ad-hoc `hosts:` section. Only ENABLED
 components appear in the inventory — a disabled component contributes no group,
 no /etc/hosts entry, and no DNS record.
 
-INTERIM cross-component couplings (dissolved into capability consumes/provides
-in phase 4 of the component refactor) are quarantined in _coupling_vars below:
-  - log_server reads services.minio (otelcol_minio_endpoint) and services.splunk
-    (otelcol_splunk_hec_*).
-  - dns dist reads its network CIDR + client_cidrs (pdns_dnsdist_acl_cidrs), the
-    auth instance IP, and services.log_server.ip (dns_collector syslog wiring).
-  - minio/nexus/splunk read domain_name for their CA URL.
-  - _derive_dns_records feeds both common_internal_hosts (/etc/hosts) and the
-    dns_auth A-records.
+Cross-component values arrive via CAPABILITY RESOLUTION (see
+genconfig/capabilities.py): each instance's manifest consumes: block names the
+vars injected into its group; CORE_CONSUMES feeds all.vars for the shared
+common role. _self_vars below holds only vars derived from a component's OWN
+config (TLS flags, its FQDN, its ACL) — never a reach into another component.
 """
 
 import sys
@@ -25,29 +21,23 @@ from ..discovery import (
     instance_config,
     instance_group,
 )
+from ..capabilities import CORE_CONSUMES, build_providers, resolve_consumes
 from ..helpers import _derive_dns_records, _strip_prefix, resolve_network, validate_domain_name
 from ..validation import validate_nexus_apt_proxy_repos, validate_nexus_raw_hosted_repos
 
 
-def _coupling_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
-                   networks: dict, default_network) -> list[str]:
-    """INTERIM: per-group vars that reach across components (phase 4 replaces
-    these with capability resolution). Returns YAML lines (6-space indent for
-    keys under `vars:`), or [] when the group needs none."""
-    domain_name = cfg.get("domain_name", "")
+def _self_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
+               networks: dict, default_network) -> list[str]:
+    """Per-group vars derived from the component's OWN config only. Anything
+    that reaches into another component goes through capability resolution."""
     lines: list[str] = []
 
     if group == "minio":
         minio_tls = blk.get("tls", False)
         minio_fqdn = blk.get("fqdn", "")
-        # minio_ca_url: domain-based CA URL — DNS must be deployed before the TLS
-        # phase, so ca.<domain> is resolvable by then. IP-based URLs cannot work
-        # because the CA cert has only DNS SANs.
         lines.append(f"        minio_tls_enabled: {str(bool(minio_tls)).lower()}")
         if minio_fqdn:
             lines.append(f"        minio_domain: {minio_fqdn}")
-        if domain_name:
-            lines.append(f"        minio_ca_url: https://ca.{domain_name}")
         # Cert SAN coupling: the FQDN is the primary SAN; the bare IP is a
         # secondary SAN so IP-addressed access still validates.
         lines.append(f"        minio_endpoint_ip: {_strip_prefix(blk['ip'])}")
@@ -60,8 +50,6 @@ def _coupling_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
         lines.append(f"        nexus_tls_enabled: {str(bool(nexus_tls)).lower()}")
         if nexus_fqdn:
             lines.append(f"        nexus_domain: {nexus_fqdn}")
-        if domain_name:
-            lines.append(f"        nexus_ca_url: https://ca.{domain_name}")
         if apt_proxy_repos:
             lines.append(f"        nexus_apt_proxy_repos:")
             for repo in apt_proxy_repos:
@@ -81,49 +69,16 @@ def _coupling_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
         else:
             lines.append(f"        nexus_raw_hosted_repos: []")
 
-    elif group == "log_server":
-        minio_svc = enabled_svcs.get("minio", {})
-        minio_tls = minio_svc.get("tls", False)
-        minio_fqdn = minio_svc.get("fqdn", "")
-        minio_ip = _strip_prefix(minio_svc.get("ip", ""))
-        minio_port = minio_svc.get("port", 9000)
-        if minio_tls and minio_fqdn:
-            otelcol_endpoint = f"https://{minio_fqdn}:{minio_port}"
-        elif minio_ip:
-            otelcol_endpoint = f"http://{minio_ip}:{minio_port}"
-        else:
-            otelcol_endpoint = ""
-        if not otelcol_endpoint:
-            print(
-                "ERROR: services.log_server is enabled but otelcol_minio_endpoint "
-                "cannot be derived — enable services.minio with an ip (or fqdn when "
-                "tls: true) in config/<env>.yml and re-run make configure.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        splunk_svc = enabled_svcs.get("splunk", {})
-        splunk_ip = _strip_prefix(splunk_svc.get("ip", ""))
-        splunk_hec_port = splunk_svc.get("hec_port", 8088)
-        # Splunk HEC sink only when Splunk is ENABLED with an IP (deprecation-
-        # planned; default sink is MinIO awss3).
-        splunk_hec_on = bool(splunk_ip)
-        lines.append(f"        otelcol_minio_endpoint: \"{otelcol_endpoint}\"")
-        lines.append(f"        otelcol_splunk_hec_enabled: {str(splunk_hec_on).lower()}")
-        if splunk_hec_on:
-            lines.append(f"        otelcol_splunk_hec_url: \"http://{splunk_ip}:{splunk_hec_port}\"")
-
     elif group == "splunk":
         splunk_tls = blk.get("tls", False)
         splunk_fqdn = blk.get("fqdn", "")
         lines.append(f"        splunk_tls_enabled: {str(bool(splunk_tls)).lower()}")
         if splunk_fqdn:
             lines.append(f"        splunk_domain: {splunk_fqdn}")
-        if domain_name:
-            lines.append(f"        splunk_ca_url: https://ca.{domain_name}")
 
     elif group == "dns_dist":
         auth_blk = (enabled_svcs.get("dns", {}) or {}).get("auth", {})
-        recursor_ip = _strip_prefix(auth_blk.get("ip", ""))
+        recursor_ip = _strip_prefix(auth_blk.get("ip", ""))  # sibling instance — same component
         dist_net = resolve_network(blk, networks, default_network, "dns.dist")
         network_cidr = dist_net["cidr"]
         client_cidrs = blk.get("client_cidrs", [])
@@ -135,21 +90,33 @@ def _coupling_vars(group: str, blk: dict, cfg: dict, enabled_svcs: dict,
         lines.append(f"        pdns_dnsdist_acl_cidrs:")
         for cidr in seen_cidrs:
             lines.append(f'          - "{cidr}"')
-        log_server_ip = _strip_prefix(enabled_svcs.get("log_server", {}).get("ip", ""))
-        # When log_server is enabled, wire dns_dist → log_server syslog pipeline.
-        if log_server_ip:
-            lines.append(f'        dns_collector_syslog_endpoint: "{log_server_ip}"')
-            lines.append(f"        pdns_dnsdist_dnstap_enabled: true")
 
-    elif group == "dns_auth":
-        _dns_records = _derive_dns_records(enabled_svcs)
-        if _dns_records:
-            lines.append(f"        dns_records:")
-            for r in _dns_records:
-                lines.append(f'          - {{name: "{r["name"]}", ip: "{r["ip"]}", ttl: {r["ttl"]}}}')
+    return lines
+
+
+def _capability_var_lines(cap_vars: dict) -> list[str]:
+    """Render capability-resolved vars (sorted by name) as group-var lines."""
+    lines: list[str] = []
+    for var in sorted(cap_vars):
+        val = cap_vars[var]
+        if isinstance(val, bool):
+            lines.append(f"        {var}: {str(val).lower()}")
+        elif isinstance(val, list):
+            if not val:
+                lines.append(f"        {var}: []")
+                continue
+            lines.append(f"        {var}:")
+            for item in val:
+                if isinstance(item, dict):
+                    inner = ", ".join(
+                        f'{k}: "{v}"' if isinstance(v, str) else f"{k}: {v}"
+                        for k, v in item.items()
+                    )
+                    lines.append(f"          - {{{inner}}}")
+                else:
+                    lines.append(f'          - "{item}"')
         else:
-            lines.append(f"        dns_records: []")
-
+            lines.append(f'        {var}: "{val}"')
     return lines
 
 
@@ -168,20 +135,11 @@ def gen_inventory(cfg: dict, env: str, components: dict | None = None) -> str:
     enabled = enabled_components(components, cfg)
     enabled_svcs = {name: svcs[name] for name in enabled}
 
-    # nexus_apt_proxy — base Nexus URL emitted into all.vars so roles can construct
-    # per-repo URLs. Phase 2 (tls: false): http://<ip>:8081. Phase 5+ (tls: true):
-    # https://<fqdn>:8443. Empty when Nexus is not enabled — roles skip proxy
-    # config when falsy.
-    nexus_svc = enabled_svcs.get("nexus", {})
-    nexus_ip = _strip_prefix(nexus_svc.get("ip", ""))
-    nexus_tls = bool(nexus_svc.get("tls", False))
-    nexus_fqdn_raw = nexus_svc.get("fqdn", "")
-    if nexus_tls and nexus_fqdn_raw:
-        nexus_apt_proxy = f"https://{nexus_fqdn_raw}:8443"
-    elif nexus_ip:
-        nexus_apt_proxy = f"http://{nexus_ip}:8081"
-    else:
-        nexus_apt_proxy = ""
+    # Capability resolution: cross-component values for group vars + all.vars.
+    providers = build_providers(cfg, components)
+    cap_group_vars, core_vars = resolve_consumes(cfg, components, providers, CORE_CONSUMES)
+    # apt.source consumed by the common role on every host; "" when no provider.
+    nexus_apt_proxy = core_vars.get("nexus_apt_proxy", "")
 
     lines = [
         f"# Generated by scripts/generate-configs.py from config/{env}.yml",
@@ -200,9 +158,8 @@ def gen_inventory(cfg: dict, env: str, components: dict | None = None) -> str:
     # overrides with `-e nexus_fallback=upstream` (Nexus does not exist yet at
     # the PKI phase). See docs/design/apt-fallback-policy.md.
     lines.append(f"    nexus_fallback: \"fail\"")
-    log_server_ip_for_all = _strip_prefix(enabled_svcs.get("log_server", {}).get("ip", ""))
-    if log_server_ip_for_all:
-        lines.append(f'    common_log_server_address: "{log_server_ip_for_all}"')
+    if core_vars.get("common_log_server_address"):
+        lines.append(f'    common_log_server_address: "{core_vars["common_log_server_address"]}"')
     # Internal service FQDN → IP map for /etc/hosts (the common role writes these).
     # Decouples cold-start TLS from the internal DNS server. Only ENABLED
     # components resolve; honours dns_name/dns_aliases overrides and dns: false.
@@ -233,12 +190,13 @@ def gen_inventory(cfg: dict, env: str, components: dict | None = None) -> str:
                 hostname = blk.get("hostname") or (name if single else iname)
                 host_ip = _strip_prefix(blk["ip"])
                 lines.append(f"    {group}:")
-                # NOTE: each group emits at most one `vars:` block — extend
-                # _coupling_vars rather than adding a second `vars:` key.
-                coupling = _coupling_vars(group, blk, cfg, enabled_svcs, networks, default_network)
-                if coupling:
+                # NOTE: each group emits at most one `vars:` block — self vars
+                # first, then capability-resolved vars (sorted).
+                var_lines = _self_vars(group, blk, cfg, enabled_svcs, networks, default_network)
+                var_lines += _capability_var_lines(cap_group_vars.get(group, {}))
+                if var_lines:
                     lines.append(f"      vars:")
-                    lines += coupling
+                    lines += var_lines
                 lines.append(f"      hosts:")
                 lines.append(f"        {hostname}:")
                 lines.append(f"          ansible_host: {host_ip}")

@@ -30,6 +30,9 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: issuing-ca
+    provides:
+      - capability: ca.url
+        value: "https://ca.{domain}" # domain-based — the CA cert carries only DNS SANs
 
 ansible:
   playbook: playbook.yml

@@ -12,6 +12,15 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: log-server
+    provides:
+      - capability: syslog.target
+        value: "{ip}"
+    consumes:
+      otelcol_minio_endpoint: {capability: s3.endpoint} # hard — the primary log sink
+      otelcol_splunk_hec_url:
+        capability: splunk.hec
+        optional: true
+        also_set: {otelcol_splunk_hec_enabled: true}
 
 ansible:
   playbook: playbook.yml

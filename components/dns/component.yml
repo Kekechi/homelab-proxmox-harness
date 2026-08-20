@@ -12,6 +12,10 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: dns-auth
+    consumes:
+      # Reverse direction, load-bearing: the zone is templated from whatever
+      # enabled components exist (public and private alike).
+      dns_records: {capability: dns.record, many: true}
   dist:
     kind: lxc
     resources: {cores: 1, memory_mb: 512, disk_gb: 8}
@@ -21,6 +25,14 @@ instances:
                  dns_name, dns_ttl, dns_aliases, dns]
       defaults:
         hostname: dns-dist
+    provides:
+      - capability: dns.resolver
+        value: "{ip}" # the single advertised resolver (DHCP / TF dns_servers)
+    consumes:
+      dns_collector_syslog_endpoint:
+        capability: syslog.target
+        optional: true
+        also_set: {pdns_dnsdist_dnstap_enabled: true} # tap query logs only when a sink exists
 
 ansible:
   playbook: playbook.yml
