@@ -1,7 +1,10 @@
 # Design: Harness Rebuild (Component-Architecture Phase 5)
 
-_Status: **agreed with operator 2026-08-20 — executing** on branch
-`harness/rebuild` (stacked on `refactor/plugin-modules`). Public repo: intent level only._
+_Status: **implemented 2026-08-20** — agreed with operator 2026-08-20; executed on
+branch `harness/rebuild` (stacked on `refactor/plugin-modules`). All eight slices
+landed; `make lint`, generator unit + golden tests green; retired-term sweep clean.
+Deferred by operator decision: reinstating the staged-secrets check as a plain git
+pre-commit hook. Public repo: intent level only._
 
 ---
 

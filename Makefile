@@ -96,7 +96,7 @@ plan: configure ## Terraform plan for $(ENV) — saves $(ENV).tfplan (regenerate
 		echo "=========================================================="; \
 		echo " PRODUCTION PLAN SAVED: $(TF_DIR)/$(TF_PLANFILE)"; \
 		echo " Hand this file to the operator for review and apply."; \
-		echo " DO NOT run 'terraform apply' from the dev container."; \
+		echo " DO NOT run 'terraform apply' from the agent host."; \
 		echo " Run 'make init' to switch back to sandbox when done."; \
 		echo "=========================================================="; \
 	fi

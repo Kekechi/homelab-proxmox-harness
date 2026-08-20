@@ -27,4 +27,4 @@ Present the document to the operator via your preferred channel (Slack, email, P
 ## Prerequisites
 
 - `terraform/production.tfplan` must exist (run `make plan ENV=production` first)
-- The plan file is gitignored — it must be on disk in the dev container
+- The plan file is gitignored — it must be on disk on the agent host
