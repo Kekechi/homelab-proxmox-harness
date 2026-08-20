@@ -119,3 +119,6 @@ ansible/ansible.cfg
 
 # Capability provider-set snapshot (re-convergence reporting)
 .genconfig-capabilities.json
+
+# Operator project note — deliberately untracked
+/homelab-iac-plugin-refactor.md
