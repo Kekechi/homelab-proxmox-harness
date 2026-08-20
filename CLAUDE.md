@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Homelab Proxmox Private Cloud managed with Terraform (`bpg/proxmox` v0.99.0+) and Ansible.
 State backend: MinIO (self-hosted S3, LXC on Proxmox) with a GitLab HTTP migration path.
-The agent runs on a dedicated controller host; agent-host connection facts live in the config's `agent:` section (the old devcontainer/Squid setup is retired).
+The agent runs on a dedicated controller host; agent-host connection facts live in the config's `agent:` section.
 
 **This repository is public.** Do not commit or write to docs anything that reveals specific network topology, firewall product names, internal IPs, domain names, or deployment-specific implementation details. Keep committed docs at intent level.
 
@@ -14,7 +14,6 @@ The agent runs on a dedicated controller host; agent-host connection facts live 
 
 ## Explicit Prohibitions
 
-- **NEVER** modify files under `.devcontainer/` autonomously — the devcontainer is RETIRED (component refactor); the directory awaits an operator-reviewed deletion. **Operator-directed edits are permitted when the operator explicitly requests them** (i.e. "edit this file", not inferred intent).
 - **NEVER** run `terraform apply` without a plan file (`terraform plan -out=<file>` first)
 - **NEVER** apply Terraform for production — produce a plan file and hand it to the operator
 - **NEVER** commit `.envrc`, `config/*.yml`, or any file containing tokens, passwords, or secret keys
@@ -62,7 +61,6 @@ config/
   production.yml.example    or example-core/<env>.yml.in, never this file
   example-core/           Per-env skeletons for example assembly
   <env>.local.yml         GITIGNORED private overlay — deep-merges over <env>.yml
-.devcontainer/            RETIRED (operator deletes); do not modify
 terraform/
   main.tf                 TWO for_each module blocks (vm/lxc) over var.services
   variables.tf            Shared vars + one typed services map
@@ -188,7 +186,6 @@ Before any commit:
 - [ ] `config/*.yml` (not `.example`) is not staged
 - [ ] No `*.tfstate`, `*.tfvars`, or `*.tfplan` files staged
 - [ ] No credentials or IPs hardcoded in any `.tf` file
-- [ ] `.devcontainer/` untouched (retired; awaiting operator-reviewed deletion)
 - [ ] `make lint` passes (tflint + ansible-lint)
 - [ ] Any `terraform apply` in this session targeted sandbox only
 - [ ] Any new/modified doc files contain no firewall product names, VLAN IDs, IPs, or internal hostnames — intent level only (public repo)
