@@ -32,7 +32,7 @@ reasons to stop.
 
 - **Work in the main thread.** Delegate to subagents only when it clearly pays (bulk
   mechanical sweeps, isolated read-heavy audits) — not as a default posture.
-- **Journal as you go** — `.claude/session/<topic>-journal.md`, append-only: decisions
+- **Journal as you go** — `session/<topic>-journal.md`, append-only: decisions
   and why, failures with root cause tagged **Known** / **Hypothesised**, scope absorbed
   or deferred. Journal operational failures as lessons and keep moving.
 - **Commit per coherent slice**, at a verified state, passing the constraints checklist
@@ -67,6 +67,6 @@ to handle.
 
 - Bring the journal current, then summarize: what shipped and how it was verified, what
   was deferred, lessons journaled, and the commit range to review.
-- Hand back: "History at `<range>`, journal at `.claude/session/<topic>-journal.md`.
+- Hand back: "History at `<range>`, journal at `session/<topic>-journal.md`.
   Review and push when ready."
 - Offer `/retro` when the session surfaced lessons worth keeping.

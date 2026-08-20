@@ -113,7 +113,7 @@ deployment:
 This runs the read-only Tier-2 collectors, reads the raw behavioral-state dumps,
 and judges per service: *is this working as intended? any smell, misconfig,
 confusing naming, or over-broad scope?* Findings are written to
-`.claude/session/verification-findings.md`.
+`session/verification-findings.md`.
 
 **Record-only.** The sweep never acts on a finding. Trust-model findings
 (provisioner names/scopes/signing) are recorded only and are a `/design` item —
@@ -144,7 +144,7 @@ may feed a later `/design` session or directly agreed follow-up work.
    ```
    /sanity-sweep
    ```
-   Review `.claude/session/verification-findings.md`. Triage findings: a
+   Review `session/verification-findings.md`. Triage findings: a
    trust-model finding becomes a `/design` session; another-layer finding
    becomes a `/design` session or directly agreed follow-up work. **Do not
    remediate from inside the sweep.**

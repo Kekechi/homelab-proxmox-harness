@@ -27,7 +27,7 @@ Facilitate a structured design discussion for net-new infrastructure. The goal i
 Design sessions are long. At the end of Phase 1 and after every decision in Phase 2, write (or update) a session document at:
 
 ```
-.claude/session/design-<topic-slug>.md
+session/design-<topic-slug>.md
 ```
 
 This document is the source of truth for the session. If context is compacted or cleared, the user re-invokes `/design` with this file as context and nothing is lost.
@@ -83,7 +83,7 @@ Likely fine, worth confirming: ...
 
 After writing the session document, if the conversation has grown long (post Phase 1, or after 3+ decisions), say:
 
-> "SESSION.md is up to date at `.claude/session/design-<topic>.md`. If context is getting long, run `/clear` now — then re-invoke `/design` with: 'Continue from `.claude/session/design-<topic>.md`.' Everything needed to resume is in that file."
+> "SESSION.md is up to date at `session/design-<topic>.md`. If context is getting long, run `/clear` now — then re-invoke `/design` with: 'Continue from `session/design-<topic>.md`.' Everything needed to resume is in that file."
 
 Do not say this after every single decision — only when it would be genuinely useful (context is long, or a natural phase boundary has just passed).
 
@@ -180,7 +180,7 @@ may touch, what is out of bounds, and anything to confirm at runtime. The
 non-negotiables in sandbox-isolation.md apply regardless and need not be repeated.]
 ```
 
-Save this as `docs/design/<topic>.md` (committed). The session document at `.claude/session/design-<topic>.md` is not committed — it's session state that can be discarded once the design record is written.
+Save this as `docs/design/<topic>.md` (committed). The session document at `session/design-<topic>.md` is not committed — it's session state that can be discarded once the design record is written.
 
 ## Handoff
 

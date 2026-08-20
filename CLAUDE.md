@@ -82,6 +82,8 @@ scripts/
 docs/                     proxmox-iam.md, network-policy.md, threat-model.md, vision.md
   design/                 cross-cutting design records (component-architecture.md, etc.)
   guides/                 operational how-to (deployment-guide.md, pki-setup.md, etc.)
+session/                  GITIGNORED session workspace (agent-agnostic): journals,
+                          handoff docs, design session state, collect dumps, findings
 .claude/
   agents/                 tf-reviewer (single-pass code review)
   skills/

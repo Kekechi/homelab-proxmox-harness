@@ -1,6 +1,6 @@
 ---
 name: sanity-sweep
-description: Tier-2 agent sanity sweep over the deployed services. Runs the read-only Tier-2 collectors, reads the raw behavioral-state dumps, and judges per service "is this working as intended? any smell, misconfig, confusing naming, or over-broad scope?" — writing findings to .claude/session/verification-findings.md. RECORD ONLY; never acts on any finding, and NEVER touches the trust model (provisioner names/scopes/signing) — that is a /design item.
+description: Tier-2 agent sanity sweep over the deployed services. Runs the read-only Tier-2 collectors, reads the raw behavioral-state dumps, and judges per service "is this working as intended? any smell, misconfig, confusing naming, or over-broad scope?" — writing findings to session/verification-findings.md. RECORD ONLY; never acts on any finding, and NEVER touches the trust model (provisioner names/scopes/signing) — that is a /design item.
 disable-model-invocation: false
 ---
 
@@ -42,7 +42,7 @@ make no pass/fail call. This skill drives the agent to read those dumps and
    ```
 
    This writes per-component raw dumps under
-   `.claude/session/collect-dump/<UTC-timestamp>/` — collectors are discovered
+   `session/collect-dump/<UTC-timestamp>/` — collectors are discovered
    from `components/*/collect.sh` (+ `components.local/`), so enabled private
    components are swept too — and echoes them to stdout. Disabled components are
    skipped (e.g. Splunk when off by design in sandbox). To enrich the Nexus dump with privileged sections
@@ -78,7 +78,7 @@ make no pass/fail call. This skill drives the agent to read those dumps and
    own validity is in question). Both halves of the plant are **trust-model**
    findings → record them, do **not** act.
 
-4. **Write the findings.** Write `.claude/session/verification-findings.md` with:
+4. **Write the findings.** Write `session/verification-findings.md` with:
    - a header (UTC timestamp, ENV, dump dir path, collector commit if known);
    - one section per service with its findings (or "no smell observed");
    - for every finding: observation (with dump citation), why-it-smells,
@@ -95,7 +95,7 @@ make no pass/fail call. This skill drives the agent to read those dumps and
 
 ## Output
 
-- `.claude/session/verification-findings.md` — the recorded findings (the
+- `session/verification-findings.md` — the recorded findings (the
   operator's async audit surface; uncommitted by default).
 - A console summary: findings-by-severity + the known-plant self-check verdict.
 

@@ -11,7 +11,7 @@
 #
 # Usage:
 #   bash scripts/collect/collect-all.sh [DUMP_DIR] [ENV]
-#     DUMP_DIR default: .claude/session/collect-dump/<UTC-timestamp>/
+#     DUMP_DIR default: session/collect-dump/<UTC-timestamp>/
 #     ENV      default: sandbox
 #
 # NEXUS_ADMIN_PASSWORD (env, optional) enriches the nexus dump with privileged
@@ -24,7 +24,7 @@ REPO_ROOT="$(cd "${SELF_DIR}/../.." && pwd)"
 export ENV="${2:-${ENV:-sandbox}}"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
-DUMP_DIR="${1:-${REPO_ROOT}/.claude/session/collect-dump/${TS}}"
+DUMP_DIR="${1:-${REPO_ROOT}/session/collect-dump/${TS}}"
 mkdir -p "$DUMP_DIR"
 export COLLECT_DUMP_DIR="$DUMP_DIR"
 
