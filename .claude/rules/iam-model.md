@@ -4,7 +4,7 @@ paths:
   - "terraform/**/*.tfvars*"
   - ".envrc*"
   - "docs/proxmox-iam.md"
-  - "scripts/bootstrap-minio.sh"
+  - "components/minio/bootstrap.sh"
 ---
 
 # IAM Model
@@ -41,7 +41,7 @@ environment at a time (Squid allowlist is built from a single `config/<env>.yml`
 | **Operations** | GetObject, PutObject, ListBucket | Full admin |
 | **In dev container** | Yes (`MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`) | No |
 
-The scoped IAM key is created by `scripts/bootstrap-minio.sh <env>` — one key per
+The scoped IAM key is created by `components/minio/bootstrap.sh <env>` — one key per
 environment, bound to a policy that allows access to `tfstate-<env>` only. Claude's key
 physically cannot reach the production MinIO instance (different VNet, not in Squid allowlist).
 

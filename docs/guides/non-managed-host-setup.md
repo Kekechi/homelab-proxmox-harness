@@ -15,7 +15,7 @@ Three steps, in order:
 ## Step 1 — Add a DNS record
 
 For hosts in `config/<env>.yml` (IaC-managed services), records are populated automatically
-by `make ansible-dns-records`. Skip this step for those hosts.
+by `make ansible-dns  # records play is part of the dns component`. Skip this step for those hosts.
 
 For hosts not in config, add the record manually via the PowerDNS Auth API. The API is
 bound to loopback on the dns-auth LXC, so the call must be made from that host:

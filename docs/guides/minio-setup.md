@@ -125,7 +125,7 @@ Run the playbook:
 ```bash
 make ansible-minio
 # or manually:
-ansible-playbook -i ansible/inventory/ ansible/playbooks/minio-setup.yml --limit minio
+ansible-playbook -i ansible/inventory/ components/minio/playbook.yml --limit minio
 ```
 
 Verify (canonical — auto-selects the scheme from `minio.tls` and checks both
@@ -155,9 +155,9 @@ Ensure `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` are filled in `.envrc`
 bootstrap script for your environment:
 
 ```bash
-bash scripts/bootstrap-minio.sh <ENV>
-# e.g.: bash scripts/bootstrap-minio.sh sandbox
-#        bash scripts/bootstrap-minio.sh production
+bash components/minio/bootstrap.sh <ENV>
+# e.g.: bash components/minio/bootstrap.sh sandbox
+#        bash components/minio/bootstrap.sh production
 ```
 
 Or via Make (picks up `ENV` from `.env.mk`):

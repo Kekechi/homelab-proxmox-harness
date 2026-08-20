@@ -153,8 +153,8 @@ dns-auth and dns-dist LXCs are created, both using the router as their initial D
 
 ```bash
 make ansible-dns            # deploy PowerDNS Auth + Recursor
-make ansible-dns-records    # populate A records in the zone
-make ansible-dns-dist       # deploy DNSdist, wire forwarding to Recursor
+make ansible-dns  # records play is part of the dns component    # populate A records in the zone
+make ansible-dns  # dist play is part of the dns component       # deploy DNSdist, wire forwarding to Recursor
 ```
 
 Verify DNS is resolving before switching:

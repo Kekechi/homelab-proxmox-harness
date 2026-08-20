@@ -212,11 +212,11 @@ CSR exchange and no second pass.
 > power it off again — it should remain off during normal operation.
 
 ```bash
-# Preferred — runs ansible-playbook -i inventory/ playbooks/pki-setup.yml
+# Preferred — runs ansible-playbook -i inventory/ ../components/pki/playbook.yml
 make ansible-pki
 
 # Equivalent raw invocation (ansible.cfg supplies the inventory + proxy):
-cd ansible && ansible-playbook playbooks/pki-setup.yml
+cd ansible && ansible-playbook ../components/pki/playbook.yml
 ```
 
 The playbook runs four plays over both hosts, in order:
@@ -297,7 +297,7 @@ Start it only when you need to renew the intermediate certificate (typically onc
 qm start <root-ca-vmid>
 
 # 2. Re-run the PKI setup playbook
-ansible-playbook ansible/playbooks/pki-setup.yml
+ansible-playbook components/pki/playbook.yml
 
 # 3. Power off the Root CA VM
 qm stop <root-ca-vmid>
@@ -326,6 +326,6 @@ make plan ENV=production
 terraform apply production.tfplan
 
 # Ansible (same playbooks, different inventory)
-ansible-playbook ansible/playbooks/pki-setup.yml
+ansible-playbook components/pki/playbook.yml
 ansible-playbook ansible/playbooks/site.yml  # common role handles cert distribution
 ```
