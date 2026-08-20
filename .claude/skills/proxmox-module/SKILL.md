@@ -8,10 +8,14 @@ version: "1.0"
 
 ## When to Activate
 
-- Writing or modifying terraform modules under `terraform/modules/`
-- Adding a new VM, LXC, or network bridge resource
+- Writing or modifying the primitive modules under `terraform/modules/`
 - Debugging bpg/proxmox provider errors
 - Reviewing module outputs for Ansible inventory consumption
+
+**Scope note:** this skill is for authoring the *primitive modules only*. Adding a new
+VM/LXC to the deployment is NOT a module-writing task — the root `main.tf` is two
+generic `for_each` blocks over `var.services`; a new service is a
+`components/<name>/` manifest + a `config/<env>.yml` block (see `components/CLAUDE.md`).
 
 <!-- bpg/proxmox conventions here mirror .claude/rules/terraform-style.md (the canonical source).
      Update both files when changing any convention. -->

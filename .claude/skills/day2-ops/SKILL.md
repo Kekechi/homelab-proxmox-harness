@@ -9,107 +9,66 @@ disable-model-invocation: true
 ## When to Activate
 
 - Resizing an existing VM or LXC (disk, memory, CPU)
-- Managing Proxmox snapshots via Terraform
-- Adding or modifying network interfaces on running resources
-- Changing cloud-init configuration on existing VMs
-- Modifying any resource that was previously deployed via the PGE pipeline
+- Managing Proxmox snapshots
+- Network or cloud-init changes on running resources
+- Modifying any previously deployed instance
 
 <!-- Modify operations have non-obvious bpg/proxmox constraints that differ from creation.
      See .claude/skills/proxmox-module/SKILL.md for creation patterns. -->
 
 ## General Modify Workflow
 
-Day-2 changes follow the same plan-file workflow as day-1:
+Day-2 changes are **config changes**, not `.tf` edits — the root module is generic and
+instance values flow from config through the generator:
 
-1. Edit the module call or variables in `terraform/main.tf` / `terraform/variables.tf`
-2. `terraform plan -var-file=sandbox.tfvars -out=sandbox.tfplan`
-3. **Review the plan carefully** — some changes are destructive (force replacement)
-4. `terraform apply sandbox.tfplan`
+1. Edit the value at its source:
+   - **Sizing** (`cores`, `memory_mb`, `disk_gb`): per-env override in the service's
+     `config/<env>.yml` block, or the manifest's `resources:` default in
+     `components/<name>/component.yml` if the change should apply everywhere
+   - **IP / network / node**: the service's block in `config/<env>.yml`
+2. `make configure` — regenerates tfvars (and inventory if addressing changed)
+3. `make plan` — **review the plan carefully** for `# forces replacement`; some changes
+   destroy and recreate rather than modify in place
+4. `make apply`
 
-**Critical:** Always check the plan output for `# forces replacement`. This means the resource will be destroyed and recreated, not modified in-place.
+**Critical:** Always check the plan output for `# forces replacement` before applying.
 
 ## VM Resize Operations
 
 ### Disk Resize
 
-**Constraint:** Disks can only grow, never shrink. Attempting to reduce `disk.size` will fail.
+**Constraint:** Disks can only grow, never shrink. A reduced disk size fails at apply.
 
-```hcl
-# Before: 32GB → After: 64GB (works)
-disk {
-  interface    = "scsi0"
-  size         = 64  # was 32
-  datastore_id = var.datastore_id
-  iothread     = true
-  discard      = "on"
-}
-```
-
-**Behavior:** In-place resize. No VM restart needed for disk growth (guest OS may need `growpart` + `resize2fs`).
-
-**Plan output will show:**
-```
-~ disk.0.size = 32 -> 64
-```
+**Behavior:** In-place resize; no VM restart needed for growth (the guest OS may need
+`growpart` + `resize2fs`). Plan shows `~ disk.0.size = 32 -> 64`.
 
 ### Memory Resize
 
-**Constraint:** Memory changes take effect on next boot unless the VM supports hotplug.
-
-```hcl
-memory {
-  dedicated = 4096  # was 2048
-}
-```
-
-**Behavior:**
-- If memory is increased moderately: may apply without restart (if qemu supports balloon)
-- If memory is changed significantly: plan may show `~ reboot = true` or require manual restart
-- bpg/proxmox applies memory changes to the VM config; guest sees it after reboot
-
-**Plan output will show:**
-```
-~ memory.0.dedicated = 2048 -> 4096
-```
+**Constraint:** Memory changes take effect on next boot unless the VM supports hotplug
+(balloon may absorb moderate increases without restart). Plan shows
+`~ memory.0.dedicated = 2048 -> 4096`; the guest sees it after reboot.
 
 ### CPU Resize
 
-**Constraint:** Core count changes take effect on next boot.
+**Constraint:** Core-count changes take effect on next boot.
 
-```hcl
-cpu {
-  cores = 4  # was 2
-  type  = "x86-64-v2-AES"
-}
-```
-
-**Behavior:** Config updated immediately, guest sees new cores after reboot.
-
-**Warning:** Changing `cpu.type` forces replacement on some provider versions. Do not change CPU type on existing VMs unless replacement is acceptable.
+**Warning:** Changing the CPU *type* forces replacement on some provider versions. The
+type is pinned repo-wide (`x86-64-v2-AES`, terraform-style.md) — do not change it on
+existing VMs unless replacement is acceptable.
 
 ## LXC Resize Operations
 
-LXC containers are more flexible than VMs for resize:
-
-- **Disk:** Grow only, same as VM. `pct resize` happens online.
-- **Memory:** Changes apply immediately (no reboot needed for LXCs).
-- **CPU cores:** Changes apply immediately.
-
-```hcl
-cpu { cores = 4 }       # immediate
-memory { dedicated = 4096 }  # immediate
-disk { size = 64 }      # grow only, immediate
-```
+LXC containers are more flexible: memory and CPU-core changes apply immediately (no
+reboot); disk is grow-only like VMs but resizes online.
 
 ## Snapshot Management
 
-### Creating Snapshots via Terraform
+**Constraint:** bpg/proxmox v0.99.0+ has NO dedicated snapshot resource. Snapshots are
+managed outside Terraform, via the Proxmox API (the sandbox token has `VM.Snapshot` /
+`VM.Snapshot.Rollback`):
 
-**Constraint:** bpg/proxmox v0.99.0+ does NOT have a dedicated snapshot resource. Snapshots are managed outside Terraform.
-
-**Recommended workflow for sandbox VMs:**
 ```bash
-# Take snapshot via Proxmox API (read: non-destructive)
+# Take a snapshot (non-destructive)
 curl -sk -X POST \
   -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
   "$PROXMOX_VE_ENDPOINT/api2/json/nodes/<node>/qemu/<vmid>/snapshot" \
@@ -121,77 +80,31 @@ curl -sk \
   "$PROXMOX_VE_ENDPOINT/api2/json/nodes/<node>/qemu/<vmid>/snapshot"
 ```
 
-**Before risky day-2 changes:** Always take a snapshot so the operator can rollback if needed.
+**Before risky day-2 changes:** take a snapshot so the operator can roll back.
 
-**Note:** `stop_on_destroy = true` means Terraform will stop the VM before destroying it, but snapshots are independent of Terraform lifecycle.
+**Note:** `stop_on_destroy = true` means Terraform stops the VM before destroying it;
+snapshots are independent of the Terraform lifecycle.
 
-## Network Interface Changes
+## Network Changes
 
-### Adding a Network Interface
-
-```hcl
-# Additional NIC (existing VMs)
-network_device {
-  bridge  = var.bridge
-  model   = "virtio"
-  vlan_id = var.vlan_id
-}
-
-# Second NIC
-network_device {
-  bridge  = "vmbr1"
-  model   = "virtio"
-  vlan_id = var.vlan_id_mgmt
-}
-```
-
-**Behavior:** Adding a NIC is non-destructive. The guest OS needs to configure the new interface (DHCP or static via cloud-init/Ansible).
-
-### Changing VLAN
-
-**Warning:** Changing `vlan_id` on an existing interface changes the network — the VM will lose connectivity on the old VLAN. Plan this carefully.
-
-```
-~ network_device.0.vlan_id = 20 -> 30
-```
-
-**Pre-change checklist:**
-- [ ] New VLAN CIDR is in `allowed-cidrs.conf` (for SSH via Squid)
-- [ ] Update `config/sandbox.yml` with new IP if static
-- [ ] Run `make configure` after apply to regenerate inventory
+- **Moving a service to another network:** change the service's `network:` reference in
+  `config/<env>.yml` (the target must exist under `infrastructure.networks`), update its
+  `ip` to an address in the new subnet, then `make configure` + plan + apply.
+  **Warning:** the instance loses connectivity on the old network at apply — plan the
+  Ansible follow-up before applying.
+- **Additional NICs:** the typed services map models one NIC per instance. A second NIC
+  is a primitive-module interface change (core change) — treat it as a design item, not
+  a day-2 tweak.
 
 ## Cloud-Init Reconfiguration
 
-### Changing Static IP
+**Warning:** cloud-init runs on first boot only. Changing cloud-init-delivered values
+(static IP, SSH keys) in config updates the Proxmox side, but the guest won't pick it up
+without `sudo cloud-init clean` + reboot — and depending on the provider version it may
+force replacement.
 
-```hcl
-initialization {
-  ip_config {
-    ipv4 {
-      address = "192.168.X.Y/24"  # updated address
-      gateway = "192.168.X.1"
-    }
-  }
-}
-```
-
-**Warning:** Cloud-init only runs on first boot by default. Changing cloud-init config in Terraform updates the Proxmox config but the guest may not pick it up without:
-1. Clearing cloud-init state: `sudo cloud-init clean` inside the VM
-2. Rebooting the VM
-
-**Better approach for IP changes on running VMs:** Use Ansible to reconfigure networking directly rather than cloud-init.
-
-### Changing SSH Keys
-
-```hcl
-initialization {
-  user_account {
-    keys = [var.ssh_public_key_new]
-  }
-}
-```
-
-**Same cloud-init caveat:** Keys are only written on first boot. Use Ansible `authorized_key` module for running VMs.
+**Better approach on running instances:** reconfigure via Ansible (networking directly;
+`ansible.builtin.authorized_key` for keys). Reserve cloud-init changes for rebuilds.
 
 ## Destructive vs Non-Destructive Changes
 
@@ -202,19 +115,17 @@ initialization {
 | Memory increase | Config update | Usually yes |
 | CPU cores change | Config update | Yes |
 | CPU type change | **Forces replacement** | N/A (new VM) |
-| Add NIC | In-place | No (guest config needed) |
-| Change VLAN | In-place | No (connectivity changes) |
+| Change network/VLAN | In-place | No (connectivity changes) |
 | Change cloud-init IP | Config update | Yes + cloud-init clean |
 | Change `pool_id` | **Not possible** — Pool.Allocate required | N/A |
-| Change `node_name` | **Forces replacement** (migration) | N/A (new VM) |
-| Change `vm_id` | **Forces replacement** | N/A (new VM) |
+| Change `node` | **Forces replacement** (migration) | N/A (new VM) |
+| Change `vm_id` / `ct_id` | **Forces replacement** | N/A (new VM) |
 
 ## Post-Modify Checklist
 
 After any day-2 change:
 - [ ] Plan output reviewed for `# forces replacement` (none unexpected)
 - [ ] `terraform state list` shows expected resources
-- [ ] VM/LXC accessible via SSH through Squid
-- [ ] If IP changed: `config/sandbox.yml` updated, `make configure` run, inventory regenerated
-- [ ] If network changed: `allowed-cidrs.conf` includes new CIDR
-- [ ] Ansible can still reach the host (`ansible sandbox -m ping`)
+- [ ] If IP/network changed: `make configure` re-run so inventory matches reality
+- [ ] Ansible can still reach the host (`ansible <group> -m ping` from `ansible/`)
+- [ ] `make verify-<component>` passes for the touched component

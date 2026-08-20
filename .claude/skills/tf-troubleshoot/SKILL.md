@@ -17,7 +17,7 @@ model: opus
 
 ## Critical Rule
 
-**Do NOT attempt state manipulation commands** (`terraform state rm`, `terraform state mv`, `terraform import`, `terraform force-unlock`). These are blocked by the terraform-guard hook and require explicit operator approval. Diagnose with read-only commands first, then escalate to the operator with findings.
+**Do NOT attempt state manipulation commands** (`terraform state rm`, `terraform state mv`, `terraform import`, `terraform force-unlock`). These require explicit operator approval (sandbox-isolation rules — nothing mechanically blocks them, the rule is the boundary). Diagnose with read-only commands first, then escalate to the operator with findings.
 
 ## Diagnostic Procedures
 
@@ -76,7 +76,7 @@ aws --endpoint-url "$MINIO_ENDPOINT" s3 ls "s3://tfstate-sandbox/" --recursive 2
 
 **Important:** MinIO does NOT support DynamoDB state locking. The lock is advisory — concurrent applies can corrupt state. Always verify no other apply is running before asking the operator to force-unlock.
 
-**Escalate to operator:** Always. State lock operations require `terraform force-unlock` which is blocked by the hook.
+**Escalate to operator:** Always. State lock operations require `terraform force-unlock`, which needs explicit operator approval.
 
 ---
 
@@ -88,12 +88,9 @@ aws --endpoint-url "$MINIO_ENDPOINT" s3 ls "s3://tfstate-sandbox/" --recursive 2
 ```bash
 # Test MinIO endpoint connectivity
 curl -sv "$MINIO_ENDPOINT/minio/health/live" 2>&1
-
-# Check if proxy is configured (should route through Squid)
-echo "http_proxy=$http_proxy"
 echo "MINIO_ENDPOINT=$MINIO_ENDPOINT"
 
-# Test S3 API through proxy
+# Test S3 API
 aws --endpoint-url "$MINIO_ENDPOINT" s3 ls 2>&1 | head -5
 
 # Check if terraform has been initialized
@@ -103,9 +100,8 @@ ls -la terraform/.terraform/
 **Root causes:**
 | Cause | Evidence | Resolution |
 |---|---|---|
-| MinIO LXC is down | `connection refused` | Operator starts MinIO LXC in Proxmox |
-| Squid proxy blocking MinIO IP | `403 Forbidden` from Squid | Check `allowed-cidrs.conf` includes MinIO IP, operator rebuilds container |
-| Wrong endpoint in `.envrc` | Endpoint doesn't match MinIO IP | Fix `MINIO_ENDPOINT` in `.envrc`, run `direnv allow` |
+| MinIO LXC is down | `connection refused` | Operator starts MinIO LXC in Proxmox (or `make loop-minio` in sandbox) |
+| Wrong endpoint in `.envrc` | Endpoint doesn't match MinIO IP | Fix via `config/<env>.yml` + `make configure`, then `direnv allow` |
 | Credentials wrong | `InvalidAccessKeyId` or `SignatureDoesNotMatch` | Fix `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` in `.envrc` |
 | Init never ran | No `.terraform/` directory | Run `make init` |
 

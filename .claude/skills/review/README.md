@@ -1,19 +1,19 @@
 # review
 
-Review Terraform and Ansible code with the tf-reviewer agent (Sonnet). Checks security, bpg/proxmox correctness, sandbox scope, and module quality. Returns an APPROVE/WARN/BLOCK verdict.
+Review Terraform, Ansible, and component code with the tf-reviewer agent (Sonnet). Checks security, bpg/proxmox correctness, sandbox scope, and component-architecture fit. Returns an APPROVE/WARN/BLOCK verdict.
 
 ## Usage
 
 ```
-/review                   # review all modified terraform/ and ansible/ files
-/review terraform/        # review entire terraform directory
-/review terraform/main.tf # review specific file
+/review                    # review all modified terraform/, components/, and ansible/ files
+/review components/dns/    # review one component
+/review terraform/modules/ # review the primitive modules
 ```
 
 ## Output Format
 
 ```
-## Terraform Review: <files reviewed>
+## Review: <files reviewed>
 
 ### Issues Found
 | # | Severity | File:Line | Issue | Fix |
@@ -38,7 +38,6 @@ Review Terraform and Ansible code with the tf-reviewer agent (Sonnet). Checks se
 
 ## When to Use
 
-- After `/generate` writes code (or automatically as a step in `/deploy`)
-- Before committing manually written Terraform
-- After modifying existing modules
-- Before handing a production plan to the operator
+- Before committing substantial Terraform, component, or Ansible changes
+- After modifying the primitive modules or the generator
+- Before handing a production plan to the operator (`/handoff`)

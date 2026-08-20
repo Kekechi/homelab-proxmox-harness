@@ -41,10 +41,11 @@ make no pass/fail call. This skill drives the agent to read those dumps and
    bash scripts/collect/collect-all.sh
    ```
 
-   This writes per-service raw dumps under
-   `.claude/session/collect-dump/<UTC-timestamp>/` (one `<svc>.txt` per service)
-   and echoes them to stdout. Splunk is skipped when disabled (off by design in
-   sandbox). To enrich the Nexus dump with privileged sections
+   This writes per-component raw dumps under
+   `.claude/session/collect-dump/<UTC-timestamp>/` — collectors are discovered
+   from `components/*/collect.sh` (+ `components.local/`), so enabled private
+   components are swept too — and echoes them to stdout. Disabled components are
+   skipped (e.g. Splunk when off by design in sandbox). To enrich the Nexus dump with privileged sections
    (roles/privileges/users), export `NEXUS_ADMIN_PASSWORD` first; without it,
    those sections are noted as gaps and the public repo list is still dumped.
    The MinIO collector queries via the local `mcli` admin alias
@@ -72,8 +73,8 @@ make no pass/fail call. This skill drives the agent to read those dumps and
      `x509.allow.dns: ["*.<domain>"]` with `allowWildcardNames: true`, so any
      provisioner can mint a cert for the whole domain wildcard.
 
-   If `collect-issuing-ca.sh`'s provisioner dump no longer shows an `acme`/ACME
-   provisioner, **STOP and report** (the plant is gone — unexpected; the sweep's
+   If the pki component's collector dump (`components/pki/collect.sh`) no longer
+   shows an `acme`/ACME provisioner, **STOP and report** (the plant is gone — unexpected; the sweep's
    own validity is in question). Both halves of the plant are **trust-model**
    findings → record them, do **not** act.
 
@@ -89,7 +90,8 @@ make no pass/fail call. This skill drives the agent to read those dumps and
 5. **Report, do not act.** Present a short summary (count of findings by
    severity, plus the plant self-check result). Do **not** open a plan, edit a
    config, or touch any service. If the operator wants to act on a finding, that
-   is a separate `/design` (trust-model) or `/infra-plan` (other layers) session.
+   is a separate `/design` session (trust-model) or a separately agreed change
+   (other layers).
 
 ## Output
 
